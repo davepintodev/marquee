@@ -102,6 +102,12 @@ CREATE TABLE images (
   tmdb_path TEXT NOT NULL,
   PRIMARY KEY (title_id, kind)
 ) WITHOUT ROWID;
+`, `
+CREATE TABLE blocklist (
+  identity   TEXT PRIMARY KEY,
+  blocked_at TEXT NOT NULL,
+  reason     TEXT NOT NULL
+) WITHOUT ROWID;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

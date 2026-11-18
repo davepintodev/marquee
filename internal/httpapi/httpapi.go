@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/keylock"
@@ -27,9 +28,12 @@ type TMDB interface {
 type Deps struct {
 	Catalog *catalog.Store
 	TMDB    TMDB
+	Source  Source
 	Images  *metadata.Images
 	Log     *slog.Logger
 	DryRun  bool
+	// Now is the clock the blocklist's expiry is judged by; nil is the system clock.
+	Now func() time.Time
 }
 
 type api struct {
@@ -45,6 +49,9 @@ var (
 // New returns the handler for every /api/ request.
 func New(d Deps) http.Handler {
 	a := &api{Deps: d}
+	if a.Now == nil {
+		a.Now = time.Now
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", a.health)
 	mux.HandleFunc("GET /api/wall", a.wall)
@@ -55,11 +62,11 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/titles/{id}", a.updateTitle)
 	mux.HandleFunc("DELETE /api/titles/{id}", a.removeTitle)
 	mux.HandleFunc("PATCH /api/titles/{id}/episodes/{episodeId}", a.updateEpisode)
+	mux.HandleFunc("GET /api/titles/{id}/releases", a.listReleases)
 	mux.HandleFunc("GET /api/images/{kind}/{titleId}", a.image)
 	for _, route := range []string{
 		"POST /api/titles/{id}/search",
 		"POST /api/titles/{id}/episodes/{episodeId}/search",
-		"GET /api/titles/{id}/releases",
 		"POST /api/titles/{id}/releases/{releaseId}/grab",
 		"GET /api/downloads",
 		"GET /api/history",

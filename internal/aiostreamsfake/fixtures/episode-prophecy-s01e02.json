@@ -1,0 +1,59 @@
+{
+  "success": true,
+  "data": {
+    "results": [
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-11/Prophecy.S01E02.1080p.WEB-DL.mkv",
+        "filename": "Dune.Prophecy.S01E02.1080p.WEB-DL.mkv",
+        "folderName": "Dune.Prophecy.S01.1080p.WEB-DL",
+        "size": 2147483648,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Torrentio",
+        "indexer": "ExampleIndexer",
+        "infoHash": "aaaa111111111111111111111111111111111111",
+        "parsedFile": {"title": "Dune Prophecy", "resolution": "1080p", "quality": "WEB-DL", "encode": "", "releaseGroup": "", "seasons": [1], "episodes": [2]}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-12/Prophecy.S01E03.1080p.WEB-DL.mkv",
+        "filename": "Dune.Prophecy.S01E03.1080p.WEB-DL.mkv",
+        "folderName": "Dune.Prophecy.S01.1080p.WEB-DL",
+        "size": 2147483648,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Torrentio",
+        "indexer": "ExampleIndexer",
+        "infoHash": "aaaa111111111111111111111111111111111111",
+        "parsedFile": {"title": "Dune Prophecy", "resolution": "1080p", "quality": "WEB-DL", "encode": "", "releaseGroup": "", "seasons": [1], "episodes": [3]}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-13/Prophecy.S01E02.720p.HDTV.mkv",
+        "filename": "Dune.Prophecy.S01E02.720p.HDTV.mkv",
+        "folderName": "Dune.Prophecy.S01E02.720p.HDTV",
+        "size": 734003200,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Comet",
+        "indexer": "ExampleIndexer",
+        "infoHash": "bbbb222222222222222222222222222222222222",
+        "parsedFile": {"title": "Dune Prophecy", "resolution": "720p", "quality": "HDTV", "encode": "", "releaseGroup": "", "seasons": [1], "episodes": [2]}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-14/Prophecy.S01E02.2160p.mkv",
+        "filename": "Dune.Prophecy.S01E02.2160p.WEB-DL.mkv",
+        "folderName": "Dune.Prophecy.S01E02.2160p.WEB-DL",
+        "size": 9663676416,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": false,
+        "addon": "Comet",
+        "indexer": "ExampleIndexer",
+        "infoHash": "cccc333333333333333333333333333333333333",
+        "parsedFile": {"title": "Dune Prophecy", "resolution": "2160p", "quality": "WEB-DL", "encode": "", "releaseGroup": "", "seasons": [1], "episodes": [2]}
+      }
+    ]
+  }
+}
