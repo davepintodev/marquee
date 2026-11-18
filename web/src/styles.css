@@ -1044,7 +1044,7 @@ a.btn-secondary {
   transition: transform 0.2s;
 }
 
-.season[open] summary::before {
+.season details[open] summary::before {
   transform: rotate(45deg);
 }
 
@@ -1233,7 +1233,7 @@ a.btn-secondary {
     flex-basis: 100%;
   }
 
-  .nav-link {
+  .nav {
     top: 12px;
     right: 12px;
   }

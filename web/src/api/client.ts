@@ -20,7 +20,6 @@ export interface Api {
   title(id: string, signal?: AbortSignal): Promise<Title>;
   library(signal?: AbortSignal): Promise<TitleSummary[]>;
   setMonitored(id: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
-  // Files on disk are never deleted.
   removeTitle(id: string, signal?: AbortSignal): Promise<void>;
   setEpisodeMonitored(id: string, episodeId: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
   searchEpisodeNow(id: string, episodeId: string, signal?: AbortSignal): Promise<Title>;
