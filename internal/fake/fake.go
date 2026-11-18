@@ -1,6 +1,3 @@
-// Package fake implements the HTTP API in api/openapi.yaml from small
-// committed fixtures, so the UI can be built and judged before the
-// backend exists. State lives in memory and resets on restart.
 package fake
 
 import (
@@ -8,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +20,9 @@ type Options struct {
 	Tick time.Duration
 	// Step is how many percent a running download advances per tick.
 	Step int
+	// KeepAlive is how often an idle event stream gets a comment line so
+	// a proxy does not cut it.
+	KeepAlive time.Duration
 }
 
 type episode struct {
@@ -47,8 +48,11 @@ type entry struct {
 	State     string    `json:"state"`
 	Seasons   []*season `json:"seasons"`
 
-	monitored bool
-	quality   string
+	NextSearchIn string `json:"nextSearchIn"`
+
+	monitored  bool
+	quality    string
+	nextSearch time.Time
 }
 
 func (e *entry) id() string { return fmt.Sprintf("%s-%d", e.Kind, e.TmdbID) }
@@ -61,6 +65,7 @@ type download struct {
 	BytesTotal  int64  `json:"bytesTotal"`
 	Percent     int    `json:"percent"`
 	Stalled     bool   `json:"stalled"`
+	State       string `json:"state"`
 }
 
 type release struct {
@@ -121,6 +126,9 @@ func New(opts Options) *Fake {
 	if opts.Tick <= 0 {
 		opts.Tick = 2 * time.Second
 	}
+	if opts.KeepAlive <= 0 {
+		opts.KeepAlive = 25 * time.Second
+	}
 	if opts.Step <= 0 {
 		opts.Step = 1
 	}
@@ -135,15 +143,30 @@ func New(opts Options) *Fake {
 	f.health = mustRaw("health.json")
 	for _, t := range f.titles {
 		t.monitored = t.InLibrary
+		t.nextSearch = time.Now().Add(parseIn(t.NextSearchIn))
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
 				e.monitored = true
 			}
 		}
 	}
+	for _, d := range f.downloads {
+		if d.State == "" {
+			d.State = "downloading"
+		}
+	}
 	f.Handler = f.routes()
 	go f.simulate()
 	return f
+}
+
+const defaultNextSearch = 6 * time.Hour
+
+func parseIn(s string) time.Duration {
+	if d, err := time.ParseDuration(s); err == nil && d > 0 {
+		return d
+	}
+	return defaultNextSearch
 }
 
 func mustRaw(name string) json.RawMessage {
@@ -219,6 +242,28 @@ func (f *Fake) emit(name string, v any) {
 	}
 }
 
+func (f *Fake) emitTitle(t *entry) {
+	f.emit("title", map[string]any{"titleId": t.id(), "badge": f.badge(t)})
+}
+
+// badgeSnapshot lets a handler announce exactly the titles whose badge it changed.
+func (f *Fake) badgeSnapshot() map[string]string {
+	snap := make(map[string]string, len(f.titles))
+	for _, t := range f.titles {
+		b, _ := json.Marshal(f.badge(t))
+		snap[t.id()] = string(b)
+	}
+	return snap
+}
+
+func (f *Fake) emitChangedBadges(before map[string]string) {
+	for _, t := range f.titles {
+		if b, _ := json.Marshal(f.badge(t)); string(b) != before[t.id()] {
+			f.emitTitle(t)
+		}
+	}
+}
+
 type progressEvent struct {
 	DownloadID string `json:"downloadId"`
 	TitleID    string `json:"titleId"`
@@ -250,25 +295,29 @@ func (f *Fake) simulate() {
 func (f *Fake) advance() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	var finished []*download
 	for _, d := range f.downloads {
 		if d.Stalled {
 			continue
 		}
-		d.Percent = min(100, d.Percent+f.opts.Step)
-		if d.Percent == 100 {
-			f.emit("progress", d.progress("importing"))
-			f.finish(d)
-			continue
+		switch d.State {
+		case "queued":
+			d.State = "downloading"
+		case "verifying":
+			d.State = "importing"
+			finished = append(finished, d)
+		default:
+			d.Percent = min(100, d.Percent+f.opts.Step)
+			if d.Percent == 100 {
+				d.State = "verifying"
+			}
 		}
-		f.emit("progress", d.progress("downloading"))
+		f.emit("progress", d.progress(d.State))
 	}
-	var left []*download
-	for _, d := range f.downloads {
-		if d.Percent < 100 || d.Stalled {
-			left = append(left, d)
-		}
+	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return slices.Contains(finished, d) })
+	for _, d := range finished {
+		f.finish(d)
 	}
-	f.downloads = left
 }
 
 func (f *Fake) finish(d *download) {
@@ -286,5 +335,5 @@ func (f *Fake) finish(d *download) {
 		t.State = "downloaded"
 	}
 	f.addHistory("imported", t, d.Episode, "Imported "+name+" ("+d.ReleaseName+").", "", false)
-	f.emit("title", map[string]any{"titleId": t.id(), "badge": f.badge(t)})
+	f.emitTitle(t)
 }

@@ -18,13 +18,11 @@ lint:
 test:
 	go test $(GO_PKGS)
 
-# Regenerate the committed client types after editing api/openapi.yaml.
 api: web-api
 
 web-api: $(WEB)/node_modules
 	cd $(WEB) && npm run api
 
-# Fails when the committed types differ from what the contract generates.
 web-api-check: $(WEB)/node_modules
 	cd $(WEB) && npx openapi-typescript ../api/openapi.yaml | diff -u src/api/schema.d.ts - \
 		|| { echo "web/src/api/schema.d.ts is stale: run 'make api' and commit it"; exit 1; }

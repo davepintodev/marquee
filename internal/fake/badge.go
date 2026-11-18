@@ -26,10 +26,6 @@ func (f *Fake) epState(t *entry, s *season, e *episode) (state string, percent i
 	return e.State, 0
 }
 
-// badge derives a title's badge from its parts: a download in flight wins,
-// then a stall, then a partly-owned season with gaps, then searching,
-// missing and finally downloaded. Unmonitored and unaired episodes count
-// for nothing.
 func (f *Fake) badge(t *entry) *badge {
 	if !t.InLibrary {
 		return nil
@@ -43,7 +39,31 @@ func (f *Fake) badge(t *entry) *badge {
 		}
 		return simple(t.State)
 	}
-	return f.group(t, t.Seasons)
+	if b := f.group(t, t.Seasons); b != nil {
+		return b
+	}
+	return unmonitoredBadge(t)
+}
+
+// unmonitoredBadge states what is on disk when no episode is monitored,
+// so an in-library title never loses its badge.
+func unmonitoredBadge(t *entry) *badge {
+	aired := 0
+	for _, s := range t.Seasons {
+		for _, e := range s.Episodes {
+			if e.State == "unaired" {
+				continue
+			}
+			if e.State != "downloaded" {
+				return simple("missing")
+			}
+			aired++
+		}
+	}
+	if aired == 0 {
+		return simple("missing")
+	}
+	return simple("downloaded")
 }
 
 func simple(state string) *badge {

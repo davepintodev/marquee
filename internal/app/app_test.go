@@ -1,8 +1,10 @@
 package app_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -14,6 +16,9 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/davepintodev/marquee/api"
 	"github.com/davepintodev/marquee/internal/app"
 )
 
@@ -191,5 +196,58 @@ func TestInvalidFakeSettingIsRejected(t *testing.T) {
 	}, io.Discard, fstest.MapFS{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "MARQUEE_FAKE") {
 		t.Fatalf("want an error naming MARQUEE_FAKE, got %v", err)
+	}
+}
+
+func TestShutdownEndsOpenEventStreamsPromptly(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	addrc := make(chan net.Addr, 1)
+	done := make(chan error, 1)
+	env := map[string]string{"MARQUEE_FAKE": "1", "MARQUEE_LISTEN": "127.0.0.1:0"}
+	go func() {
+		done <- app.Run(ctx, func(k string) string { return env[k] }, io.Discard, fstest.MapFS{}, func(a net.Addr) { addrc <- a })
+	}()
+	resp, err := http.Get("http://" + (<-addrc).String() + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if line, _ := bufio.NewReader(resp.Body).ReadString('\n'); !strings.HasPrefix(line, ":") {
+		t.Fatalf("stream did not open: %q", line)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned %v with a stream open", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shutdown hung on the open event stream")
+	}
+}
+
+func TestRealHealthMatchesTheContract(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData(api.Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := testEnv(t)
+	env["MARQUEE_DRY_RUN"] = "true"
+	base := start(t, env, io.Discard)
+	code, body, _ := get(t, base+"/api/health")
+	if code != 200 {
+		t.Fatalf("health: %d %s", code, body)
+	}
+	var v map[string]any
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		t.Fatal(err)
+	}
+	if err := doc.Components.Schemas["Health"].Value.VisitJSON(v); err != nil {
+		t.Fatalf("health does not match the contract: %v\n%s", err, body)
+	}
+	if v["dryRun"] != true {
+		t.Errorf("dryRun must follow the configuration: %v", v["dryRun"])
 	}
 }

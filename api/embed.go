@@ -4,7 +4,5 @@ package api
 
 import _ "embed"
 
-// Spec is the contents of openapi.yaml.
-//
 //go:embed openapi.yaml
 var Spec []byte

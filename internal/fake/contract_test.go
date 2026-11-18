@@ -63,8 +63,6 @@ type call struct {
 	status             int
 }
 
-// One entry per contract operation. A new operation without an entry
-// fails TestEveryOperationIsCoveredAndMatchesItsSchema.
 var calls = map[string]call{
 	"getWall":           {"GET", "/api/wall", "", 200},
 	"searchTitles":      {"GET", "/api/search?q=dune", "", 200},
@@ -157,7 +155,7 @@ func TestEveryOperationIsCoveredAndMatchesItsSchema(t *testing.T) {
 	for id, c := range calls {
 		t.Run(id, func(t *testing.T) {
 			if id == "streamEvents" {
-				return // an endless stream; TestEventsStream covers it
+				return // an endless stream; TestEventsStreamEmitsProgressForARunningDownload covers it
 			}
 			resp := do(t, srv, c, c.path)
 			defer func() { _ = resp.Body.Close() }()
@@ -233,6 +231,9 @@ func TestEventsStreamEmitsProgressForARunningDownload(t *testing.T) {
 			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &v); err != nil {
 				t.Fatal(err)
 			}
+			if v["downloadId"] != "dl-1" {
+				continue
+			}
 			if err := schema.VisitJSON(v); err != nil {
 				t.Fatalf("progress event does not match its schema: %v", err)
 			}
@@ -271,10 +272,13 @@ func TestFixturesShowEveryBadgeState(t *testing.T) {
 		}
 	}
 	getJSON(t, srv, "/api/wall", &w)
-	labels := map[string]string{}
+	labels := map[string]map[string]bool{}
 	for _, it := range w.Items {
 		if b := it.Title.Badge; b != nil {
-			labels[b.State] = b.Label
+			if labels[b.State] == nil {
+				labels[b.State] = map[string]bool{}
+			}
+			labels[b.State][b.Label] = true
 		}
 	}
 	want := map[string]string{
@@ -282,8 +286,8 @@ func TestFixturesShowEveryBadgeState(t *testing.T) {
 		"stalled": "Stalled", "missing": "Missing", "partial_season": "Season 4 · 3 missing",
 	}
 	for state, label := range want {
-		if labels[state] != label {
-			t.Errorf("badge %s: got %q, want %q", state, labels[state], label)
+		if !labels[state][label] {
+			t.Errorf("badge %s: want %q among %v", state, label, labels[state])
 		}
 	}
 }

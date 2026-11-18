@@ -199,6 +199,7 @@ paths:
       tags: [releases]
       operationId: listReleases
       summary: Interactive search, the ranked candidates and why others were dropped.
+      description: Works for any title marquee knows, in the library or not; listing releases never adds a title.
       parameters:
         - name: episode
           in: query
@@ -225,6 +226,10 @@ paths:
       tags: [releases]
       operationId: grabRelease
       summary: Pick one release. It goes through the same download, check and import path and overrides the blocklist.
+      description: >
+        A title that is not in the library yet is added and monitored first.
+        A release the chooser would drop as not cached, not a video or too
+        small answers 409 with the reason; a blocklisted one can be grabbed.
       requestBody:
         required: false
         content:
@@ -243,6 +248,11 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The release was dropped (not cached, not a video or too small) and cannot be grabbed; the error says why.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /api/downloads:
     get:
       tags: [activity]
@@ -315,8 +325,10 @@ paths:
       description: >
         Each message has an `event:` name and a JSON `data:` line. `progress`
         carries a ProgressEvent for a running download; `title` carries a
-        TitleEvent when a title's badge changes (for example, on import).
-        The stream never ends on its own; clients reconnect when it drops.
+        TitleEvent whenever a title's badge changes, including when it is
+        added to or removed from the library. Lines starting with `:` are
+        keep-alive comments to ignore. The stream never ends on its own;
+        clients reconnect when it drops.
       responses:
         "200":
           description: An open event stream.
@@ -494,7 +506,11 @@ components:
       minProperties: 1
       properties:
         monitored: { type: boolean }
-        preferredQuality: { $ref: "#/components/schemas/Quality" }
+        preferredQuality:
+          description: Send null to clear the preference.
+          anyOf:
+            - { $ref: "#/components/schemas/Quality" }
+            - { type: "null" }
     Quality:
       type: string
       description: A soft preference over AIOStreams' own order.
@@ -513,6 +529,12 @@ components:
         monitored: { type: boolean }
         state: { $ref: "#/components/schemas/EpisodeState" }
         percent: { type: integer, minimum: 0, maximum: 100, description: Present when state is downloading. }
+        nextSearchAt: { $ref: "#/components/schemas/NextSearchAt" }
+    NextSearchAt:
+      description: When marquee searches next. Null unless the item is monitored and searching or missing.
+      anyOf:
+        - { type: string, format: date-time }
+        - { type: "null" }
     Season:
       type: object
       required: [number, episodes]
@@ -535,10 +557,15 @@ components:
               type: array
               description: Empty for a movie.
               items: { $ref: "#/components/schemas/Season" }
-            preferredQuality: { $ref: "#/components/schemas/Quality" }
+            preferredQuality:
+              description: Null when no preference is set.
+              anyOf:
+                - { $ref: "#/components/schemas/Quality" }
+                - { type: "null" }
+            nextSearchAt: { $ref: "#/components/schemas/NextSearchAt" }
             historySummary:
               type: string
-              description: One plain sentence, such as "tried 3 releases, 2 fake, 1 stalled, retrying in 6h".
+              description: One plain sentence, such as "Tried 3 releases, 2 fake, 1 stalled, retrying in 6h."
             history:
               type: array
               items: { $ref: "#/components/schemas/HistoryEntry" }
@@ -628,7 +655,11 @@ components:
       required: [titleId, badge]
       properties:
         titleId: { $ref: "#/components/schemas/TitleId" }
-        badge: { $ref: "#/components/schemas/Badge" }
+        badge:
+          description: Null when the title left the library.
+          anyOf:
+            - { $ref: "#/components/schemas/Badge" }
+            - { type: "null" }
     CheckStatus:
       type: string
       enum: [ok, warning, error]

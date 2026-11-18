@@ -3,14 +3,14 @@
    "overview": "A lone astronaut wakes with no memory and a mission to save Earth."},
   {"tmdbId": 13187, "kind": "movie", "title": "A Charlie Brown Christmas", "year": 1965, "inLibrary": true, "state": "downloaded",
    "overview": "Charlie Brown finds the true meaning of the holiday."},
-  {"tmdbId": 693134, "kind": "movie", "title": "Dune: Part Two", "year": 2024, "inLibrary": true, "state": "missing",
+  {"tmdbId": 693134, "kind": "movie", "title": "Dune: Part Two", "year": 2024, "inLibrary": true, "state": "missing", "nextSearchIn": "2h",
    "overview": "Paul unites with the Fremen to avenge his family."},
-  {"tmdbId": 329865, "kind": "movie", "title": "Arrival", "year": 2016, "inLibrary": true, "state": "missing",
+  {"tmdbId": 329865, "kind": "movie", "title": "Arrival", "year": 2016, "inLibrary": true, "state": "missing", "nextSearchIn": "30m",
    "overview": "A linguist decodes an alien language."},
   {"tmdbId": 335984, "kind": "movie", "title": "Blade Runner 2049", "year": 2017, "inLibrary": true, "state": "missing",
    "overview": "A new blade runner unearths a long-buried secret."},
   {"tmdbId": 1408, "kind": "series", "title": "House", "year": 2004, "inLibrary": true,
-   "overview": "A diagnostician and his team of brilliant, difficult doctors.",
+   "overview": "A diagnostician and his team of brilliant, difficult doctors.", "nextSearchIn": "5h",
    "seasons": [
      {"number": 1, "episodes": [
        {"number": 1, "name": "Pilot", "airDate": "2004-11-16", "state": "downloaded"},
@@ -38,6 +38,11 @@
      {"number": 2, "name": "Memory", "airDate": "2026-10-08", "state": "downloaded"},
      {"number": 3, "name": "Identity", "airDate": "2099-01-01", "state": "unaired"}]}]},
 
+  {"tmdbId": 157336, "kind": "movie", "title": "Interstellar", "year": 2014, "inLibrary": true, "state": "missing",
+   "overview": "Explorers travel through a wormhole to find humanity a new home."},
+  {"tmdbId": 286217, "kind": "movie", "title": "The Martian", "year": 2015, "inLibrary": true, "state": "missing",
+   "overview": "An astronaut stranded on Mars works to survive until rescue."},
+
   {"tmdbId": 438631, "kind": "movie", "title": "Dune", "year": 2021, "inLibrary": false, "state": "missing",
    "overview": "Paul Atreides leads nomadic tribes in a battle for the desert planet."},
   {"tmdbId": 95396, "kind": "series", "title": "Severance", "year": 2022, "inLibrary": false,
@@ -47,7 +52,13 @@
      {"number": 2, "name": "Half Loop", "airDate": "2022-02-18", "state": "missing"},
      {"number": 3, "name": "In Perpetuity", "airDate": "2099-01-01", "state": "unaired"}]}]},
   {"tmdbId": 83867, "kind": "series", "title": "Andor", "year": 2022, "inLibrary": false,
-   "overview": "A rebel spy in the Star Wars galaxy."},
+   "overview": "A rebel spy in the Star Wars galaxy.",
+   "seasons": [{"number": 1, "episodes": [
+     {"number": 1, "name": "Kassa", "airDate": "2022-09-21", "state": "missing"},
+     {"number": 2, "name": "That Would Be Me", "airDate": "2022-09-21", "state": "missing"}]}]},
   {"tmdbId": 62560, "kind": "series", "title": "Mr. Robot", "year": 2015, "inLibrary": false,
-   "overview": "A hacker is recruited by an underground group."}
+   "overview": "A hacker is recruited by an underground group.",
+   "seasons": [{"number": 1, "episodes": [
+     {"number": 1, "name": "eps1.0_hellofriend.mov", "airDate": "2015-05-27", "state": "missing"},
+     {"number": 2, "name": "eps1.1_ones-and-zer0es.mpeg", "airDate": "2015-06-03", "state": "missing"}]}]}
 ]

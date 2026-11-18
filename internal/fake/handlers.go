@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 )
 
 type summary struct {
@@ -33,6 +34,8 @@ type episodeOut struct {
 	Monitored bool   `json:"monitored"`
 	State     string `json:"state"`
 	Percent   *int   `json:"percent,omitempty"`
+
+	NextSearchAt *time.Time `json:"nextSearchAt"`
 }
 
 type seasonOut struct {
@@ -44,7 +47,8 @@ type seasonOut struct {
 type titleOut struct {
 	summary
 	Seasons          []seasonOut     `json:"seasons"`
-	PreferredQuality string          `json:"preferredQuality,omitempty"`
+	PreferredQuality *string         `json:"preferredQuality"`
+	NextSearchAt     *time.Time      `json:"nextSearchAt"`
 	HistorySummary   string          `json:"historySummary"`
 	History          []*historyEntry `json:"history"`
 }
@@ -52,7 +56,6 @@ type titleOut struct {
 type downloadOut struct {
 	*download
 	TitleName string `json:"titleName"`
-	State     string `json:"state"`
 	BytesDone int64  `json:"bytesDone"`
 }
 
@@ -62,7 +65,9 @@ func (f *Fake) routes() http.Handler {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			f.mu.Lock()
 			defer f.mu.Unlock()
+			before := f.badgeSnapshot()
 			fn(w, r)
+			f.emitChangedBadges(before)
 		})
 	}
 	h("GET /api/wall", f.wall)
@@ -128,33 +133,90 @@ func (f *Fake) historyFor(id string) []*historyEntry {
 	return out
 }
 
-func summarize(hs []*historyEntry) string {
-	var failed, tried int
+var reasonWords = map[string]string{
+	"stalled": "stalled", "not_video": "fake", "wrong_episode": "wrong episode",
+	"too_small": "too small", "size_mismatch": "wrong size", "source_down": "source down",
+}
+
+func summarize(hs []*historyEntry, next *time.Time) string {
+	tried := 0
+	reasons := map[string]int{}
+	var order []string
 	for _, h := range hs {
 		switch h.Kind {
 		case "failed":
-			failed++
 			tried++
+			if reasons[h.Reason] == 0 {
+				order = append(order, h.Reason)
+			}
+			reasons[h.Reason]++
 		case "imported", "would_grab":
 			tried++
 		}
 	}
-	if tried == 0 {
-		return "Nothing grabbed yet."
+	out := "Nothing tried yet"
+	if tried > 0 {
+		out = fmt.Sprintf("Tried %d release", tried)
+		if tried != 1 {
+			out += "s"
+		}
+		slices.SortStableFunc(order, func(a, b string) int { return reasons[b] - reasons[a] })
+		for _, r := range order {
+			out += fmt.Sprintf(", %d %s", reasons[r], reasonWords[r])
+		}
 	}
-	return fmt.Sprintf("Tried %d release(s), %d failed.", tried, failed)
+	if next != nil {
+		out += ", retrying in " + inWords(time.Until(*next))
+	}
+	return out + "."
+}
+
+func inWords(d time.Duration) string {
+	if d >= time.Hour {
+		return fmt.Sprintf("%dh", int((d+30*time.Minute)/time.Hour))
+	}
+	return fmt.Sprintf("%dm", max(1, int((d+30*time.Second)/time.Minute)))
+}
+
+func searchable(state string) bool { return state == "searching" || state == "missing" }
+
+func (f *Fake) nextSearch(t *entry) *time.Time {
+	if !t.InLibrary || !t.monitored {
+		return nil
+	}
+	if t.Kind == "movie" {
+		if searchable(t.State) && f.activeDownload(t.id(), "") == nil {
+			return &t.nextSearch
+		}
+		return nil
+	}
+	for _, s := range t.Seasons {
+		for _, e := range s.Episodes {
+			if st, _ := f.epState(t, s, e); e.monitored && searchable(st) {
+				return &t.nextSearch
+			}
+		}
+	}
+	return nil
 }
 
 func (f *Fake) title(t *entry) titleOut {
 	hs := f.historyFor(t.id())
-	out := titleOut{summary: f.summary(t), Seasons: []seasonOut{}, PreferredQuality: t.quality, HistorySummary: summarize(hs), History: hs}
+	next := f.nextSearch(t)
+	out := titleOut{summary: f.summary(t), Seasons: []seasonOut{}, NextSearchAt: next, HistorySummary: summarize(hs, next), History: hs}
+	if t.quality != "" {
+		out.PreferredQuality = &t.quality
+	}
 	for _, s := range t.Seasons {
 		so := seasonOut{Number: s.Number, Badge: f.seasonBadge(t, s), Episodes: []episodeOut{}}
 		for _, e := range s.Episodes {
 			st, p := f.epState(t, s, e)
-			eo := episodeOut{epID(s, e), e.Number, e.Name, e.AirDate, e.monitored, st, nil}
+			eo := episodeOut{ID: epID(s, e), Number: e.Number, Name: e.Name, AirDate: e.AirDate, Monitored: e.monitored, State: st}
 			if st == "downloading" {
 				eo.Percent = &p
+			}
+			if t.InLibrary && e.monitored && t.monitored && searchable(st) {
+				eo.NextSearchAt = &t.nextSearch
 			}
 			so.Episodes = append(so.Episodes, eo)
 		}
@@ -207,6 +269,14 @@ func (f *Fake) list(w http.ResponseWriter, _ *http.Request) {
 	write(w, http.StatusOK, map[string]any{"titles": titles})
 }
 
+func (f *Fake) knownTitle(w http.ResponseWriter, r *http.Request) *entry {
+	t := f.find(r.PathValue("id"))
+	if t == nil {
+		fail(w, http.StatusNotFound, "no such title")
+	}
+	return t
+}
+
 func (f *Fake) libraryTitle(w http.ResponseWriter, r *http.Request) *entry {
 	t := f.find(r.PathValue("id"))
 	if t == nil || !t.InLibrary {
@@ -235,28 +305,25 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusOK, f.title(t))
 		return
 	}
-	t.InLibrary, t.monitored, t.quality = true, true, req.PreferredQuality
+	f.addToLibrary(t, req.PreferredQuality)
+	write(w, http.StatusCreated, f.title(t))
+}
+
+func (f *Fake) addToLibrary(t *entry, quality string) {
+	t.InLibrary, t.monitored, t.quality = true, true, quality
+	t.nextSearch = time.Now().Add(defaultNextSearch)
 	if t.Kind == "movie" {
 		t.State = "searching"
-	} else {
-		if len(t.Seasons) == 0 {
-			s := &season{Number: 1}
-			for i := 1; i <= 3; i++ {
-				s.Episodes = append(s.Episodes, &episode{Number: i, Name: fmt.Sprintf("Episode %d", i), AirDate: fmt.Sprintf("2020-01-%02d", i), monitored: true})
-			}
-			t.Seasons = []*season{s}
-		}
-		for _, s := range t.Seasons {
-			for _, e := range s.Episodes {
-				if e.State != "unaired" {
-					e.State = "searching"
-				}
+	}
+	for _, s := range t.Seasons {
+		for _, e := range s.Episodes {
+			e.monitored = true
+			if e.State != "unaired" {
+				e.State = "searching"
 			}
 		}
 	}
 	f.addHistory("added", t, "", "Added and monitored.", "", false)
-	f.emit("title", map[string]any{"titleId": t.id(), "badge": f.badge(t)})
-	write(w, http.StatusCreated, f.title(t))
 }
 
 func (f *Fake) get(w http.ResponseWriter, r *http.Request) {
@@ -274,12 +341,19 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Monitored        *bool  `json:"monitored"`
-		PreferredQuality string `json:"preferredQuality"`
+		Monitored        *bool           `json:"monitored"`
+		PreferredQuality json.RawMessage `json:"preferredQuality"`
 	}
-	if !decode(r, &req) || (req.Monitored == nil && req.PreferredQuality == "") {
+	if !decode(r, &req) || (req.Monitored == nil && req.PreferredQuality == nil) {
 		fail(w, http.StatusBadRequest, "send monitored, preferredQuality or both")
 		return
+	}
+	quality, clear := "", string(req.PreferredQuality) == "null"
+	if req.PreferredQuality != nil && !clear {
+		if json.Unmarshal(req.PreferredQuality, &quality) != nil || !slices.Contains([]string{"2160p", "1080p", "720p"}, quality) {
+			fail(w, http.StatusBadRequest, "preferredQuality must be 2160p, 1080p, 720p or null")
+			return
+		}
 	}
 	if req.Monitored != nil {
 		t.monitored = *req.Monitored
@@ -289,8 +363,10 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if req.PreferredQuality != "" {
-		t.quality = req.PreferredQuality
+	if clear {
+		t.quality = ""
+	} else if quality != "" {
+		t.quality = quality
 	}
 	write(w, http.StatusOK, f.title(t))
 }
@@ -337,8 +413,6 @@ func (f *Fake) updateEpisode(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, f.title(t))
 }
 
-// searchNow moves what is missing to searching: the whole title, or the
-// one episode named in the path.
 func (f *Fake) searchNow(w http.ResponseWriter, r *http.Request) {
 	t := f.libraryTitle(w, r)
 	if t == nil {
@@ -367,12 +441,13 @@ func (f *Fake) searchNow(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	t.nextSearch = time.Now().Add(defaultNextSearch)
 	f.addHistory("searched", t, epID, "Search now: skipping the backoff.", "", false)
 	write(w, http.StatusOK, f.title(t))
 }
 
 func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {
-	t := f.libraryTitle(w, r)
+	t := f.knownTitle(w, r)
 	if t == nil {
 		return
 	}
@@ -408,8 +483,10 @@ func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, map[string]any{"candidates": candidates, "dropped": drops})
 }
 
+var ungrabbable = []string{"not_cached", "not_video", "too_small"}
+
 func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
-	t := f.libraryTitle(w, r)
+	t := f.knownTitle(w, r)
 	if t == nil {
 		return
 	}
@@ -430,17 +507,23 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "no such release")
 		return
 	}
+	if slices.Contains(ungrabbable, rel.Drop) {
+		fail(w, http.StatusConflict, "this release cannot be grabbed: "+rel.Message)
+		return
+	}
 	if t.Kind == "movie" {
 		req.Episode = ""
 	} else if f.findEpisode(t, req.Episode) == nil {
 		fail(w, http.StatusBadRequest, "episode must name an episode of this series")
 		return
 	}
+	if !t.InLibrary {
+		f.addToLibrary(t, "")
+	}
 	d := f.activeDownload(t.id(), req.Episode)
 	if d == nil {
-		d = &download{ID: f.newID("dl"), TitleID: t.id(), Episode: req.Episode, ReleaseName: rel.Name, BytesTotal: rel.SizeBytes}
+		d = &download{ID: f.newID("dl"), TitleID: t.id(), Episode: req.Episode, ReleaseName: rel.Name, BytesTotal: rel.SizeBytes, State: "queued"}
 		f.downloads = append(f.downloads, d)
-		f.emit("title", map[string]any{"titleId": t.id(), "badge": f.badge(t)})
 	}
 	write(w, http.StatusAccepted, f.downloadOut(d))
 }
@@ -450,7 +533,7 @@ func (f *Fake) downloadOut(d *download) downloadOut {
 	if t := f.find(d.TitleID); t != nil {
 		name = t.Title
 	}
-	return downloadOut{download: d, TitleName: name, State: "downloading", BytesDone: d.BytesTotal * int64(d.Percent) / 100}
+	return downloadOut{download: d, TitleName: name, BytesDone: d.BytesTotal * int64(d.Percent) / 100}
 }
 
 func (f *Fake) listDownloads(w http.ResponseWriter, _ *http.Request) {
@@ -546,8 +629,13 @@ func (f *Fake) events(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprint(w, ": connected\n\n")
 	fl.Flush()
+	beat := time.NewTicker(f.opts.KeepAlive)
+	defer beat.Stop()
 	for {
 		select {
+		case <-beat.C:
+			_, _ = fmt.Fprint(w, ": keep-alive\n\n")
+			fl.Flush()
 		case <-r.Context().Done():
 			return
 		case <-f.stop:

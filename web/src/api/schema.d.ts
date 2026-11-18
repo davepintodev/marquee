@@ -145,7 +145,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Interactive search, the ranked candidates and why others were dropped. */
+        /**
+         * Interactive search, the ranked candidates and why others were dropped.
+         * @description Works for any title marquee knows, in the library or not; listing releases never adds a title.
+         */
         get: operations["listReleases"];
         put?: never;
         post?: never;
@@ -167,7 +170,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pick one release. It goes through the same download, check and import path and overrides the blocklist. */
+        /**
+         * Pick one release. It goes through the same download, check and import path and overrides the blocklist.
+         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video or too small answers 409 with the reason; a blocklisted one can be grabbed.
+         */
         post: operations["grabRelease"];
         delete?: never;
         options?: never;
@@ -237,7 +243,7 @@ export interface paths {
         };
         /**
          * Live events as Server-Sent Events.
-         * @description Each message has an `event:` name and a JSON `data:` line. `progress` carries a ProgressEvent for a running download; `title` carries a TitleEvent when a title's badge changes (for example, on import). The stream never ends on its own; clients reconnect when it drops.
+         * @description Each message has an `event:` name and a JSON `data:` line. `progress` carries a ProgressEvent for a running download; `title` carries a TitleEvent whenever a title's badge changes, including when it is added to or removed from the library. Lines starting with `:` are keep-alive comments to ignore. The stream never ends on its own; clients reconnect when it drops.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -363,7 +369,8 @@ export interface components {
         };
         UpdateTitleRequest: {
             monitored?: boolean;
-            preferredQuality?: components["schemas"]["Quality"];
+            /** @description Send null to clear the preference. */
+            preferredQuality?: components["schemas"]["Quality"] | null;
         };
         /**
          * @description A soft preference over AIOStreams' own order.
@@ -382,7 +389,10 @@ export interface components {
             state: components["schemas"]["EpisodeState"];
             /** @description Present when state is downloading. */
             percent?: number;
+            nextSearchAt?: components["schemas"]["NextSearchAt"];
         };
+        /** @description When marquee searches next. Null unless the item is monitored and searching or missing. */
+        NextSearchAt: string | null;
         Season: {
             number: number;
             /** @description Present when the season has episodes to show a state for. */
@@ -393,8 +403,10 @@ export interface components {
         Title: components["schemas"]["TitleSummary"] & {
             /** @description Empty for a movie. */
             seasons: components["schemas"]["Season"][];
-            preferredQuality?: components["schemas"]["Quality"];
-            /** @description One plain sentence, such as "tried 3 releases, 2 fake, 1 stalled, retrying in 6h". */
+            /** @description Null when no preference is set. */
+            preferredQuality?: components["schemas"]["Quality"] | null;
+            nextSearchAt?: components["schemas"]["NextSearchAt"];
+            /** @description One plain sentence, such as "Tried 3 releases, 2 fake, 1 stalled, retrying in 6h." */
             historySummary: string;
             history?: components["schemas"]["HistoryEntry"][];
         };
@@ -466,7 +478,8 @@ export interface components {
         /** @description Data of the `title` event. */
         TitleEvent: {
             titleId: components["schemas"]["TitleId"];
-            badge: components["schemas"]["Badge"];
+            /** @description Null when the title left the library. */
+            badge: components["schemas"]["Badge"] | null;
         };
         /** @enum {string} */
         CheckStatus: "ok" | "warning" | "error";
@@ -848,6 +861,15 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /** @description The release was dropped (not cached, not a video or too small) and cannot be grabbed; the error says why. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listDownloads: {
