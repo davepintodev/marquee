@@ -30,7 +30,7 @@ test("a release picked by hand in interactive search is queued and shows in Acti
   await page.goto("/");
   await page.getByRole("button", { name: /^Arrival/ }).first().click();
   const popup = page.getByRole("dialog");
-  await page.waitForTimeout(500);
+  await expect(popup.getByRole("button", { name: "Interactive search" })).toBeEnabled();
   await popup.getByRole("button", { name: "Interactive search" }).click();
   await popup.getByRole("button", { name: "Pick Arrival.2016.1080p.WEB-DL.mkv" }).click();
   await expect(page.getByRole("status")).toContainText("Queued Arrival.2016.1080p.WEB-DL.mkv");

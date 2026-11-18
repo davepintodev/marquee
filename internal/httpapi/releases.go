@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -218,7 +219,7 @@ func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 		Episode string `json:"episode"`
 	}
 	if r.ContentLength != 0 {
-		if err := decode(r, &req); err != nil {
+		if err := decode(r, &req); err != nil && !errors.Is(err, io.EOF) {
 			fail(w, http.StatusBadRequest, "body must be {\"episode\": \"sNNeNN\"} or empty")
 			return
 		}

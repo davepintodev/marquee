@@ -49,11 +49,9 @@ func TestAMoviesBadgeFollowsItsDownloadOnTheWallSearchAndDetail(t *testing.T) {
 		return b["state"] == "downloading" && b["percent"] != nil && b["percent"].(float64) > 0
 	})
 	b := badgeOf(detail)
-	pct := int(b["percent"].(float64))
 	if !strings.HasPrefix(b["label"].(string), "Downloading ") || !strings.HasSuffix(b["label"].(string), "%") {
 		t.Errorf("label = %q", b["label"])
 	}
-	_ = pct
 
 	wall := r.mustCall("GET", "/api/wall", "", 200)["items"].([]any)
 	if got := badgeOf(tileOf(wall, "movie-438631")); got["state"] != "downloading" {

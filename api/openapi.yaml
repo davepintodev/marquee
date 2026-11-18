@@ -269,6 +269,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/NoSourceId" }
+        "502": { $ref: "#/components/responses/SourceUnavailable" }
+        "503": { $ref: "#/components/responses/SourceRateLimited" }
   /api/downloads:
     get:
       tags: [activity]

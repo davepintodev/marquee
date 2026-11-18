@@ -114,6 +114,7 @@ export function App({ api }: { api: Api }) {
   const asked = useRef(new Set<string>());
   useEffect(() => {
     wallIds.current = wall.status === "ok" ? new Set(wall.data.map((t) => t.id)) : null;
+    if (wall.status === "ok") asked.current.clear();
   }, [wall]);
   const joinWall = useCallback((id: string) => {
     if (!wallIds.current || wallIds.current.has(id) || asked.current.has(id)) return;

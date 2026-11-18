@@ -937,6 +937,9 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            422: components["responses"]["NoSourceId"];
+            502: components["responses"]["SourceUnavailable"];
+            503: components["responses"]["SourceRateLimited"];
         };
     };
     listDownloads: {

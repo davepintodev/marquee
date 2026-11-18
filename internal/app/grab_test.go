@@ -2,6 +2,9 @@ package app_test
 
 import (
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,5 +200,33 @@ func TestOnlyAFailureCanBeRetried(t *testing.T) {
 	}
 	if n < 2 {
 		t.Errorf("want an import and a search in the history: %v", r.history())
+	}
+}
+
+func TestGrabbingWithAnEmptyBodyOfUnknownLengthIsAccepted(t *testing.T) {
+	r := newSchedRig(t, false)
+	url := r.cdn.Add("dune.mkv", debridfake.File{Data: debridfake.MKV(100 << 10)})
+	r.aio.Answer("movie", duneID, results(listed{name: "Dune.2021.1080p.WEB-DL.mkv", size: 300 << 20, url: url}))
+	cands, _ := r.releases("/api/titles/movie-438631/releases")
+	if len(cands) != 1 {
+		t.Fatalf("candidates = %v", cands)
+	}
+	// A reader the client cannot measure is sent chunked, so the server sees ContentLength -1.
+	body := io.NopCloser(strings.NewReader(""))
+	req, err := http.NewRequest("POST", r.base+"/api/titles/movie-438631/releases/"+cands[0]["id"].(string)+"/grab", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok := r.env["MARQUEE_API_TOKEN"]; tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 202 {
+		t.Fatalf("grab with an empty chunked body: %d, want 202: %s", resp.StatusCode, raw)
 	}
 }

@@ -83,3 +83,32 @@ test("a title the wall does not show yet brings the wall back for it, once", asy
   await tile(/^Heat \(2021\)/);
   expect(walls).toBe(2);
 });
+
+test("a title removed from the wall and added again brings the wall back for it again", async () => {
+  walls = 0;
+  let onWall = false;
+  setupApp((url) => {
+    if (url.pathname !== "/api/wall") return json({ error: "nope" }, 404);
+    walls++;
+    const items = [dune, arrival, ...(onWall ? [movie(3, "Heat")] : [])];
+    return json({ items: items.map((title) => ({ source: "library", title })) });
+  }, "#/");
+  await tile(/^Dune/);
+  const added = { titleId: "movie-3", badge: { state: "searching", label: "Searching" } };
+
+  onWall = true;
+  act(() => live().emit("title", added));
+  await tile(/^Heat \(2021\)/);
+  expect(walls).toBe(2);
+
+  onWall = false;
+  act(() => live().open());
+  act(() => live().open());
+  await waitFor(() => expect(walls).toBe(3));
+  await waitFor(() => expect(screen.queryAllByRole("button", { name: /^Heat/ })).toHaveLength(0));
+
+  onWall = true;
+  act(() => live().emit("title", added));
+  await waitFor(() => expect(walls).toBe(4));
+  await tile(/^Heat \(2021\)/);
+});
