@@ -201,10 +201,8 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s: %w", listen, err)
 	}
 	srv := &http.Server{Handler: server.New(ui, httpapi.RequireToken(token, api)), ReadHeaderTimeout: 10 * time.Second}
-	if closer != nil {
-		// Shutdown waits for handlers, and an event stream only returns once the fake closes.
-		srv.RegisterOnShutdown(closer)
-	}
+	// Shutdown waits for handlers, and an event stream only returns once it is told to stop.
+	srv.RegisterOnShutdown(closer)
 
 	log.Info(msg, append([]any{"addr", ln.Addr().String()}, attrs...)...)
 	if ready != nil {
