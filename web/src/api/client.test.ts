@@ -113,6 +113,32 @@ test("events delivers progress and title messages, skips garbage and says when t
   expect(stream.closed).toBe(true);
 });
 
+test("every listener shares one stream, which closes with the last of them", () => {
+  const streams: Stream[] = [];
+  const api = createApi({ baseUrl: "http://host.test", eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource) });
+  const a: unknown[] = [];
+  const b: unknown[] = [];
+
+  const stopA = api.events((e) => a.push(e));
+  const stopB = api.events((e) => b.push(e));
+  expect(streams).toHaveLength(1);
+  streams[0].send("title", JSON.stringify({ titleId: "movie-1", badge: null }));
+  expect(a).toHaveLength(1);
+  expect(b).toHaveLength(1);
+
+  stopA();
+  stopA();
+  expect(streams[0].closed).toBe(false);
+  streams[0].send("title", JSON.stringify({ titleId: "movie-2", badge: null }));
+  expect(a).toHaveLength(1);
+  expect(b).toHaveLength(2);
+
+  stopB();
+  expect(streams[0].closed).toBe(true);
+  api.events(() => {})();
+  expect(streams).toHaveLength(2);
+});
+
 test("events does nothing where there is no EventSource", () => {
   const api = createApi({});
   expect(() => api.events(() => {})()).not.toThrow();

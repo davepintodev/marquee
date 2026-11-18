@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api/client";
-import type { Title, TitleSummary } from "./api/types";
+import type { Badge, LiveEvent, Title, TitleSummary } from "./api/types";
 import { Activity } from "./Activity";
 import { Health } from "./Health";
 import { Popup } from "./Popup";
 import { Results } from "./Results";
 import { goTo, useRoute } from "./route";
 import { TitleDetail } from "./TitleDetail";
+import { useLive } from "./useLive";
 import { useViewport } from "./useViewport";
 import { Wall } from "./Wall";
 
@@ -39,6 +40,8 @@ export function App({ api }: { api: Api }) {
   const [selected, setSelected] = useState<TitleSummary | null>(null);
   // Titles changed from the popup: the wall and results lists were fetched before.
   const [changed, setChanged] = useState<Record<string, TitleSummary>>({});
+  // Badges the event stream has reported since the lists were fetched; null means the title left the library.
+  const [live, setLive] = useState<Record<string, Badge | null>>({});
   const [toast, setToast] = useState<{ n: number; text: string } | null>(null);
   const bar = useRef<HTMLInputElement>(null);
   const route = useRoute();
@@ -106,13 +109,42 @@ export function App({ api }: { api: Api }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [clear, selected, onPage, toWall]);
 
-  const current = useCallback((t: TitleSummary) => changed[t.id] ?? t, [changed]);
+  useLive(api, (e: LiveEvent) => {
+    if (e.type === "reconnected") {
+      // Events in between were lost, so what the lists show is no longer known.
+      setLive({});
+      setWallTry((n) => n + 1);
+      return;
+    }
+    const id = e.data.titleId;
+    const badge: Badge | null =
+      e.type === "title" ? e.data.badge : { state: "downloading", label: `Downloading ${e.data.percent}%`, percent: e.data.percent };
+    setLive((l) => (l[id] === null && e.type === "progress" ? l : { ...l, [id]: badge }));
+  });
+
+  const current = useCallback(
+    (t: TitleSummary) => {
+      const base = changed[t.id] ?? t;
+      if (!(t.id in live)) return base;
+      const badge = live[t.id];
+      return badge ? { ...base, inLibrary: true, monitored: base.monitored ?? true, badge } : { ...base, inLibrary: false, monitored: undefined, badge: undefined };
+    },
+    [changed, live],
+  );
   const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map(current) : null), [wall, current]);
   const results: Load<TitleSummary[]> =
     answer.query !== q ? { status: "loading" } : answer.load.status === "ok" ? { status: "ok", data: answer.load.data.map(current) } : answer.load;
   const open = selected && !onPage ? current(selected) : null;
 
-  const keep = useCallback((t: TitleSummary) => setChanged((c) => ({ ...c, [t.id]: t })), []);
+  // What the owner just saw from the service is newer than any event before it.
+  const keep = useCallback((t: TitleSummary) => {
+    setChanged((c) => ({ ...c, [t.id]: t }));
+    setLive((l) => {
+      const rest = { ...l };
+      delete rest[t.id];
+      return rest;
+    });
+  }, []);
   const notify = useCallback((text: string) => setToast((prev) => ({ n: (prev?.n ?? 0) + 1, text })), []);
 
   const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;

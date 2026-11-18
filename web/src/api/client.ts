@@ -94,6 +94,29 @@ const isTitle = (d: Title) => typeof d.id === "string";
 export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUnauthorized }: ApiOptions): Api {
   const base = baseUrl.replace(/\/+$/, "");
   const client = createClient<paths>({ baseUrl: base, ...(f ? { fetch: f } : {}) });
+
+  // Every screen and the wall listen to the one stream, which lives while any of them does.
+  const make = eventSource ?? (typeof EventSource === "undefined" ? undefined : (url: string) => new EventSource(url));
+  const listeners = new Set<(e: LiveEvent) => void>();
+  let shared: EventSource | undefined;
+  const tell = (e: LiveEvent) => [...listeners].forEach((fn) => fn(e));
+  function open(): EventSource {
+    const es = make!(base + "/api/events");
+    let opened = false;
+    es.addEventListener("open", () => {
+      if (opened) tell({ type: "reconnected" });
+      opened = true;
+    });
+    es.addEventListener("progress", (e) => {
+      const data = parse<ProgressEvent>(e);
+      if (data) tell({ type: "progress", data });
+    });
+    es.addEventListener("title", (e) => {
+      const data = parse<TitleEvent>(e);
+      if (data) tell({ type: "title", data });
+    });
+    return es;
+  }
   client.use({
     onRequest({ request }) {
       const token = getToken?.();
@@ -162,23 +185,14 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       return call(() => client.POST("/api/history/{historyId}/retry", { params: { path: { historyId } }, signal }), isTitle);
     },
     events(on) {
-      const make = eventSource ?? (typeof EventSource === "undefined" ? undefined : (url: string) => new EventSource(url));
       if (!make) return () => {};
-      const es = make(base + "/api/events");
-      let opened = false;
-      es.addEventListener("open", () => {
-        if (opened) on({ type: "reconnected" });
-        opened = true;
-      });
-      es.addEventListener("progress", (e) => {
-        const data = parse<ProgressEvent>(e);
-        if (data) on({ type: "progress", data });
-      });
-      es.addEventListener("title", (e) => {
-        const data = parse<TitleEvent>(e);
-        if (data) on({ type: "title", data });
-      });
-      return () => es.close();
+      listeners.add(on);
+      shared ??= open();
+      return () => {
+        if (!listeners.delete(on) || listeners.size > 0) return;
+        shared?.close();
+        shared = undefined;
+      };
     },
     health(signal) {
       return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems));
