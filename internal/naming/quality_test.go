@@ -1,6 +1,9 @@
-// Quality names are translated from the Quality definitions and QualityParser
-// of Sonarr and Radarr (https://github.com/Sonarr/Sonarr,
-// https://github.com/Radarr/Radarr), GNU General Public License v3.0.
+// The quality names are translated from the Quality definitions and
+// QualityParser of Sonarr and Radarr (https://github.com/Sonarr/Sonarr,
+// https://github.com/Radarr/Radarr), GNU General Public License v3.0. The cases
+// are marquee's own: upstream parses release titles, marquee receives
+// AIOStreams' parsed resolution and quality, so HDRip, 1440p and the
+// pre-release sources are marquee's mapping, not upstream's.
 
 package naming
 

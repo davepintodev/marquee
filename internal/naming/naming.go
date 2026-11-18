@@ -1,3 +1,8 @@
+// Translated from Sonarr (https://github.com/Sonarr/Sonarr) and Radarr
+// (https://github.com/Radarr/Radarr), both licensed under the GNU General
+// Public License v3.0, as is marquee: the file-name building (FileNameBuilder)
+// and its limit on file-name length.
+
 package naming
 
 import (

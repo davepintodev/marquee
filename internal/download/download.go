@@ -1,5 +1,5 @@
 // Package download fetches one release file over HTTP into a temp file.
-// The HTTP implementation is ported from the owner's aiobridge worker.
+// The HTTP implementation downloads straight from a debrid link.
 package download
 
 import (

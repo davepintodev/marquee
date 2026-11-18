@@ -62,7 +62,7 @@ func (a *api) listHistory(w http.ResponseWriter, r *http.Request) {
 	for _, d := range ds {
 		item := map[string]any{
 			"id": d.ID, "at": d.UpdatedAt.UTC().Format(time.RFC3339), "titleId": d.TitleID, "titleName": d.TitleName,
-			// A failure can be retried once the retry route exists.
+			// The retry route is not built, so no failure can be retried yet.
 			"retryable": false,
 		}
 		if d.State == catalog.StateDone {

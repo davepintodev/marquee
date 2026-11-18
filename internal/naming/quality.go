@@ -1,3 +1,9 @@
+// Translated from Sonarr (https://github.com/Sonarr/Sonarr) and Radarr
+// (https://github.com/Radarr/Radarr), both licensed under the GNU General
+// Public License v3.0, as is marquee: the quality names and the rules that pick them
+// (Quality definitions and QualityParser). The pre-release sources, HDRip,
+// and 1440p handling are marquee's own mapping of AIOStreams' vocabulary.
+
 package naming
 
 import (
