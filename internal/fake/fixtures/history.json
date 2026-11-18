@@ -11,7 +11,7 @@
    "message": "House.S04E02.720p.HDTV stalled: no data for 1 minute. Blocklisted; trying the next release.", "reason": "stalled", "retryable": true},
   {"id": "h-house-fake", "at": "2026-11-18T05:40:00Z", "kind": "failed", "titleId": "series-1408", "episode": "s04e02",
    "message": "The release was a .exe file, not a video. Dropped before download.", "reason": "not_video", "retryable": false},
-  {"id": "h-would-grab", "at": "2026-11-18T07:30:00Z", "kind": "would_grab", "titleId": "series-245001", "episode": "s01e01",
+  {"id": "h-would-grab", "at": "2026-11-18T07:30:00Z", "kind": "would_grab", "titleId": "series-226745", "episode": "s01e01",
    "message": "Would grab Camp.Snoopy.S01E01.1080p.WEB-DL (dry-run, nothing was downloaded).", "retryable": false},
   {"id": "h-imported", "at": "2026-11-17T21:05:00Z", "kind": "imported", "titleId": "series-1408", "episode": "s04e01",
    "message": "Imported House - S04E01 - Alone [Bluray-1080p].", "retryable": false},
