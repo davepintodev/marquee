@@ -610,7 +610,7 @@ func (f *Fake) image(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(%d 55%% 34%%)"/><stop offset="1" stop-color="hsl(%d 60%% 14%%)"/></linearGradient></defs>`, h, (h+50)%360)
 	fmt.Fprintf(&b, `<rect width="100%%" height="100%%" fill="url(#g)"/><text x="50%%" y="50%%" fill="#fff" font-family="sans-serif" font-size="16" text-anchor="middle">%s</text></svg>`, html.EscapeString(t.Title))
 	w.Header().Set("Content-Type", "image/svg+xml")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b.Bytes())
 }
 
