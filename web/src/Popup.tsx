@@ -34,7 +34,7 @@ export function Popup({ api, title, onClose, onChanged, onToast }: Props) {
     setError(null);
     try {
       if (title.inLibrary) {
-        await api.searchNow(title.id);
+        onChanged(await api.searchNow(title.id));
         onToast(`Searching for “${title.title}” now.`);
       } else {
         onChanged(await api.addTitle(title.kind, title.tmdbId));

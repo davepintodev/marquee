@@ -377,6 +377,27 @@ test("a title already in the library opens with Search now, which searches it", 
   expect(writes).toEqual([{ method: "POST", path: "/api/titles/series-2/search", body: undefined }]);
 });
 
+test("Search now on a Missing library title moves its popup and tile badge to Searching", async () => {
+  const missing = { ...house, badge: { state: "missing" as const, label: "Missing" } };
+  const searching = { ...missing, badge: { state: "searching" as const, label: "Searching" }, seasons: [], historySummary: "Nothing tried yet." };
+  setup((url, init) => {
+    if (url.pathname === "/api/wall") return json({ items: [{ source: "library", title: missing }] });
+    if (init.method === "POST" && url.pathname === "/api/titles/series-2/search") return json(searching);
+    return json({ error: "nope" }, 404);
+  });
+  await openTile(/^House \(2004\), Missing/);
+  expect(within(dialog()).getByText("Missing")).toBeTruthy();
+
+  fireEvent.click(within(dialog()).getByRole("button", { name: "Search now" }));
+
+  await screen.findByRole("status");
+  expect(within(dialog()).getByText("Searching")).toBeTruthy();
+  expect(within(dialog()).queryByText("Missing")).toBeNull();
+  fireEvent.click(within(dialog()).getByRole("button", { name: "Close" }));
+  expect(screen.getAllByRole("button", { name: /^House \(2004\), Searching/ }).length).toBeGreaterThan(0);
+  expect(screen.queryByRole("button", { name: /^House \(2004\), Missing/ })).toBeNull();
+});
+
 test("a failed add shows the API's message in the popup and can be tried again", async () => {
   let up = false;
   setup(popupApi((url, init) => (init.method === "POST" && url.pathname === "/api/titles" ? (up ? json(duneAdded, 201) : json({ error: "TMDB did not answer" }, 502)) : json({ error: "nope" }, 404))));
