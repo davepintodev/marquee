@@ -55,7 +55,6 @@ for (const s of screens) {
     await page.goto("/");
     const tiles = await tileBoxes(page);
 
-    // The wall starts below the header pills; the tiles fill everything under that.
     const top = Math.min(...tiles.map((t) => t.y));
     expect(top).toBeGreaterThan(40);
     expect(top).toBeLessThan(90);

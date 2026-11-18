@@ -31,8 +31,6 @@ export function stateLabel(e: Pick<Episode, "state"> & { percent?: number }) {
   }
 }
 
-// A season row already says which season it is, so a partial season's badge
-// ("Season 4 · 3 missing") shows only the gap.
 export function seasonBadgeLabel(badge: Badge) {
   return badge.state === "partial_season" && badge.missingCount !== undefined ? `${badge.missingCount} missing` : badge.label;
 }
