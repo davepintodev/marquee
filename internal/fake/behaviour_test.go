@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -246,5 +247,20 @@ func TestDownloadsReportTheirRealState(t *testing.T) {
 		if !states[s] {
 			t.Errorf("no fixture download is %s: %v", s, states)
 		}
+	}
+}
+
+func TestCloseSurvivesConcurrentCalls(t *testing.T) {
+	for range 1000 {
+		f := fake.New(fake.Options{Tick: time.Hour})
+		var wg sync.WaitGroup
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				f.Close()
+			}()
+		}
+		wg.Wait()
 	}
 }

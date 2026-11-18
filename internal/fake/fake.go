@@ -107,8 +107,9 @@ type Fake struct {
 	nextID    int
 	subs      map[chan event]struct{}
 
-	stop chan struct{}
-	done chan struct{}
+	stop     chan struct{}
+	stopOnce sync.Once
+	done     chan struct{}
 }
 
 func load(name string, v any) {
@@ -179,11 +180,7 @@ func mustRaw(name string) json.RawMessage {
 
 // Close stops the download simulation and ends open event streams.
 func (f *Fake) Close() {
-	select {
-	case <-f.stop:
-	default:
-		close(f.stop)
-	}
+	f.stopOnce.Do(func() { close(f.stop) })
 	<-f.done
 }
 
