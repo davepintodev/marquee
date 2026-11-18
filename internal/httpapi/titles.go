@@ -164,13 +164,8 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 		a.upstream(w, r, err)
 		return
 	}
-	n := catalog.NewTitle{
-		Kind: req.Kind, TMDBID: req.TMDBID, Title: d.Title, Year: d.Year, Overview: d.Overview,
-		IMDbID: d.IMDbID, TVDBID: d.TVDBID, PreferredQuality: req.PreferredQuality, Images: imageRefs(id, d.Summary),
-	}
-	for _, e := range d.DatedEpisodes() {
-		n.Episodes = append(n.Episodes, catalog.NewEpisode(e))
-	}
+	n := catalog.NewTitleFromTMDB(d)
+	n.PreferredQuality = req.PreferredQuality
 	t, created, err := a.Catalog.Add(r.Context(), n)
 	if err != nil {
 		a.internal(w, r, err)

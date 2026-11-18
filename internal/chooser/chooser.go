@@ -42,6 +42,8 @@ var videoExtensions = map[string]bool{
 	".wmv": true, ".ts": true, ".m2ts": true, ".webm": true, ".mpg": true, ".mpeg": true,
 }
 
+func IsVideoFile(name string) bool { return videoExtensions[strings.ToLower(path.Ext(name))] }
+
 // Context is what the releases are chosen for.
 type Context struct {
 	Kind            string // "movie" or "series"

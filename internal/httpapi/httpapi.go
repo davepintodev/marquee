@@ -94,8 +94,22 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 		checks = append(checks, map[string]any{"id": "jellyfin", "name": "Jellyfin", "status": "warning", "message": st.Message})
 		status = "warning"
 	}
+	problems, err := a.Catalog.LibraryProblems(r.Context())
+	if err != nil {
+		a.internal(w, r, err)
+		return
+	}
+	type problemJSON struct {
+		Path    string `json:"path"`
+		Reason  string `json:"reason"`
+		Message string `json:"message"`
+	}
+	library := make([]problemJSON, 0, len(problems))
+	for _, p := range problems {
+		library = append(library, problemJSON(p))
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status": status, "dryRun": a.DryRun, "checks": checks, "libraryProblems": []any{},
+		"status": status, "dryRun": a.DryRun, "checks": checks, "libraryProblems": library,
 	})
 }
 

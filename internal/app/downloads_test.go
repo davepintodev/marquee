@@ -68,6 +68,8 @@ func (r *rig) startService() {
 		OnPipeline: func(m *pipeline.Manager) { r.mgr = m },
 		Scheduler:  scheduler.Tuning{Tick: -1},
 	}
+	adopted := make(chan error, 1)
+	opts.OnAdopted = func(err error) { adopted <- err }
 	ctx, cancel := context.WithCancel(context.Background())
 	addrc := make(chan net.Addr, 1)
 	done := make(chan error, 1)
@@ -99,6 +101,7 @@ func (r *rig) startService() {
 	case <-time.After(5 * time.Second):
 		r.t.Fatal("service did not start")
 	}
+	_ = awaitAdoption(r.t, adopted)
 }
 
 func setup(t *testing.T) (*rig, string) {

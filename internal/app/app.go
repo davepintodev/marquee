@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/davepintodev/marquee/internal/adopter"
 	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/config"
@@ -45,6 +46,9 @@ type Options struct {
 	// OnPipeline is called with the download manager once it is built,
 	// before it starts; tests use it to queue a release, as the scheduler will.
 	OnPipeline func(*pipeline.Manager)
+	// OnAdopted is called once the first-run adoption has finished, with
+	// its error, or with nil when an earlier run had already completed it.
+	OnAdopted func(error)
 	// Scheduler tunes the scheduler; the zero value is production.
 	Scheduler scheduler.Tuning
 	// OnScheduler is called with the scheduler once it is built; tests
@@ -129,6 +133,27 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		if err != nil {
 			return fmt.Errorf("MARQUEE_AIOSTREAMS_MANIFEST_URL %w", err)
 		}
+		// Adoption reads the library and records it; it runs whatever the dry-run
+		// setting says, since it never writes to the library.
+		adoptCtx, stopAdopt := context.WithCancel(context.Background())
+		adoptDone := make(chan struct{})
+		go func() {
+			defer close(adoptDone)
+			err := adopter.New(adopter.Options{
+				Catalog: store, TMDB: tmdb, MoviesPath: cfg.MoviesPath, SeriesPath: cfg.SeriesPath, Log: log,
+			}).Run(adoptCtx)
+			if err != nil && adoptCtx.Err() == nil {
+				log.Error("library adoption stopped; it will run again at the next start", "err", err)
+			}
+			if opts.OnAdopted != nil {
+				opts.OnAdopted(err)
+			}
+		}()
+		// The database closes after this: a run in flight must stop first.
+		defer func() {
+			stopAdopt()
+			<-adoptDone
+		}()
 		sched := scheduler.New(scheduler.Options{
 			Catalog: store, Source: source, TMDB: tmdb, Transfers: transfers, DryRun: cfg.DryRun, Log: log, Tuning: opts.Scheduler,
 		})
