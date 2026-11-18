@@ -1,0 +1,46 @@
+import { expect, test } from "vitest";
+import { ago, bytesOf, inHours, reasonLabel, stateLabel } from "./words";
+
+const NOW = new Date("2026-11-18T12:00:00Z");
+
+test("every failure reason has a label in words", () => {
+  expect(reasonLabel("stalled")).toBe("Stalled");
+  expect(reasonLabel("not_video")).toBe("Fake file");
+  expect(reasonLabel("wrong_episode")).toBe("Wrong episode");
+  expect(reasonLabel("too_small")).toBe("Too small");
+  expect(reasonLabel("size_mismatch")).toBe("Wrong size");
+  expect(reasonLabel("source_down")).toBe("Source down");
+  expect(reasonLabel("local_error")).toBe("Local error");
+  expect(reasonLabel(undefined)).toBe("Failed");
+});
+
+test("a future time reads as the time left, rounded like the history sentence", () => {
+  const at = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
+  expect(inHours(at(6 * 3600_000), NOW)).toBe("6h");
+  expect(inHours(at(5.6 * 3600_000), NOW)).toBe("6h");
+  expect(inHours(at(30 * 60_000), NOW)).toBe("30m");
+  expect(inHours(at(20_000), NOW)).toBe("1m");
+  expect(inHours(at(-5_000), NOW)).toBe("moments");
+});
+
+test("a past time reads as how long ago", () => {
+  const before = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+  expect(ago(before(20_000), NOW)).toBe("just now");
+  expect(ago(before(5 * 60_000), NOW)).toBe("5 min ago");
+  expect(ago(before(3 * 3600_000), NOW)).toBe("3 h ago");
+  expect(ago(before(30 * 3600_000), NOW)).toBe("yesterday");
+  expect(ago(before(4 * 86400_000), NOW)).toBe("4 days ago");
+});
+
+test("sizes read in the biggest unit that keeps a number small", () => {
+  expect(bytesOf(0)).toBe("0 B");
+  expect(bytesOf(1536)).toBe("1.5 KB");
+  expect(bytesOf(9_234_179_072)).toBe("8.6 GB");
+  expect(bytesOf(21_474_836_480)).toBe("20 GB");
+});
+
+test("an episode's state reads in words, with the percent while it downloads", () => {
+  expect(stateLabel({ state: "downloading", percent: 40 })).toBe("Downloading 40%");
+  expect(stateLabel({ state: "unaired" })).toBe("Not aired yet");
+  expect(stateLabel({ state: "missing" })).toBe("Missing");
+});

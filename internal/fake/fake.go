@@ -151,6 +151,11 @@ func New(opts Options) *Fake {
 			}
 		}
 	}
+	for _, h := range f.history {
+		if t := f.find(h.TitleID); t != nil && h.TitleName == "" {
+			h.TitleName = t.Title
+		}
+	}
 	for _, d := range f.downloads {
 		if d.State == "" {
 			d.State = "downloading"
