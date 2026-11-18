@@ -39,7 +39,7 @@ export function App({ api }: { api: Api }) {
   const bar = useRef<HTMLInputElement>(null);
   const route = useRoute();
   const onPage = route.name !== "wall";
-  // Failure here is quiet by design: the icon stays neutral when Health cannot be read.
+  // Failure here is quiet by design: the pill shows no dot when Health cannot be read.
   const [attention, setAttention] = useState(false);
   const toWall = useCallback(() => goTo({ name: "wall" }), []);
 
@@ -142,15 +142,13 @@ export function App({ api }: { api: Api }) {
           Activity
         </a>
         <a
-          className="nav-link nav-icon"
+          className="nav-link"
           href="#/health"
           aria-label={attention ? "Health: something needs attention" : "Health"}
           title={attention ? "Health: something needs attention" : "Health"}
-          data-attention={attention ? "true" : undefined}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
-          </svg>
+          {attention && <i aria-hidden="true" />}
+          Health
         </a>
       </nav>
 

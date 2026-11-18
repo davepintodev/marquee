@@ -301,26 +301,36 @@ test("detail and Activity read well in the light theme", async ({ browser }) => 
 const allWell = { status: "ok", dryRun: false, checks: [{ id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." }], libraryProblems: [] };
 
 for (const s of screens.slice(0, 2)) {
-  test(`the Health icon is neutral when all is well, orange when a check fails, and opens Health on ${s.name}`, async ({ page }) => {
+  test(`the Health pill has no dot when all is well, a red dot when a check fails, and opens Health on ${s.name}`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
-    const icon = page.locator(".nav-icon");
-    const stroke = () => icon.locator("svg").evaluate((el) => getComputedStyle(el).stroke);
-    const header = { x: s.width - 200, y: 0, width: 200, height: 80 };
+    const pill = page.locator(".nav-link", { hasText: "Health" });
+    const dot = pill.locator("i");
+    const header = { x: s.width - 320, y: 0, width: 320, height: 80 };
 
     await page.route("**/api/health", (r) => r.fulfill({ json: allWell }));
     await page.goto("/");
-    await expect(icon).toBeVisible();
-    await expect(icon).toHaveAccessibleName("Health");
-    const quiet = await stroke();
-    await page.screenshot({ path: join(shots, `health-icon-ok-${s.name}.png`), clip: header });
+    await expect(pill).toBeVisible();
+    await expect(pill).toHaveAccessibleName("Health");
+    await expect(dot).toHaveCount(0);
+    await page.screenshot({ path: join(shots, `health-pill-ok-${s.name}.png`), clip: header });
 
     await page.unroute("**/api/health");
     await page.goto("/");
-    await expect(icon).toHaveAccessibleName(/needs attention/);
-    expect(await stroke()).not.toBe(quiet);
-    await page.screenshot({ path: join(shots, `health-icon-failing-${s.name}.png`), clip: header });
+    await expect(pill).toHaveAccessibleName(/needs attention/);
+    await expect(dot).toBeVisible();
+    // The problem colour is the Missing badge's token, not a new one.
+    const bad = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.background = "var(--bad)";
+      document.body.append(probe);
+      const c = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return c;
+    });
+    await expect(dot).toHaveCSS("background-color", bad);
+    await page.screenshot({ path: join(shots, `health-pill-failing-${s.name}.png`), clip: header });
 
-    await icon.click();
+    await pill.click();
     await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
     await page.waitForTimeout(400);
     await page.screenshot({ path: join(shots, `health-page-${s.name}.png`) });

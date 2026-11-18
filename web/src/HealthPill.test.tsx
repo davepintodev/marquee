@@ -27,11 +27,14 @@ afterEach(() => {
   window.location.hash = "";
 });
 
-test("the wall has a Health link next to Activity that opens the Health page", async () => {
+test("the wall has a plain-text Health pill, styled like Activity, that opens the Health page", async () => {
   setupApp(serve(() => json(health("ok", "ok"))), "");
 
   const link = await screen.findByRole("link", { name: "Health" });
   expect(link.getAttribute("href")).toBe("#/health");
+  expect(link.textContent).toBe("Health");
+  expect(link.className).toBe(screen.getByRole("link", { name: "Activity" }).className);
+  expect(link.querySelector("svg")).toBeNull();
   expect(screen.getByRole("link", { name: "Activity" })).toBeTruthy();
 
   fireEvent.click(link);
@@ -39,31 +42,35 @@ test("the wall has a Health link next to Activity that opens the Health page", a
   await screen.findByRole("list", { name: /checks/i });
 });
 
-test("the icon stays neutral while every check passes, and a warning alone is not a failure", async () => {
+test("the pill has no dot while every check passes, and a warning alone is not a failure", async () => {
   setupApp(serve(() => json(health("ok", "warning"))), "");
 
   const link = await screen.findByRole("link", { name: "Health" });
   await new Promise((r) => setTimeout(r, 20));
-  expect(link.getAttribute("data-attention")).toBeNull();
+  expect(link.querySelector("i")).toBeNull();
   expect(link.getAttribute("aria-label")).toBe("Health");
 });
 
-test("the icon turns to the accent and says something needs attention when a check fails", async () => {
+test("the pill shows a problem dot before the word and says something needs attention when a check fails", async () => {
   setupApp(serve(() => json(health("ok", "error"))), "");
 
   const link = await screen.findByRole("link", { name: /health.*needs attention/i });
-  expect(link.getAttribute("data-attention")).toBe("true");
+  const dot = link.querySelector("i");
+  expect(dot).toBeTruthy();
+  expect(dot?.getAttribute("aria-hidden")).toBe("true");
+  expect(link.firstElementChild).toBe(dot);
+  expect(link.textContent).toBe("Health");
 });
 
-test("the icon stays neutral while Health is loading and when the request fails", async () => {
+test("the pill has no dot while Health is loading and when the request fails", async () => {
   let release!: (r: Response) => void;
   const pending = new Promise<Response>((r) => (release = r));
   setupApp(serve(() => pending), "");
   const link = await screen.findByRole("link", { name: "Health" });
-  expect(link.getAttribute("data-attention")).toBeNull();
+  expect(link.querySelector("i")).toBeNull();
   release(json({ error: "down" }, 500));
   await new Promise((r) => setTimeout(r, 20));
-  expect(screen.getByRole("link", { name: "Health" }).getAttribute("data-attention")).toBeNull();
+  expect(screen.getByRole("link", { name: "Health" }).querySelector("i")).toBeNull();
   expect(screen.getByRole("searchbox")).toBeTruthy();
 });
 
@@ -77,5 +84,5 @@ test("coming back from the Health page checks again", async () => {
   failing = false;
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
-  await waitFor(() => expect(screen.getByRole("link", { name: "Health" }).getAttribute("data-attention")).toBeNull());
+  await waitFor(() => expect(screen.getByRole("link", { name: "Health" }).querySelector("i")).toBeNull());
 });

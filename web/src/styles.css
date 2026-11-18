@@ -809,12 +809,12 @@ button {
   stroke-linejoin: round;
 }
 
-.nav-icon {
-  padding: 9px;
-}
-
-.nav-icon[data-attention="true"] svg {
-  stroke: var(--acc);
+.nav-link i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bad);
 }
 
 .nav-link:hover {
