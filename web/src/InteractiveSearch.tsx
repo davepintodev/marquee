@@ -36,7 +36,8 @@ export function InteractiveSearch({ api, title, onBack, onChanged, onToast }: Pr
   const [episodeAnswer, setEpisodeAnswer] = useState<{ key: string; load: Load<Option[]> } | null>(null);
   const [episode, setEpisode] = useState<string | undefined>();
   const [releaseAnswer, setReleaseAnswer] = useState<{ key: string; load: Load<Releases> } | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  const [episodeAttempt, setEpisodeAttempt] = useState(0);
+  const [releaseAttempt, setReleaseAttempt] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [queued, setQueued] = useState<ReadonlySet<string>>(new Set());
@@ -44,32 +45,33 @@ export function InteractiveSearch({ api, title, onBack, onChanged, onToast }: Pr
   useEffect(() => back.current?.focus({ preventScroll: true }), []);
 
   // An answer belongs to the request that asked for it; anything else still reads as loading.
-  const episodeKey = `${title.id}/${attempt}`;
+  const episodeKey = `${title.id}/${episodeAttempt}`;
   const episodes: Load<Option[]> = episodeAnswer?.key === episodeKey ? episodeAnswer.load : { status: "loading" };
   useEffect(() => {
     if (!series) return;
     const ctl = new AbortController();
     api.title(title.id, ctl.signal).then(
       (t) => {
+        if (ctl.signal.aborted) return;
         const { options, first } = episodeOptions(t);
         setEpisodeAnswer({ key: episodeKey, load: { status: "ok", data: options } });
-        setEpisode(first);
+        setEpisode((current) => current ?? first);
       },
-      (e) => !isAbort(e) && setEpisodeAnswer({ key: episodeKey, load: { status: "error", message: messageOf(e), notFound: e instanceof ApiError && e.status === 404 } }),
+      (e) => !ctl.signal.aborted && !isAbort(e) && setEpisodeAnswer({ key: episodeKey, load: { status: "error", message: messageOf(e), notFound: e instanceof ApiError && e.status === 404 } }),
     );
     return () => ctl.abort();
   }, [api, series, title.id, episodeKey]);
 
   const wanted = series ? episode : undefined;
   const ready = !series || episode !== undefined;
-  const releaseKey = `${title.id}/${wanted}/${attempt}`;
+  const releaseKey = `${title.id}/${wanted}/${releaseAttempt}`;
   const releases: Load<Releases> = releaseAnswer?.key === releaseKey ? releaseAnswer.load : { status: "loading" };
   useEffect(() => {
     if (!ready) return;
     const ctl = new AbortController();
     api.releases(title.id, wanted, ctl.signal).then(
-      (data) => setReleaseAnswer({ key: releaseKey, load: { status: "ok", data } }),
-      (e) => !isAbort(e) && setReleaseAnswer({ key: releaseKey, load: { status: "error", message: messageOf(e) } }),
+      (data) => !ctl.signal.aborted && setReleaseAnswer({ key: releaseKey, load: { status: "ok", data } }),
+      (e) => !ctl.signal.aborted && !isAbort(e) && setReleaseAnswer({ key: releaseKey, load: { status: "error", message: messageOf(e) } }),
     );
     return () => ctl.abort();
   }, [api, title.id, wanted, ready, releaseKey]);
@@ -93,10 +95,8 @@ export function InteractiveSearch({ api, title, onBack, onChanged, onToast }: Pr
     }
   };
 
-  const retry = () => {
-    setError(null);
-    setAttempt((n) => n + 1);
-  };
+  const retryEpisodes = () => setEpisodeAttempt((n) => n + 1);
+  const retryReleases = () => setReleaseAttempt((n) => n + 1);
   const row = (r: Release, note: string | undefined, pick?: "plain" | "anyway") => (
     <li key={r.id} className="row">
       <div className="row-main">
@@ -128,7 +128,7 @@ export function InteractiveSearch({ api, title, onBack, onChanged, onToast }: Pr
     ) : (
       <div className="ix-empty" role="alert">
         <p>{episodes.message}</p>
-        <button type="button" className="btn-small" onClick={retry}>
+        <button type="button" className="btn-small" onClick={retryEpisodes}>
           Try again
         </button>
       </div>
@@ -141,7 +141,7 @@ export function InteractiveSearch({ api, title, onBack, onChanged, onToast }: Pr
     body = (
       <div className="ix-empty" role="alert">
         <p>{releases.message}</p>
-        <button type="button" className="btn-small" onClick={retry}>
+        <button type="button" className="btn-small" onClick={retryReleases}>
           Try again
         </button>
       </div>
@@ -160,7 +160,7 @@ export function InteractiveSearch({ api, title, onBack, onChanged, onToast }: Pr
             {candidates.map((r) => row(r, undefined, "plain"))}
           </ul>
         ) : (
-          <p className="ix-empty">Nothing to pick: every release was dropped.</p>
+          <p className="ix-empty">{dropped.length > 0 ? "Nothing to pick: every release was dropped." : "Nothing found for this title or episode."}</p>
         )}
         {dropped.length > 0 && (
           <details className="rels-dropped">

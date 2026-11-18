@@ -267,3 +267,60 @@ test("Esc closes the popup, even from the release list", async () => {
 
   expect(screen.queryByRole("dialog")).toBeNull();
 });
+
+test("Try again after a failed episode keeps the chosen episode and asks for its releases again", async () => {
+  let e03Up = false;
+  const { calls } = await openSearch((url) => {
+    if (url.pathname === "/api/titles/series-2") return json(severanceOut());
+    if (url.pathname === "/api/titles/series-2/releases") {
+      if (url.searchParams.get("episode") === "s01e03") return e03Up ? json(rels) : json({ error: "AIOStreams did not answer" }, 502);
+      return json(rels);
+    }
+    return json({ error: "nope" }, 404);
+  }, /^Severance \(2022\)/);
+  const pick = (await dialog().findByRole("combobox", { name: "Episode" })) as HTMLSelectElement;
+  await screen.findByRole("list", { name: "Releases" });
+  fireEvent.change(pick, { target: { value: "s01e03" } });
+  expect((await dialog().findByRole("alert")).textContent).toContain("AIOStreams did not answer");
+  const before = calls.length;
+  e03Up = true;
+
+  fireEvent.click(dialog().getByRole("button", { name: "Try again" }));
+
+  expect(await screen.findByRole("list", { name: "Releases" })).toBeTruthy();
+  expect((dialog().getByRole("combobox", { name: "Episode" }) as HTMLSelectElement).value).toBe("s01e03");
+  const after = calls.slice(before).filter((u) => u.pathname.endsWith("/releases")).map((u) => u.search);
+  expect(after).toContain("?episode=s01e03");
+  expect(after).not.toContain("?episode=s01e02");
+});
+
+test("a late answer for an episode the user left does not replace the current episode's releases", async () => {
+  let lateE02!: (r: Response) => void;
+  const other: Releases = { candidates: [release("rel-9", "Severance.S01E03.1080p", "WEBDL-1080p", 1_073_741_824, "Comet")], dropped: [] };
+  await openSearch((url) => {
+    if (url.pathname === "/api/titles/series-2") return json(severanceOut());
+    if (url.pathname === "/api/titles/series-2/releases") {
+      if (url.searchParams.get("episode") === "s01e02") return new Promise<Response>((res) => (lateE02 = res));
+      return json(other);
+    }
+    return json({ error: "nope" }, 404);
+  }, /^Severance \(2022\)/);
+  const pick = (await dialog().findByRole("combobox", { name: "Episode" })) as HTMLSelectElement;
+  await waitFor(() => expect(lateE02).toBeDefined());
+  fireEvent.change(pick, { target: { value: "s01e03" } });
+  await screen.findByText("Severance.S01E03.1080p");
+
+  lateE02(json(rels));
+  await new Promise((r) => setTimeout(r, 50));
+
+  expect(screen.queryByText("Asking AIOStreams…")).toBeNull();
+  expect(screen.getByText("Severance.S01E03.1080p")).toBeTruthy();
+});
+
+test("an empty answer says nothing was found, not that every release was dropped", async () => {
+  await openSearch((url) => (url.pathname === "/api/titles/movie-1/releases" ? json({ candidates: [], dropped: [] }) : json({ error: "nope" }, 404)));
+
+  await waitFor(() => expect(screen.queryByText("Asking AIOStreams…")).toBeNull());
+  expect(dialog().queryByText(/every release was dropped/)).toBeNull();
+  expect(dialog().getByText(/Nothing found/)).toBeTruthy();
+});
