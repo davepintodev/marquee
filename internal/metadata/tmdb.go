@@ -30,8 +30,10 @@ const (
 	defaultWait    = time.Second
 	maxJSONBytes   = 8 << 20
 	defaultTimeout = 10 * time.Second
-	defaultAPIBase = "https://api.themoviedb.org/3"
-	defaultImgBase = "https://image.tmdb.org/t/p"
+	// A stalled body would otherwise hold the image's lock for ever.
+	defaultImageTimeout = 30 * time.Second
+	defaultAPIBase      = "https://api.themoviedb.org/3"
+	defaultImgBase      = "https://image.tmdb.org/t/p"
 )
 
 type Options struct {
@@ -39,6 +41,8 @@ type Options struct {
 	ImageBase string
 	Key       config.Secret
 	Timeout   time.Duration
+	// ImageTimeout bounds one whole image download, body included.
+	ImageTimeout time.Duration
 	// Sleep waits between a 429 and its retry; tests replace it.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
@@ -47,12 +51,13 @@ type Client struct {
 	apiBase, imageBase string
 	key                config.Secret
 	timeout            time.Duration
+	imageTimeout       time.Duration
 	http               *http.Client
 	sleep              func(ctx context.Context, d time.Duration) error
 }
 
 func New(o Options) *Client {
-	c := &Client{apiBase: o.APIBase, imageBase: o.ImageBase, key: o.Key, timeout: o.Timeout, sleep: o.Sleep}
+	c := &Client{apiBase: o.APIBase, imageBase: o.ImageBase, key: o.Key, timeout: o.Timeout, imageTimeout: o.ImageTimeout, sleep: o.Sleep}
 	if c.apiBase == "" {
 		c.apiBase = defaultAPIBase
 	}
@@ -62,11 +67,14 @@ func New(o Options) *Client {
 	if c.timeout == 0 {
 		c.timeout = defaultTimeout
 	}
+	if c.imageTimeout == 0 {
+		c.imageTimeout = defaultImageTimeout
+	}
 	if c.sleep == nil {
 		c.sleep = sleep
 	}
-	// An image body streams for as long as it needs; only the wait for a
-	// reply is bounded here, and JSON calls bound the whole exchange.
+	// Both kinds of call bound the whole exchange themselves; the transport
+	// only cuts a connection that never answers.
 	c.http = &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: c.timeout, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second}}
 	return c
 }
@@ -263,11 +271,24 @@ func (c *Client) FetchImage(ctx context.Context, size, filePath string) (io.Read
 		return nil, ErrNotFound
 	}
 	u.Path = strings.TrimSuffix(u.Path, "/") + "/" + size + filePath
-	resp, err := c.do(ctx, u, false)
+	ctx, cancel := context.WithTimeout(ctx, c.imageTimeout)
+	resp, err := c.do(ctx, u, false) //nolint:bodyclose // the caller closes it through deadlineBody
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	return resp.Body, nil
+	return &deadlineBody{ReadCloser: resp.Body, cancel: cancel}, nil
+}
+
+// deadlineBody keeps the download's deadline running until the body is closed.
+type deadlineBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *deadlineBody) Close() error {
+	defer b.cancel()
+	return b.ReadCloser.Close()
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, q url.Values, out any) error {

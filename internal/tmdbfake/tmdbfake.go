@@ -41,12 +41,14 @@ type Title struct {
 	Seasons  []Season
 }
 
-// Step scripts one answer: a status, an optional Retry-After, or a hang
-// that holds the request until the fake closes.
+// Step scripts one answer: a status, an optional Retry-After, a hang that
+// holds the request until the fake closes, or, for an image, 200 headers
+// and a first few bytes followed by a stall.
 type Step struct {
 	Status     int
 	RetryAfter string
 	Hang       bool
+	StallBody  bool
 }
 
 type rule struct {
@@ -166,6 +168,17 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 
 	if step != nil {
 		if step.Hang {
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+			return
+		}
+		if step.StallBody {
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte{0xff, 0xd8})
+			w.(http.Flusher).Flush()
 			select {
 			case <-release:
 			case <-r.Context().Done():

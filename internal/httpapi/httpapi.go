@@ -105,7 +105,6 @@ func (a *api) upstream(w http.ResponseWriter, r *http.Request, err error) {
 		a.Log.Error("tmdb refused the API key", "path", r.URL.Path)
 		fail(w, http.StatusBadGateway, "TMDB refused marquee's API key; check the TMDB key setting")
 	case r.Context().Err() != nil:
-		// the client left; nobody reads the answer
 		fail(w, http.StatusBadGateway, "request cancelled")
 	default:
 		a.Log.Warn("tmdb is not answering", "path", r.URL.Path, "err", err)

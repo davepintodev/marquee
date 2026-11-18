@@ -112,7 +112,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Monitor or unmonitor one episode. */
+        /**
+         * Monitor or unmonitor one episode.
+         * @description Monitoring an episode also monitors its title, so a title never searches for an episode while reporting itself unmonitored; its other episodes keep their state. Unmonitoring an episode, even the last monitored one, leaves the title monitored.
+         */
         patch: operations["updateEpisode"];
         trace?: never;
     };
@@ -516,6 +519,15 @@ export interface components {
         };
         /** @description An API token is required and was missing or wrong. */
         Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Marquee failed on its own side, for example it cannot write its image cache. The error says nothing about TMDB. */
+        InternalError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -1016,10 +1028,13 @@ export interface operations {
                 content: {
                     "image/svg+xml": string;
                     "image/jpeg": string;
+                    "image/png": string;
+                    "image/webp": string;
                 };
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
             502: components["responses"]["BadGateway"];
             503: components["responses"]["ServiceUnavailable"];
         };

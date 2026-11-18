@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +23,10 @@ const (
 	// DefaultCacheBytes bounds the image cache; the oldest files go first.
 	DefaultCacheBytes = 256 << 20
 )
+
+// ErrLocal marks a failure on marquee's side of the image cache, such as a
+// full or unwritable disk, as opposed to TMDB failing to answer.
+var ErrLocal = errors.New("image cache")
 
 // Images keeps TMDB images on disk, keyed by TMDB's file path and the size
 // asked for, so the browser never talks to TMDB and each file is fetched once.
@@ -84,23 +89,26 @@ func (i *Images) download(ctx context.Context, size, filePath, file string) (err
 
 	// The temp file sits beside the target so the rename never crosses filesystems.
 	if err := os.MkdirAll(filepath.Dir(file), 0o750); err != nil {
-		return fmt.Errorf("image cache: %w", err)
+		return fmt.Errorf("%w: %w", ErrLocal, err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(file), ".partial-*")
 	if err != nil {
-		return fmt.Errorf("image cache: %w", err)
+		return fmt.Errorf("%w: %w", ErrLocal, err)
 	}
 	defer func() {
 		if err != nil {
 			_ = os.Remove(tmp.Name())
 		}
 	}()
-	n, copyErr := io.Copy(tmp, io.LimitReader(body, maxImageBytes+1))
+	src := &trackedReader{r: io.LimitReader(body, maxImageBytes+1)}
+	n, copyErr := io.Copy(tmp, src)
 	switch {
 	case copyErr != nil && ctx.Err() != nil:
 		err = ctx.Err()
-	case copyErr != nil:
+	case copyErr != nil && src.err != nil:
 		err = fmt.Errorf("%w: image cut short", ErrUnavailable)
+	case copyErr != nil:
+		err = fmt.Errorf("%w: %w", ErrLocal, copyErr)
 	case n > maxImageBytes:
 		err = fmt.Errorf("%w: image too large", ErrUnavailable)
 	case n == 0:
@@ -111,12 +119,27 @@ func (i *Images) download(ctx context.Context, size, filePath, file string) (err
 		return err
 	}
 	if err = tmp.Close(); err != nil {
-		return fmt.Errorf("image cache: %w", err)
+		return fmt.Errorf("%w: %w", ErrLocal, err)
 	}
 	if err = os.Rename(tmp.Name(), file); err != nil {
-		return fmt.Errorf("image cache: %w", err)
+		return fmt.Errorf("%w: %w", ErrLocal, err)
 	}
 	return nil
+}
+
+// trackedReader remembers a read error, so a failed copy can be told apart
+// as the download's or the disk's.
+type trackedReader struct {
+	r   io.Reader
+	err error
+}
+
+func (t *trackedReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if err != nil && err != io.EOF {
+		t.err = err
+	}
+	return n, err
 }
 
 // Forget deletes a title's cached copy of an image, if there is one.

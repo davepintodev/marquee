@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "modernc.org/sqlite" // pure-Go driver: the one container needs no cgo
+	_ "modernc.org/sqlite"
 )
 
 var (
@@ -21,9 +21,8 @@ var (
 	ErrInvalid  = errors.New("catalog: invalid value")
 )
 
-// Store is the catalog. All writes go through one connection, so they
-// never contend with each other; reads use a small pool beside it (WAL
-// lets them run during a write).
+// Writes share one connection so they never contend; WAL lets the read
+// pool run during a write.
 type Store struct {
 	w, r *sql.DB
 	now  func() time.Time

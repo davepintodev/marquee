@@ -553,6 +553,75 @@ func TestAnImageFailureIsNotCachedAndAnswersBadGateway(t *testing.T) {
 	}
 }
 
+func TestPngAndWebpImagesKeepTheirOwnTypeAndMatchTheContract(t *testing.T) {
+	tm := newTMDB(t)
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 55, Name: "Formats", Date: "2020-01-01", Poster: "/f.png", Backdrop: "/f.webp"})
+	s := startReal(t, tm)
+	for kind, want := range map[string]string{"poster": "image/png", "backdrop": "image/webp"} {
+		r := s.call("GET", "/api/images/"+kind+"/movie-55", "")
+		if r.status != 200 || r.header.Get("Content-Type") != want {
+			t.Errorf("%s: %d %q, want %s", kind, r.status, r.header.Get("Content-Type"), want)
+		}
+	}
+}
+
+func TestALocalCacheFailureIsAnInternalErrorNotABadGateway(t *testing.T) {
+	tm := newTMDB(t)
+	s := startReal(t, tm)
+	blocker := filepath.Join(s.env["MARQUEE_DATA_DIR"], "images")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := s.call("GET", "/api/images/poster/movie-438631", "")
+	if r.status != 500 || strings.Contains(string(r.body), "TMDB") {
+		t.Fatalf("a broken cache directory is marquee's fault: %d %s", r.status, r.body)
+	}
+	if strings.Contains(s.logs.String(), tmdbfake.Key) {
+		t.Error("the key reached the logs")
+	}
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	if r := s.call("GET", "/api/images/poster/movie-438631", ""); r.status != 200 {
+		t.Errorf("after the cache is repaired: %d %s", r.status, r.body)
+	}
+}
+
+func TestAnImageBodyThatStallsIsCutOffAndTheImageCanBeFetchedAgain(t *testing.T) {
+	tm := newTMDB(t)
+	tm.Script("/t/p/", tmdbfake.Step{StallBody: true})
+	s := startReal(t, tm, func(o *app.Options) { o.TMDBImageTimeout = 300 * time.Millisecond })
+	start := time.Now()
+	r := s.call("GET", "/api/images/poster/movie-438631", "")
+	if r.status != 502 {
+		t.Fatalf("a stalled body is TMDB not answering: %d %s", r.status, r.body)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("the stall held the request for %v", d)
+	}
+	r = s.call("GET", "/api/images/poster/movie-438631", "")
+	if r.status != 200 || !bytes.Equal(r.body, tmdbfake.ImageBytes("/dune-p.jpg")) {
+		t.Errorf("the lock must be free once the first fetch fails: %d %q", r.status, r.body)
+	}
+}
+
+func TestReMonitoringAnEpisodeOfAnUnmonitoredSeriesMonitorsTheSeriesAgain(t *testing.T) {
+	s := startReal(t, newTMDB(t))
+	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408}`, 201)
+	s.mustCall("PATCH", "/api/titles/series-1408", `{"monitored":false}`, 200)
+	v := s.mustCall("PATCH", "/api/titles/series-1408/episodes/s01e02", `{"monitored":true}`, 200)
+	if v["monitored"] != true || v["historySummary"] == "Not monitored." {
+		t.Errorf("a title searching for an episode must be monitored: %v %v", v["monitored"], v["historySummary"])
+	}
+	if eps := episodes(t, v); eps["s01e01"]["monitored"] != false {
+		t.Errorf("the other episodes stay as they were: %v", eps["s01e01"])
+	}
+	v = s.mustCall("PATCH", "/api/titles/series-1408/episodes/s01e02", `{"monitored":false}`, 200)
+	if v["monitored"] != true {
+		t.Error("unmonitoring the last monitored episode must not unmonitor the title")
+	}
+}
+
 func TestMonitoringAndPreferredQualityCanBeChanged(t *testing.T) {
 	s := startReal(t, newTMDB(t))
 	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408,"preferredQuality":"1080p"}`, 201)

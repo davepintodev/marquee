@@ -68,6 +68,10 @@ func (a *api) image(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusNotFound, "TMDB no longer has this image")
 			return
 		}
+		if errors.Is(err, metadata.ErrLocal) {
+			a.internal(w, r, err)
+			return
+		}
 		a.upstream(w, r, err)
 		return
 	}

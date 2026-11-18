@@ -24,6 +24,8 @@ func init() {
 	}
 	openapi3filter.RegisterBodyDecoder("image/svg+xml", passthrough)
 	openapi3filter.RegisterBodyDecoder("image/jpeg", passthrough)
+	openapi3filter.RegisterBodyDecoder("image/png", passthrough)
+	openapi3filter.RegisterBodyDecoder("image/webp", passthrough)
 }
 
 // LoadSpec parses and validates the contract and returns a router over it.

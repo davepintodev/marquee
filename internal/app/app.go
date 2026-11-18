@@ -31,6 +31,8 @@ type Options struct {
 	TMDBAPIBase, TMDBImageBase string
 	// TMDBTimeout bounds a wait on TMDB; zero is ten seconds.
 	TMDBTimeout time.Duration
+	// TMDBImageTimeout bounds one whole image download; zero is thirty seconds.
+	TMDBImageTimeout time.Duration
 	// Sleep waits out a TMDB rate limit; nil really sleeps.
 	Sleep func(ctx context.Context, d time.Duration) error
 }
@@ -84,7 +86,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		defer func() { _ = store.Close() }()
 		tmdb := metadata.New(metadata.Options{
 			APIBase: opts.TMDBAPIBase, ImageBase: opts.TMDBImageBase, Key: cfg.TMDBKey,
-			Timeout: opts.TMDBTimeout, Sleep: opts.Sleep,
+			Timeout: opts.TMDBTimeout, ImageTimeout: opts.TMDBImageTimeout, Sleep: opts.Sleep,
 		})
 		listen = cfg.Listen
 		api = httpapi.New(httpapi.Deps{

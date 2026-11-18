@@ -105,7 +105,7 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 	}
 
 	eps := map[string][]epRow{}
-	erows, err := q.QueryContext(ctx, `SELECT title_id, season, number, name, air_date, monitored, have_file FROM episodes ORDER BY title_id, season, number`)
+	erows, err := q.QueryContext(ctx, `SELECT title_id, season, number, name, air_date, monitored, have_file FROM episodes WHERE title_id IN (SELECT id FROM titles `+where+`) ORDER BY title_id, season, number`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -250,14 +250,30 @@ func (s *Store) Update(ctx context.Context, id string, p Patch) (Title, error) {
 	return s.Get(ctx, id)
 }
 
-// SetEpisodeMonitored monitors or unmonitors one episode.
+// SetEpisodeMonitored monitors or unmonitors one episode. Monitoring an
+// episode also monitors its title, so a title never searches for an
+// episode while reporting itself unmonitored; unmonitoring an episode
+// leaves the title as it was.
 func (s *Store) SetEpisodeMonitored(ctx context.Context, id string, season, number int, monitored bool) (Title, error) {
-	res, err := s.w.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE title_id = ? AND season = ? AND number = ?`, b2i(monitored), id, season, number)
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return Title{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE title_id = ? AND season = ? AND number = ?`, b2i(monitored), id, season, number)
 	if err != nil {
 		return Title{}, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return Title{}, ErrNotFound
+	}
+	if monitored {
+		if _, err := tx.ExecContext(ctx, `UPDATE titles SET monitored = 1 WHERE id = ?`, id); err != nil {
+			return Title{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Title{}, err
 	}
 	return s.Get(ctx, id)
 }

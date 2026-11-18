@@ -149,8 +149,6 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	}
 	id := catalog.TitleID(req.Kind, req.TMDBID)
 
-	// One add per title at a time: a second caller waits, then finds the
-	// title and changes nothing, so TMDB is asked once.
 	defer a.adds.Lock(id)()
 	if t, err := a.Catalog.Get(r.Context(), id); err == nil {
 		writeJSON(w, http.StatusOK, titleOf(t))

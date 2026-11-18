@@ -161,6 +161,11 @@ paths:
       tags: [titles]
       operationId: updateEpisode
       summary: Monitor or unmonitor one episode.
+      description: >
+        Monitoring an episode also monitors its title, so a title never
+        searches for an episode while reporting itself unmonitored; its other
+        episodes keep their state. Unmonitoring an episode, even the last
+        monitored one, leaves the title monitored.
       requestBody:
         required: true
         content:
@@ -362,8 +367,13 @@ paths:
               schema: { type: string }
             image/jpeg:
               schema: { type: string, contentEncoding: base64 }
+            image/png:
+              schema: { type: string, contentEncoding: base64 }
+            image/webp:
+              schema: { type: string, contentEncoding: base64 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/health:
@@ -407,6 +417,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
       description: An API token is required and was missing or wrong.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InternalError:
+      description: Marquee failed on its own side, for example it cannot write its image cache. The error says nothing about TMDB.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
