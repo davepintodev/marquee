@@ -1,7 +1,7 @@
 GO_PKGS := ./cmd/... ./internal/... ./web
 WEB := web
 
-.PHONY: gate api vet lint test web-api web-api-check web-typecheck web-lint web-test web-build build
+.PHONY: gate smoke api vet lint test web-api web-api-check web-typecheck web-lint web-test web-build build
 
 gate: vet lint test web-api-check web-typecheck web-lint web-test build
 
@@ -44,3 +44,8 @@ web-build: $(WEB)/node_modules
 
 build: web-build
 	go build -o bin/marquee ./cmd/marquee
+
+# Not part of the gate: needs a Playwright browser (`cd web && npx playwright
+# install chromium`). Screenshots and recordings go to MARQUEE_SHOTS_DIR.
+smoke: build
+	cd $(WEB) && npx playwright test
