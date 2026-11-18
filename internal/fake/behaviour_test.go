@@ -264,3 +264,21 @@ func TestCloseSurvivesConcurrentCalls(t *testing.T) {
 		wg.Wait()
 	}
 }
+
+func TestSeriesDetailReadsItsHistoryInWords(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	house := exchange(t, srv, router, "GET", "/api/titles/series-1408", "", 200)
+	if got, want := house["historySummary"], "Tried 3 releases, 1 stalled, 1 fake, retrying in 6h."; got != want {
+		t.Errorf("historySummary = %q, want %q", got, want)
+	}
+	history := house["history"].([]any)
+	if len(history) != 3 {
+		t.Errorf("history has %d entries, want 3", len(history))
+	}
+	for _, h := range history {
+		if name := h.(map[string]any)["titleName"]; name != "House" {
+			t.Errorf("history entry names its title %q, want House", name)
+		}
+	}
+}

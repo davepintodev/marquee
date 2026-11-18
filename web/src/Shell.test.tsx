@@ -101,3 +101,41 @@ test("the Health page asks for the token too", async () => {
   render(<Shell baseUrl={BASE} fetch={m.fetch} path="/health" />);
   await screen.findByLabelText(/api token/i);
 });
+
+test("every page, by path or by hash, asks for the token on a 401 and comes back to itself after it", async () => {
+  for (const [path, hash, heading] of [
+    ["/health", "", "Health"],
+    ["/", "#/health", "Health"],
+    ["/", "#/activity", "Activity"],
+    ["/", "#/title/movie-1", null],
+  ] as const) {
+    localStorage.clear();
+    window.location.hash = hash;
+    const answers = (input: Request) => {
+      if (input.headers.get("Authorization") !== `Bearer ${TOKEN}`) return json({ error: "this marquee needs its API token" }, 401);
+      const p = new URL(input.url).pathname;
+      if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryProblems: [] });
+      if (p === "/api/wall") return json({ items: [] });
+      return json({ error: "nope" }, 404);
+    };
+    const f = vi.fn(async (input: Request) => answers(input)) as unknown as typeof fetch;
+    const view = render(<Shell baseUrl={BASE} fetch={f} path={path} />);
+
+    await screen.findByLabelText(/api token/i);
+    expect(screen.queryByRole("main")).toBeNull();
+    unlock(TOKEN);
+    if (heading) await screen.findByRole("heading", { name: heading });
+    else await waitFor(() => expect(screen.queryByLabelText(/api token/i)).toBeNull());
+    expect(window.location.hash).toBe(hash || "#/health");
+    view.unmount();
+    window.location.hash = "";
+  }
+});
+
+test("/health keeps working as a path: it opens the Health page with the wall behind it", async () => {
+  const m = marquee(null);
+  render(<Shell baseUrl={BASE} fetch={m.fetch} path="/health" />);
+  await screen.findByRole("heading", { name: "Health" });
+  expect(window.location.hash).toBe("#/health");
+  window.location.hash = "";
+});

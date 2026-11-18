@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Api } from "./api/client";
 import type { Health as HealthData } from "./api/types";
+import { Page } from "./Page";
 
 type Load = { status: "loading" } | { status: "ok"; data: HealthData } | { status: "error"; message: string };
 
@@ -14,7 +15,7 @@ const SUMMARY = {
 
 const REASON_WORD = { unmatched: "No match", ambiguous: "Several matches", unparsed_file: "Ignored file" } as const;
 
-export function Health({ api }: { api: Api }) {
+export function Health({ api, onClose }: { api: Api; onClose: () => void }) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [round, setRound] = useState(0);
 
@@ -36,14 +37,7 @@ export function Health({ api }: { api: Api }) {
   }, []);
 
   return (
-    <main className="page">
-      <header className="page-head">
-        <a className="page-back" href="/">
-          ← marquee
-        </a>
-        <h1>Health</h1>
-      </header>
-
+    <Page heading="Health" onClose={onClose}>
       {load.status === "loading" && <p className="hint">Checking…</p>}
       {load.status === "error" && (
         <div className="notice inline" role="alert">
@@ -87,6 +81,6 @@ export function Health({ api }: { api: Api }) {
           </button>
         </>
       )}
-    </main>
+    </Page>
   );
 }

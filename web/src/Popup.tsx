@@ -3,6 +3,7 @@ import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
 import { Art } from "./Art";
 import { BadgePill } from "./BadgePill";
+import { hrefOf } from "./route";
 
 interface Props {
   api: Api;
@@ -10,9 +11,10 @@ interface Props {
   onClose: () => void;
   onChanged: (title: TitleSummary) => void;
   onToast: (text: string) => void;
+  onDetails: () => void;
 }
 
-export function Popup({ api, title, onClose, onChanged, onToast }: Props) {
+export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Props) {
   const headingId = useId();
   const primary = useRef<HTMLButtonElement>(null);
   const working = useRef(false);
@@ -75,6 +77,11 @@ export function Popup({ api, title, onClose, onChanged, onToast }: Props) {
           <button ref={primary} type="button" className="btn-primary" aria-disabled={busy} onClick={press}>
             {title.inLibrary ? "Search now" : "Add & monitor"}
           </button>
+          {title.inLibrary && (
+            <a className="btn-secondary" href={hrefOf({ name: "title", id: title.id })} onClick={onDetails}>
+              Details
+            </a>
+          )}
           <button type="button" className="btn-secondary" disabled>
             Interactive search
           </button>

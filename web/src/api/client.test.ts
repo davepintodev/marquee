@@ -67,6 +67,57 @@ test("an aborted request rethrows the abort so callers can ignore it", async () 
   await expect(p).rejects.toMatchObject({ name: "AbortError" });
 });
 
+test("removing a title accepts the 204 with no body and turns an error body into its message", async () => {
+  const answers = [new Response(null, { status: 204 }), new Response(JSON.stringify({ error: "that title is not in the library" }), { status: 404, headers: { "Content-Type": "application/json" } })];
+  const fetchStub = vi.fn(async () => answers.shift()!);
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  await expect(api.removeTitle("series-1")).resolves.toBeUndefined();
+  await expect(api.removeTitle("series-1")).rejects.toThrow("that title is not in the library");
+});
+
+class Stream {
+  closed = false;
+  private fns = new Map<string, (e: Event) => void>();
+  addEventListener(name: string, fn: (e: Event) => void) {
+    this.fns.set(name, fn);
+  }
+  close() {
+    this.closed = true;
+  }
+  send(name: string, data = "") {
+    this.fns.get(name)?.(new MessageEvent(name, { data }));
+  }
+}
+
+test("events delivers progress and title messages, skips garbage and says when the stream came back", () => {
+  const stream = new Stream();
+  const urls: string[] = [];
+  const api = createApi({ baseUrl: "http://host.test/", eventSource: (u) => (urls.push(u), stream as unknown as EventSource) });
+  const got: unknown[] = [];
+
+  const stop = api.events((e) => got.push(e));
+  stream.send("open");
+  stream.send("progress", JSON.stringify({ downloadId: "d", percent: 5 }));
+  stream.send("progress", "not json");
+  stream.send("title", JSON.stringify({ titleId: "movie-1", badge: null }));
+  stream.send("open");
+  stop();
+
+  expect(urls).toEqual(["http://host.test/api/events"]);
+  expect(got).toEqual([
+    { type: "progress", data: { downloadId: "d", percent: 5 } },
+    { type: "title", data: { titleId: "movie-1", badge: null } },
+    { type: "reconnected" },
+  ]);
+  expect(stream.closed).toBe(true);
+});
+
+test("events does nothing where there is no EventSource", () => {
+  const api = createApi({});
+  expect(() => api.events(() => {})()).not.toThrow();
+});
+
 test("every request carries the token the caller holds, and none when there is none", async () => {
   const seen: (string | null)[] = [];
   const fetchStub = vi.fn(async (r: Request) => {

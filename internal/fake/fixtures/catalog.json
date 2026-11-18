@@ -10,7 +10,7 @@
   {"tmdbId": 335984, "kind": "movie", "title": "Blade Runner 2049", "year": 2017, "inLibrary": true, "state": "missing",
    "overview": "A new blade runner unearths a long-buried secret."},
   {"tmdbId": 1408, "kind": "series", "title": "House", "year": 2004, "inLibrary": true,
-   "overview": "A diagnostician and his team of brilliant, difficult doctors.", "nextSearchIn": "5h",
+   "overview": "A diagnostician and his team of brilliant, difficult doctors.", "nextSearchIn": "6h",
    "seasons": [
      {"number": 1, "episodes": [
        {"number": 1, "name": "Pilot", "airDate": "2004-11-16", "state": "downloaded"},
