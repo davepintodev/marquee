@@ -34,6 +34,8 @@ type Deps struct {
 	DryRun  bool
 	// Now is the clock the blocklist's expiry is judged by; nil is the system clock.
 	Now func() time.Time
+	// Wake tells the scheduler a Search now was asked for; nil does nothing.
+	Wake func()
 }
 
 type api struct {
@@ -64,11 +66,11 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/titles/{id}", a.updateTitle)
 	mux.HandleFunc("DELETE /api/titles/{id}", a.removeTitle)
 	mux.HandleFunc("PATCH /api/titles/{id}/episodes/{episodeId}", a.updateEpisode)
+	mux.HandleFunc("POST /api/titles/{id}/search", a.searchNow)
+	mux.HandleFunc("POST /api/titles/{id}/episodes/{episodeId}/search", a.searchNow)
 	mux.HandleFunc("GET /api/titles/{id}/releases", a.listReleases)
 	mux.HandleFunc("GET /api/images/{kind}/{titleId}", a.image)
 	for _, route := range []string{
-		"POST /api/titles/{id}/search",
-		"POST /api/titles/{id}/episodes/{episodeId}/search",
 		"POST /api/titles/{id}/releases/{releaseId}/grab",
 		"POST /api/history/{historyId}/retry",
 		"GET /api/events",

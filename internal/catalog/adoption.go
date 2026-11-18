@@ -5,9 +5,6 @@ import (
 	"time"
 )
 
-// EpisodeRef is one episode of a series.
-type EpisodeRef struct{ Season, Number int }
-
 // Found is what an adopted folder holds on disk.
 type Found struct {
 	// Movie is true when a movie's folder holds a video file.

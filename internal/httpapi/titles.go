@@ -270,3 +270,28 @@ func (a *api) removeTitle(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// searchNow asks the scheduler to search a movie, a series' monitored
+// missing episodes or one episode at once; the search itself happens in the
+// scheduler, within its rate limit.
+func (a *api) searchNow(w http.ResponseWriter, r *http.Request) {
+	var ep *catalog.EpisodeRef
+	if raw := r.PathValue("episodeId"); raw != "" {
+		m := episodeIDRe.FindStringSubmatch(raw)
+		if m == nil {
+			fail(w, http.StatusNotFound, "no such episode")
+			return
+		}
+		ep = &catalog.EpisodeRef{Season: atoi(m[1]), Number: atoi(m[2])}
+	}
+	id := r.PathValue("id")
+	if err := a.Catalog.RequestSearch(r.Context(), id, ep); err != nil {
+		a.titleReply(w, r, catalog.Title{}, err)
+		return
+	}
+	if a.Wake != nil {
+		a.Wake()
+	}
+	t, err := a.Catalog.Get(r.Context(), id)
+	a.titleReply(w, r, t, err)
+}

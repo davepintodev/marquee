@@ -139,6 +139,44 @@ CREATE TABLE component_status (
   at        TEXT NOT NULL
 ) WITHOUT ROWID;
 `, `
+CREATE TABLE schedule (
+  title_id  TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+  season    INTEGER NOT NULL,
+  number    INTEGER NOT NULL,
+  attempts  INTEGER NOT NULL DEFAULT 0,
+  next_at   INTEGER,
+  forced    INTEGER NOT NULL DEFAULT 0,
+  follow_up INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (title_id, season, number)
+) WITHOUT ROWID;
+CREATE TABLE search_budget (
+  title_id TEXT PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
+  day      TEXT NOT NULL,
+  used     INTEGER NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE series_refresh (
+  title_id TEXT PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
+  due_at   INTEGER NOT NULL
+) WITHOUT ROWID;
+INSERT INTO series_refresh (title_id, due_at) SELECT id, 0 FROM titles WHERE kind = 'series';
+CREATE TABLE source_backoff (
+  id       INTEGER PRIMARY KEY CHECK (id = 1),
+  failures INTEGER NOT NULL,
+  until    INTEGER NOT NULL
+);
+CREATE TABLE activity (
+  id         TEXT PRIMARY KEY,
+  title_id   TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+  season     INTEGER NOT NULL DEFAULT 0,
+  number     INTEGER NOT NULL DEFAULT 0,
+  kind       TEXT NOT NULL,
+  reason     TEXT NOT NULL DEFAULT '',
+  message    TEXT NOT NULL,
+  release_id TEXT NOT NULL DEFAULT '',
+  at         TEXT NOT NULL
+);
+CREATE INDEX activity_by_title ON activity (title_id);
+`, `
 CREATE TABLE library_problems (
   path    TEXT PRIMARY KEY,
   reason  TEXT NOT NULL CHECK (reason IN ('unmatched', 'ambiguous', 'unparsed_file')),

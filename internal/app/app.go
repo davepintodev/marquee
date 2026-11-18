@@ -22,6 +22,7 @@ import (
 	"github.com/davepintodev/marquee/internal/httpapi"
 	"github.com/davepintodev/marquee/internal/metadata"
 	"github.com/davepintodev/marquee/internal/pipeline"
+	"github.com/davepintodev/marquee/internal/scheduler"
 	"github.com/davepintodev/marquee/internal/server"
 )
 
@@ -48,6 +49,11 @@ type Options struct {
 	// OnAdopted is called once the first-run adoption has finished, with
 	// its error, or with nil when an earlier run had already completed it.
 	OnAdopted func(error)
+	// Scheduler tunes the scheduler; the zero value is production.
+	Scheduler scheduler.Tuning
+	// OnScheduler is called with the scheduler once it is built; tests
+	// drive it with Step.
+	OnScheduler func(*scheduler.Scheduler)
 }
 
 // Run loads and checks the configuration, then serves until ctx ends.
@@ -148,9 +154,26 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			stopAdopt()
 			<-adoptDone
 		}()
+		sched := scheduler.New(scheduler.Options{
+			Catalog: store, Source: source, TMDB: tmdb, Transfers: transfers, DryRun: cfg.DryRun, Log: log, Tuning: opts.Scheduler,
+		})
+		if opts.OnScheduler != nil {
+			opts.OnScheduler(sched)
+		}
+		schedCtx, stopSched := context.WithCancel(context.Background())
+		schedDone := make(chan struct{})
+		go func() {
+			defer close(schedDone)
+			sched.Run(schedCtx)
+		}()
+		// A search in flight must stop before the database closes.
+		defer func() {
+			stopSched()
+			<-schedDone
+		}()
 		listen = cfg.Listen
 		api = httpapi.New(httpapi.Deps{
-			Catalog: store, TMDB: tmdb, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun,
+			Catalog: store, TMDB: tmdb, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
 			Images: metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 		})
 		msg, attrs = "marquee starting", []any{"config", cfg}

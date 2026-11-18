@@ -1,8 +1,6 @@
 package catalog
 
 import (
-	"time"
-
 	"github.com/davepintodev/marquee/internal/metadata"
 )
 
@@ -15,13 +13,8 @@ func NewTitleFromTMDB(d metadata.Details) NewTitle {
 		IMDbID: d.IMDbID, TVDBID: d.TVDBID,
 		Images: []ImageRef{{Kind: "poster", Path: d.PosterPath}, {Kind: "backdrop", Path: d.BackdropPath}},
 	}
-	for _, s := range d.Seasons {
-		for _, e := range s.Episodes {
-			if _, err := time.Parse(time.DateOnly, e.AirDate); err != nil {
-				continue
-			}
-			n.Episodes = append(n.Episodes, NewEpisode{Season: s.Number, Number: e.Number, Name: e.Name, AirDate: e.AirDate})
-		}
+	for _, e := range d.DatedEpisodes() {
+		n.Episodes = append(n.Episodes, NewEpisode(e))
 	}
 	return n
 }
