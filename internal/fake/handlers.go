@@ -329,7 +329,8 @@ func (f *Fake) addToLibrary(t *entry, quality string) {
 
 func (f *Fake) get(w http.ResponseWriter, r *http.Request) {
 	t := f.find(r.PathValue("id"))
-	if t == nil {
+	// The real service answers 404 until a series is added, so the popup's Interactive search says to add it first; movies keep answering.
+	if t == nil || (t.Kind == "series" && !t.InLibrary) {
 		fail(w, http.StatusNotFound, "no such title")
 		return
 	}

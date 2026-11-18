@@ -315,3 +315,16 @@ func TestRetryingTwiceIsRefused(t *testing.T) {
 		t.Fatalf("second retry: %d, want 409", got)
 	}
 }
+
+func TestGetTitleSaysEpisodesExistOnlyOnceTheSeriesIsAdded(t *testing.T) {
+	doc, _ := loadSpec(t)
+	op := doc.Paths.Find("/api/titles/{id}").Get
+	if op.Responses.Status(404) == nil {
+		t.Fatal("getTitle must document its 404")
+	}
+	for _, want := range []string{"not in the library", "404", "added"} {
+		if !strings.Contains(op.Description, want) {
+			t.Errorf("getTitle's description must say %q: %q", want, op.Description)
+		}
+	}
+}

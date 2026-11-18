@@ -65,7 +65,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** A title with its seasons, episodes and plain-language history. */
+        /**
+         * A title with its seasons, episodes and plain-language history.
+         * @description A title that is not in the library answers 404, so a series' seasons and episodes exist only once the series is added.
+         */
         get: operations["getTitle"];
         put?: never;
         post?: never;

@@ -104,6 +104,9 @@ paths:
       tags: [titles]
       operationId: getTitle
       summary: A title with its seasons, episodes and plain-language history.
+      description: >-
+        A title that is not in the library answers 404, so a series' seasons
+        and episodes exist only once the series is added.
       responses:
         "200":
           description: The title.

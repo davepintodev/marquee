@@ -282,3 +282,21 @@ func TestSeriesDetailReadsItsHistoryInWords(t *testing.T) {
 		}
 	}
 }
+
+func TestASeriesNotInTheLibraryIsNotFoundButAMovieIs(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+
+	got := exchange(t, srv, router, "GET", "/api/titles/series-62560", "", 404)
+	if msg, _ := got["error"].(string); msg == "" {
+		t.Errorf("a 404 must carry the contract's error shape: %v", got)
+	}
+	if got := exchange(t, srv, router, "GET", "/api/titles/movie-438631", "", 200); got["inLibrary"] != false {
+		t.Errorf("a movie not in the library keeps answering 200: %v", got["inLibrary"])
+	}
+
+	exchange(t, srv, router, "POST", "/api/titles", `{"kind":"series","tmdbId":62560}`, 201)
+	if got := exchange(t, srv, router, "GET", "/api/titles/series-62560", "", 200); len(got["seasons"].([]any)) == 0 {
+		t.Error("once added, the series' episodes are served")
+	}
+}
