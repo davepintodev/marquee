@@ -453,9 +453,23 @@ test("picking a release queues it: the toast confirms, the popup reads Search no
   await page.screenshot({ path: join(shots, "interactive-activity-laptop.png") });
 });
 
-test("a series asks for an episode and a blocklisted release can be picked by hand on phone", async ({ page }) => {
+test("a series not in the library says to add it first when Interactive search is pressed", async ({ page }) => {
   await page.setViewportSize({ width: screens[0].width, height: screens[0].height });
   const popup = await openInteractive(page, "mr. robot", /Mr\. Robot[\s\S]*2015/);
+
+  await expect(popup.getByText(/Add & monitor this series first/)).toBeVisible();
+  await expect(popup.getByRole("combobox", { name: "Episode" })).toHaveCount(0);
+  await expect(popup.getByRole("list", { name: "Releases" })).toHaveCount(0);
+  await insidePopup(page, screens[0]);
+  await page.screenshot({ path: join(shots, "interactive-series-add-first-phone.png") });
+
+  await popup.getByRole("button", { name: "Back" }).click();
+  await expect(popup.getByRole("button", { name: "Add & monitor" })).toBeVisible();
+});
+
+test("a library series asks for an episode and a blocklisted release can be picked by hand on phone", async ({ page }) => {
+  await page.setViewportSize({ width: screens[0].width, height: screens[0].height });
+  const popup = await openInteractive(page, "camp snoopy", /Camp Snoopy[\s\S]*2024/);
 
   const episode = popup.getByRole("combobox", { name: "Episode" });
   await expect(episode).toHaveValue("s01e01");
@@ -480,5 +494,5 @@ test("a series asks for an episode and a blocklisted release can be picked by ha
   await page.getByRole("link", { name: "Activity" }).click();
   const row = page.getByRole("list", { name: "Queue" }).getByRole("listitem").filter({ hasText: "House.S04E02.1080p.WEB-DL" });
   await expect(row).toBeVisible();
-  await expect(row).toContainText(/Mr\. Robot.*S01E02/);
+  await expect(row).toContainText(/Camp Snoopy.*S01E02/);
 });
