@@ -4,17 +4,17 @@ One small Go service with one React screen: it searches AIOStreams for releases,
 
 ## Conventions
 
-- Go + SQLite (SQLite arrives with the catalog), React + Vite in `web/`, built and embedded in the binary: one process, one port, one container.
+- Go + SQLite (the pure-Go `modernc.org/sqlite` driver, so the container needs no cgo; schema changes are appended to the embedded migration list in `internal/catalog`, never edited), React + Vite in `web/`, built and embedded in the binary: one process, one port, one container.
 - Idle memory stays under 80 MB RSS. Downloaded bytes go to disk, never into memory.
 - Configuration comes from a JSON file (`MARQUEE_CONFIG`) or `MARQUEE_*` environment variables, which override it. Missing essentials stop startup with a message naming the setting. Secrets use `config.Secret` and are redacted in logs, errors and dumps; never format a revealed secret.
 - The temp path must be on the library's filesystem so the final move is an atomic rename.
-- Tests drive the real service in-process over HTTP with fakes for the outside world; no real network in tests. Pure ports (naming, parsers) get table tests.
+- Tests drive the real service in-process over HTTP with fakes for the outside world; no real network in tests. `internal/tmdbfake` is the TMDB fake (counts requests; can fail, rate-limit or hang), `app.Options` injects its URLs, the clock and the rate-limit sleeper, and `internal/apitest` checks real responses against the contract. Pure ports (naming, parsers) get table tests.
 - Comments only for a non-obvious why. No hostnames, domains, IPs, usernames or home paths anywhere; use placeholders.
 - Commits: `<type>(<scope>): <summary>`, imperative, lowercase, with the why in the body.
 
 ## API contract and fake
 
-`api/openapi.yaml` is the one description of the HTTP API; change it first, then run `make api`. `marquee --fake` (or `MARQUEE_FAKE=1`) serves the whole contract from the fixtures in `internal/fake/fixtures/`, with no essential settings needed, so the UI can be built against it. A new operation needs a fake route and a case in `internal/fake/contract_test.go`, or the test fails.
+`api/openapi.yaml` is the one description of the HTTP API; change it first, then run `make api`. `marquee --fake` (or `MARQUEE_FAKE=1`) serves the whole contract from the fixtures in `internal/fake/fixtures/`, with no essential settings needed, so the UI can be built against it. In real mode (no `--fake`) the routes of tickets not built yet answer 501 in the contract's error shape. A new operation needs a fake route and a case in `internal/fake/contract_test.go`, or the test fails.
 
 ## Fresh checkout
 

@@ -52,6 +52,8 @@ paths:
               schema: { $ref: "#/components/schemas/SearchResults" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/titles:
     get:
       tags: [titles]
@@ -93,6 +95,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/titles/{id}:
     parameters:
       - { $ref: "#/components/parameters/TitleId" }
@@ -360,6 +364,8 @@ paths:
               schema: { type: string, contentEncoding: base64 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/health:
     get:
       tags: [system]
@@ -401,6 +407,16 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
       description: An API token is required and was missing or wrong.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadGateway:
+      description: TMDB, which marquee asks for metadata and images, did not answer or refused marquee's key. The error says which.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServiceUnavailable:
+      description: TMDB is rate-limiting marquee; try again shortly.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

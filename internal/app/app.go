@@ -10,24 +10,45 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/fake"
+	"github.com/davepintodev/marquee/internal/httpapi"
+	"github.com/davepintodev/marquee/internal/metadata"
 	"github.com/davepintodev/marquee/internal/server"
 )
+
+// Options are the seams tests use to replace what the outside world
+// provides. The zero value is production.
+type Options struct {
+	// Now judges which episodes have aired; nil is the system clock.
+	Now func() time.Time
+	// TMDBAPIBase and TMDBImageBase replace TMDB's hosts; empty is TMDB.
+	TMDBAPIBase, TMDBImageBase string
+	// TMDBTimeout bounds a wait on TMDB; zero is ten seconds.
+	TMDBTimeout time.Duration
+	// Sleep waits out a TMDB rate limit; nil really sleeps.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
 
 // Run loads and checks the configuration, then serves until ctx ends.
 // ready, if set, is called with the bound address once the listener is up.
 func Run(ctx context.Context, getenv func(string) string, logOut io.Writer, ui fs.FS, ready func(net.Addr)) error {
+	return RunWith(ctx, Options{}, getenv, logOut, ui, ready)
+}
+
+// RunWith is Run with the seams of opts.
+func RunWith(ctx context.Context, opts Options, getenv func(string) string, logOut io.Writer, ui fs.FS, ready func(net.Addr)) error {
 	log := slog.New(slog.NewTextHandler(logOut, nil))
 
 	var (
 		listen string
 		api    http.Handler
 		closer func()
-		dryRun bool
 		msg    string
 		attrs  []any
 	)
@@ -56,7 +77,20 @@ func Run(ctx context.Context, getenv func(string) string, logOut io.Writer, ui f
 		if err := cfg.CheckPaths(); err != nil {
 			return err
 		}
-		listen, dryRun = cfg.Listen, cfg.DryRun
+		store, err := catalog.Open(cfg.DataDir, opts.Now)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = store.Close() }()
+		tmdb := metadata.New(metadata.Options{
+			APIBase: opts.TMDBAPIBase, ImageBase: opts.TMDBImageBase, Key: cfg.TMDBKey,
+			Timeout: opts.TMDBTimeout, Sleep: opts.Sleep,
+		})
+		listen = cfg.Listen
+		api = httpapi.New(httpapi.Deps{
+			Catalog: store, TMDB: tmdb, Log: log, DryRun: cfg.DryRun,
+			Images: metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
+		})
 		msg, attrs = "marquee starting", []any{"config", cfg}
 	}
 
@@ -64,7 +98,7 @@ func Run(ctx context.Context, getenv func(string) string, logOut io.Writer, ui f
 	if err != nil {
 		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s: %w", listen, err)
 	}
-	srv := &http.Server{Handler: server.New(ui, api, dryRun), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(ui, api), ReadHeaderTimeout: 10 * time.Second}
 	if closer != nil {
 		// Shutdown waits for handlers, and an event stream only returns once the fake closes.
 		srv.RegisterOnShutdown(closer)
