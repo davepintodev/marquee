@@ -112,7 +112,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Monitor or unmonitor one episode. */
+        /**
+         * Monitor or unmonitor one episode.
+         * @description Monitoring an episode also monitors its title, so a title never searches for an episode while reporting itself unmonitored; its other episodes keep their state. Unmonitoring an episode, even the last monitored one, leaves the title monitored.
+         */
         patch: operations["updateEpisode"];
         trace?: never;
     };
@@ -523,6 +526,33 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Marquee failed on its own side, for example it cannot write its image cache. The error says nothing about TMDB. */
+        InternalError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description TMDB, which marquee asks for metadata and images, did not answer or refused marquee's key. The error says which. */
+        BadGateway: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description TMDB is rate-limiting marquee; try again shortly. */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description No such title, episode, release or entry. */
         NotFound: {
             headers: {
@@ -586,6 +616,8 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listTitles: {
@@ -645,6 +677,8 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getTitle: {
@@ -994,10 +1028,15 @@ export interface operations {
                 content: {
                     "image/svg+xml": string;
                     "image/jpeg": string;
+                    "image/png": string;
+                    "image/webp": string;
                 };
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getHealth: {
