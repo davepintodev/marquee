@@ -572,6 +572,66 @@ button {
   animation: fade 0.2s both;
 }
 
+.ix {
+  grid-area: overview;
+  margin-top: 16px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ix-episode {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.ix-episode:focus {
+  outline: 0;
+  border-color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+.ix-episode option {
+  color: var(--fg);
+  background: var(--bg);
+}
+
+.ix-empty {
+  color: var(--mute);
+  padding: 8px 0;
+}
+
+.ix-empty .btn-small {
+  margin-top: 10px;
+}
+
+.rels-dropped {
+  margin-top: 12px;
+}
+
+.rels-dropped summary {
+  cursor: pointer;
+  color: var(--mute);
+  padding: 8px 0;
+}
+
+.rel-queued {
+  flex: none;
+  color: var(--mute);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.popup summary:focus-visible,
+.popup select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--fg) 70%, transparent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 640px) {
   .popup {
     left: 0;

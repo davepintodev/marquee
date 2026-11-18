@@ -376,3 +376,109 @@ for (const s of screens.slice(0, 2)) {
     await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
   });
 }
+
+async function openInteractive(page: Page, query: string, name: RegExp) {
+  await page.goto("/");
+  await expect(page.locator(".tile[data-shape] img").first()).toBeVisible();
+  await page.getByRole("searchbox").pressSequentially(query, { delay: 60 });
+  await page.getByRole("list", { name: "Results" }).getByRole("button", { name }).click();
+  const popup = page.getByRole("dialog");
+  // Clicking while the sheet is still sliding in makes the browser scroll the page to reach it.
+  await page.waitForTimeout(500);
+  await popup.getByRole("button", { name: "Interactive search" }).click();
+  return popup;
+}
+
+async function insidePopup(page: Page, s: { width: number; height: number }) {
+  await page.waitForTimeout(500);
+  const box = (await page.getByRole("dialog").boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(s.width);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(s.height);
+}
+
+for (const s of screens.slice(0, 2)) {
+  test(`interactive search lists a movie's ranked releases with quality, size, source and cached on ${s.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: s.width, height: s.height });
+    const popup = await openInteractive(page, "dune", /Dune[\s\S]*2021/);
+
+    const releases = popup.getByRole("list", { name: "Releases" });
+    const rows = releases.getByRole("listitem");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText("Blade.Runner.2049.2017.1080p.BluRay.x264");
+    await expect(rows.first()).toContainText("Bluray-1080p");
+    await expect(rows.first()).toContainText("12 GB");
+    await expect(rows.first()).toContainText("Torrentio");
+    await expect(rows.first()).toContainText("Cached");
+    await expect(rows.nth(1)).toContainText("WEBDL-2160p");
+    await insidePopup(page, s);
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: join(shots, `interactive-movie-${s.name}.png`) });
+
+    await popup.getByText(/^Dropped \(\d+\)$/).click();
+    const dropped = popup.getByRole("list", { name: "Dropped" });
+    await expect(dropped.getByText("a .exe file, not a video")).toBeVisible();
+    await expect(dropped.getByRole("button")).toHaveCount(0);
+    await insidePopup(page, s);
+    await page.screenshot({ path: join(shots, `interactive-movie-dropped-${s.name}.png`) });
+
+    await popup.getByRole("button", { name: "Back" }).click();
+    await expect(popup.getByRole("button", { name: "Add & monitor" })).toBeVisible();
+    await expect(popup.getByRole("button", { name: "Interactive search" })).toBeFocused();
+  });
+}
+
+test("picking a release queues it: the toast confirms, the popup reads Search now and Activity shows the download", async ({ page }) => {
+  await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
+  const popup = await openInteractive(page, "dune", /Dune[\s\S]*2021/);
+
+  await popup.getByRole("button", { name: "Pick Blade.Runner.2049.2017.2160p.WEB-DL" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Queued Blade.Runner.2049.2017.2160p.WEB-DL for “Dune”");
+  await expect(popup.getByText("Queued", { exact: true })).toBeVisible();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(shots, "interactive-picked-laptop.png") });
+  await popup.getByRole("button", { name: "Back" }).click();
+  await expect(popup.getByRole("button", { name: "Search now" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByRole("link", { name: "Activity" }).click();
+  const queue = page.getByRole("list", { name: "Queue" });
+  const row = queue.getByRole("listitem").filter({ hasText: "Blade.Runner.2049.2017.2160p.WEB-DL" });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("Dune");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(shots, "interactive-activity-laptop.png") });
+});
+
+test("a series asks for an episode and a blocklisted release can be picked by hand on phone", async ({ page }) => {
+  await page.setViewportSize({ width: screens[0].width, height: screens[0].height });
+  const popup = await openInteractive(page, "mr. robot", /Mr\. Robot[\s\S]*2015/);
+
+  const episode = popup.getByRole("combobox", { name: "Episode" });
+  await expect(episode).toHaveValue("s01e01");
+  await episode.selectOption("s01e02");
+  await expect(popup.getByRole("list", { name: "Releases" }).getByRole("listitem").first()).toBeVisible();
+  await insidePopup(page, screens[0]);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(shots, "interactive-series-phone.png") });
+
+  await popup.getByText(/^Dropped \(\d+\)$/).click();
+  const blocked = popup.getByRole("list", { name: "Dropped" }).getByRole("listitem").filter({ hasText: "failed before (stalled)" });
+  await expect(blocked).toBeVisible();
+  await blocked.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(shots, "interactive-blocklisted-phone.png") });
+  await blocked.getByRole("button", { name: /anyway$/ }).click();
+
+  await expect(page.getByRole("status")).toContainText("Queued House.S04E02.1080p.WEB-DL");
+  await expect(blocked.getByText("Queued", { exact: true })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByRole("link", { name: "Activity" }).click();
+  const row = page.getByRole("list", { name: "Queue" }).getByRole("listitem").filter({ hasText: "House.S04E02.1080p.WEB-DL" });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(/Mr\. Robot.*S01E02/);
+});

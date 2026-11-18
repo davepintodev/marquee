@@ -3,6 +3,7 @@ import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
 import { Art } from "./Art";
 import { BadgePill } from "./BadgePill";
+import { InteractiveSearch } from "./InteractiveSearch";
 import { hrefOf } from "./route";
 
 interface Props {
@@ -20,6 +21,8 @@ export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Pr
   const working = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const interactive = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const opener = document.activeElement;
@@ -67,25 +70,40 @@ export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Pr
           <h2 id={headingId}>{title.title}</h2>
           <p className="popup-meta">{`${title.year} · ${title.kind}`}</p>
         </div>
-        {title.overview && <p className="popup-overview">{title.overview}</p>}
-        <div className="popup-actions">
-          {error && (
-            <p className="popup-error" role="alert">
-              {error}
-            </p>
-          )}
-          <button ref={primary} type="button" className="btn-primary" aria-disabled={busy} onClick={press}>
-            {title.inLibrary ? "Search now" : "Add & monitor"}
-          </button>
-          {title.inLibrary && (
-            <a className="btn-secondary" href={hrefOf({ name: "title", id: title.id })} onClick={onDetails}>
-              Details
-            </a>
-          )}
-          <button type="button" className="btn-secondary" disabled>
-            Interactive search
-          </button>
-        </div>
+        {searching ? (
+          <InteractiveSearch
+            api={api}
+            title={title}
+            onChanged={onChanged}
+            onToast={onToast}
+            onBack={() => {
+              setSearching(false);
+              setTimeout(() => interactive.current?.focus());
+            }}
+          />
+        ) : (
+          <>
+            {title.overview && <p className="popup-overview">{title.overview}</p>}
+            <div className="popup-actions">
+              {error && (
+                <p className="popup-error" role="alert">
+                  {error}
+                </p>
+              )}
+              <button ref={primary} type="button" className="btn-primary" aria-disabled={busy} onClick={press}>
+                {title.inLibrary ? "Search now" : "Add & monitor"}
+              </button>
+              {title.inLibrary && (
+                <a className="btn-secondary" href={hrefOf({ name: "title", id: title.id })} onClick={onDetails}>
+                  Details
+                </a>
+              )}
+              <button ref={interactive} type="button" className="btn-secondary" onClick={() => setSearching(true)}>
+                Interactive search
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

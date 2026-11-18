@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Download, Health, HistoryEntry, LiveEvent, ProgressEvent, Title, TitleEvent, TitleSummary, Wall } from "./types";
+import type { Download, Health, HistoryEntry, LiveEvent, ProgressEvent, Releases, Title, TitleEvent, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -23,6 +23,10 @@ export interface Api {
   removeTitle(id: string, signal?: AbortSignal): Promise<void>;
   setEpisodeMonitored(id: string, episodeId: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
   searchEpisodeNow(id: string, episodeId: string, signal?: AbortSignal): Promise<Title>;
+  // A series needs the episode; a movie takes none.
+  releases(id: string, episode?: string, signal?: AbortSignal): Promise<Releases>;
+  // Picking by hand overrides the blocklist. A title that is not in the library is added first.
+  grab(id: string, releaseId: string, episode?: string, signal?: AbortSignal): Promise<Download>;
   downloads(signal?: AbortSignal): Promise<Download[]>;
   history(signal?: AbortSignal): Promise<HistoryEntry[]>;
   retry(historyId: string, signal?: AbortSignal): Promise<Title>;
@@ -133,6 +137,18 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
     },
     searchEpisodeNow(id, episodeId, signal) {
       return call(() => client.POST("/api/titles/{id}/episodes/{episodeId}/search", { params: { path: { id, episodeId } }, signal }), isTitle);
+    },
+    releases(id, episode, signal) {
+      return call(
+        () => client.GET("/api/titles/{id}/releases", { params: { path: { id }, query: episode ? { episode } : {} }, signal }),
+        (d) => Array.isArray(d.candidates) && Array.isArray(d.dropped),
+      );
+    },
+    grab(id, releaseId, episode, signal) {
+      return call(
+        () => client.POST("/api/titles/{id}/releases/{releaseId}/grab", { params: { path: { id, releaseId } }, ...(episode ? { body: { episode } } : {}), signal }),
+        (d) => typeof d.id === "string",
+      );
     },
     async downloads(signal) {
       const data = await call(() => client.GET("/api/downloads", { signal }), (d) => Array.isArray(d.downloads));
