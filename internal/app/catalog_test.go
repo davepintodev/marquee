@@ -17,6 +17,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/davepintodev/marquee/internal/aiostreamsfake"
 	"github.com/davepintodev/marquee/internal/apitest"
 	"github.com/davepintodev/marquee/internal/app"
 	"github.com/davepintodev/marquee/internal/scheduler"
@@ -46,8 +47,8 @@ func startReal(t *testing.T, tm *tmdbfake.Fake, opts ...svcOpt) *realSvc {
 	return startRealAIO(t, tm, "", opts...)
 }
 
-// startRealAIO also sets the AIOStreams manifest URL; empty keeps the
-// placeholder, whose host nothing answers.
+// startRealAIO also sets the AIOStreams manifest URL; empty starts a quiet
+// AIOStreams fake for the service to point at.
 func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcOpt) *realSvc {
 	t.Helper()
 	return startRealWith(t, tm, manifest, nil, opts...)
@@ -61,6 +62,12 @@ func startRealWith(t *testing.T, tm *tmdbfake.Fake, manifest string, prep func(e
 	s := &realSvc{t: t, env: testEnv(t), logs: newSyncBuf(), tmdb: tm}
 	if prep != nil {
 		prep(s.env)
+	}
+	if manifest == "" && s.env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] == manifestVal {
+		// Health asks AIOStreams, and a placeholder host would reach for real DNS.
+		aio := aiostreamsfake.New()
+		t.Cleanup(aio.Close)
+		manifest = aio.ManifestURL()
 	}
 	if manifest != "" {
 		s.env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] = manifest
@@ -167,6 +174,9 @@ func (s *realSvc) send(method, path, body string, validate bool) reply {
 	req, err := http.NewRequest(method, s.base+path, strings.NewReader(body))
 	if err != nil {
 		s.t.Fatal(err)
+	}
+	if tok := s.env["MARQUEE_API_TOKEN"]; tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
@@ -827,13 +837,8 @@ func TestTheCatalogSurvivesARestart(t *testing.T) {
 		_ = app.RunWith(ctx, app.Options{TMDBAPIBase: tm.APIBase(), TMDBImageBase: tm.ImageBase(), Scheduler: scheduler.Tuning{Tick: -1}}, func(k string) string { return env[k] }, io.Discard, fstest.MapFS{}, func(a net.Addr) { addrc <- a })
 	}()
 	a := <-addrc
-	resp, err := http.Get("http://" + a.String() + "/api/titles/series-1408")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != 200 {
-		t.Errorf("after a restart: %d", resp.StatusCode)
+	if code, body, _ := get(t, "http://"+a.String()+"/api/titles/series-1408"); code != 200 {
+		t.Errorf("after a restart: %d %s", code, body)
 	}
 }
 

@@ -361,10 +361,6 @@ func TestDryRunRecordsWouldGrabAndTouchesNothing(t *testing.T) {
 	if d := r.downloads(); len(d) != 0 {
 		t.Errorf("dry-run queued %v", d)
 	}
-	if h := r.mustCall("GET", "/api/health", "", 200); h["dryRun"] != true {
-		t.Errorf("health: %v", h)
-	}
-
 	// A day later the decision is taken again, and said once if it is the same.
 	r.advance(24 * time.Hour)
 	r.step()
@@ -375,6 +371,11 @@ func TestDryRunRecordsWouldGrabAndTouchesNothing(t *testing.T) {
 	r.advance(15 * time.Minute)
 	r.step()
 	r.wantSearches(2, "a decision is not repeated on the nothing-found backoff")
+
+	// Last: a Health read searches AIOStreams once to see that it answers.
+	if h := r.mustCall("GET", "/api/health", "", 200); h["dryRun"] != true {
+		t.Errorf("health: %v", h)
+	}
 
 	for _, d := range []string{"movies", "series", "tmp"} {
 		if f := tree(t, filepath.Join(r.root, d)); len(f) != 0 {

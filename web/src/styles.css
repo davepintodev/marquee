@@ -607,6 +607,182 @@ button {
   }
 }
 
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* unlock */
+.screen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 16px;
+}
+
+.unlock {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 16px;
+  text-align: center;
+  background: var(--glass);
+  backdrop-filter: blur(22px);
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+}
+
+.unlock input {
+  font: inherit;
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+  background: transparent;
+  color: var(--fg);
+  outline: none;
+  text-align: center;
+}
+
+.unlock input:focus {
+  border-color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+.unlock input::placeholder {
+  color: var(--mute);
+}
+
+.unlock-error {
+  color: var(--bad);
+  font-size: 14px;
+}
+
+/* health */
+.page {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  padding: 28px 4vw 60px;
+}
+
+.page > * {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.page-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.page-back {
+  color: var(--mute);
+  text-decoration: none;
+}
+
+.page-back:hover,
+.page-back:focus-visible {
+  color: var(--fg);
+}
+
+.page h1 {
+  font-size: clamp(22px, 3vw, 30px);
+}
+
+.page h2 {
+  margin-top: 28px;
+  font-size: 18px;
+}
+
+.page-summary {
+  margin-bottom: 16px;
+}
+
+.page-summary[data-status="warning"] {
+  color: var(--warn);
+}
+
+.page-summary[data-status="error"] {
+  color: var(--bad);
+}
+
+.page-note {
+  margin: 4px auto 12px;
+  color: var(--mute);
+  font-size: 14px;
+}
+
+.checks {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-areas:
+    "word name"
+    "word message";
+  column-gap: 14px;
+  padding: 12px 18px;
+  border-radius: 16px;
+  background: var(--glass);
+  backdrop-filter: blur(22px);
+  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+}
+
+.check-word {
+  grid-area: word;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ok);
+}
+
+.check[data-status="warning"] .check-word {
+  color: var(--warn);
+}
+
+.check[data-status="error"] .check-word {
+  color: var(--bad);
+}
+
+.check-name {
+  grid-area: name;
+  font-weight: 600;
+}
+
+.check-path {
+  overflow-wrap: anywhere;
+}
+
+.check-message {
+  grid-area: message;
+  color: var(--mute);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .check {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "word"
+      "name"
+      "message";
+  }
+}
+
 @keyframes sheet {
   from {
     opacity: 0;

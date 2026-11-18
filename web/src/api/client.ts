@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Title, TitleSummary, Wall } from "./types";
+import type { Health, Title, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -17,6 +17,7 @@ export interface Api {
   // Adding a title that is already in the library changes nothing and still answers with it.
   addTitle(kind: TitleSummary["kind"], tmdbId: number, signal?: AbortSignal): Promise<Title>;
   searchNow(id: string, signal?: AbortSignal): Promise<Title>;
+  health(signal?: AbortSignal): Promise<Health>;
   imageUrl(path: string): string;
 }
 
@@ -24,6 +25,8 @@ export interface ApiOptions {
   // Empty means same origin, which is how the embedded UI runs.
   baseUrl?: string;
   fetch?: typeof fetch;
+  getToken?: () => string | null;
+  onUnauthorized?: (sentToken: string | null) => void;
 }
 
 function isAbort(e: unknown) {
@@ -47,9 +50,19 @@ async function call<T>(run: () => Promise<{ data?: T; error?: unknown; response:
   return res.data;
 }
 
-export function createApi({ baseUrl = "", fetch: f }: ApiOptions): Api {
+export function createApi({ baseUrl = "", fetch: f, getToken, onUnauthorized }: ApiOptions): Api {
   const base = baseUrl.replace(/\/+$/, "");
   const client = createClient<paths>({ baseUrl: base, ...(f ? { fetch: f } : {}) });
+  client.use({
+    onRequest({ request }) {
+      const token = getToken?.();
+      if (token) request.headers.set("Authorization", `Bearer ${token}`);
+      return request;
+    },
+    onResponse({ request, response }) {
+      if (response.status === 401) onUnauthorized?.(request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null);
+    },
+  });
   return {
     async wall(signal) {
       const data = await call(() => client.GET("/api/wall", { signal }), (d) => Array.isArray(d.items));
@@ -64,6 +77,9 @@ export function createApi({ baseUrl = "", fetch: f }: ApiOptions): Api {
     },
     searchNow(id, signal) {
       return call(() => client.POST("/api/titles/{id}/search", { params: { path: { id } }, signal }), (d) => typeof d.id === "string");
+    },
+    health(signal) {
+      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems));
     },
     imageUrl: (path) => base + path,
   };

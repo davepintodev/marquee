@@ -49,3 +49,30 @@ func (j *Jellyfin) Refresh(ctx context.Context) error {
 	}
 	return fmt.Errorf("Jellyfin answered HTTP %d", resp.StatusCode)
 }
+
+// Ping asks Jellyfin's public info page, which needs no key and changes
+// nothing, whether the server answers. Whether the key is accepted shows
+// only when a refresh is tried. Its errors never hold the URL.
+func (j *Jellyfin) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, j.base+"/System/Info/Public", nil)
+	if err != nil {
+		return errors.New("the Jellyfin URL is not valid")
+	}
+	resp, err := j.client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		var timeout interface{ Timeout() bool }
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			return context.DeadlineExceeded
+		}
+		return errors.New("Jellyfin is not reachable")
+	}
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("Jellyfin answered HTTP %d", resp.StatusCode)
+	}
+	return nil
+}

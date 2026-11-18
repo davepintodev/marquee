@@ -22,7 +22,12 @@ import (
 	"github.com/davepintodev/marquee/internal/app"
 )
 
-const manifestVal = "https://aio.example.test/stremio/SECRET123/PASS789/manifest.json"
+// manifestVal names a port nothing listens on, so a service that follows it
+// is refused at once and never reaches real DNS.
+const manifestVal = "http://127.0.0.1:1/stremio/SECRET123/PASS789/manifest.json"
+
+// unreachableTMDB is where start() points TMDB: nothing listens there.
+const unreachableTMDB = "http://127.0.0.1:1/3"
 
 func testEnv(t *testing.T) map[string]string {
 	t.Helper()
@@ -40,7 +45,7 @@ func testEnv(t *testing.T) map[string]string {
 		"MARQUEE_TEMP_PATH":               filepath.Join(root, "tmp"),
 		"MARQUEE_DATA_DIR":                filepath.Join(root, "data"),
 		"MARQUEE_LISTEN":                  "127.0.0.1:0",
-		"MARQUEE_API_TOKEN":               "token-SECRETabc",
+		"MARQUEE_API_TOKEN":               testToken,
 	}
 }
 
@@ -73,7 +78,7 @@ func start(t *testing.T, env map[string]string, logs io.Writer) string {
 	addrc := make(chan net.Addr, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- app.Run(ctx, func(k string) string { return env[k] }, logs, ui, func(a net.Addr) { addrc <- a })
+		done <- app.RunWith(ctx, app.Options{TMDBAPIBase: unreachableTMDB, TMDBImageBase: unreachableTMDB}, func(k string) string { return env[k] }, logs, ui, func(a net.Addr) { addrc <- a })
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -97,9 +102,24 @@ func start(t *testing.T, env map[string]string, logs io.Writer) string {
 	return ""
 }
 
+// testToken is the API token testEnv configures; helpers send it unless a test removes it.
+const testToken = "token-SECRETabc"
+
 func get(t *testing.T, url string) (int, string, string) {
 	t.Helper()
-	resp, err := http.Get(url)
+	return getWith(t, url, testToken)
+}
+
+func getWith(t *testing.T, url, token string) (int, string, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
