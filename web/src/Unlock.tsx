@@ -1,7 +1,6 @@
 import { useId, useState } from "react";
 
 interface Props {
-  // True when a token was sent and marquee refused it.
   rejected: boolean;
   onSubmit: (token: string) => void;
 }

@@ -25,9 +25,7 @@ export interface ApiOptions {
   // Empty means same origin, which is how the embedded UI runs.
   baseUrl?: string;
   fetch?: typeof fetch;
-  // The API token to send as a bearer credential; null or absent sends none.
   getToken?: () => string | null;
-  // Called when marquee answers 401, with the token that request carried.
   onUnauthorized?: (sentToken: string | null) => void;
 }
 

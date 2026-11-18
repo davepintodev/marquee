@@ -12,8 +12,6 @@ interface Props {
   path?: string;
 }
 
-// Shell picks the page and puts the token prompt in front of it whenever
-// marquee answers 401.
 export function Shell({ baseUrl, fetch: f, path = window.location.pathname }: Props) {
   const store = useMemo(() => tokenStore(), []);
   // rejected: a token was sent and marquee refused it, as opposed to none being stored yet.

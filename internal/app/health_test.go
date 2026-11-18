@@ -35,7 +35,6 @@ func startHealth(t *testing.T, opts ...svcOpt) *healthRig {
 
 func (r *healthRig) health() map[string]any { return r.mustCall("GET", "/api/health", "", 200) }
 
-// check returns the Health check with id, failing when it is not listed.
 func (r *healthRig) check(id string) map[string]any {
 	r.t.Helper()
 	h := r.health()

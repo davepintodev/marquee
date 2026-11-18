@@ -110,7 +110,6 @@ func get(t *testing.T, url string) (int, string, string) {
 	return getWith(t, url, testToken)
 }
 
-// getWith sends token as the bearer credential; empty sends none.
 func getWith(t *testing.T, url, token string) (int, string, string) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, url, nil)
