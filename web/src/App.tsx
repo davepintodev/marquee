@@ -109,6 +109,18 @@ export function App({ api }: { api: Api }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [clear, selected, onPage, toWall]);
 
+  // The wall is the library first, so a title that joins it is fetched for once the wall is up.
+  const wallIds = useRef<Set<string> | null>(null);
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    wallIds.current = wall.status === "ok" ? new Set(wall.data.map((t) => t.id)) : null;
+  }, [wall]);
+  const joinWall = useCallback((id: string) => {
+    if (!wallIds.current || wallIds.current.has(id) || asked.current.has(id)) return;
+    asked.current.add(id);
+    setWallTry((n) => n + 1);
+  }, []);
+
   useLive(api, (e: LiveEvent) => {
     if (e.type === "reconnected") {
       // Events in between were lost, so what the lists show is no longer known.
@@ -117,6 +129,7 @@ export function App({ api }: { api: Api }) {
       return;
     }
     const id = e.data.titleId;
+    if (e.type === "title" && e.data.badge) joinWall(id);
     const badge: Badge | null =
       e.type === "title" ? e.data.badge : { state: "downloading", label: `Downloading ${e.data.percent}%`, percent: e.data.percent };
     setLive((l) => (l[id] === null && e.type === "progress" ? l : { ...l, [id]: badge }));
@@ -138,13 +151,14 @@ export function App({ api }: { api: Api }) {
 
   // What the owner just saw from the service is newer than any event before it.
   const keep = useCallback((t: TitleSummary) => {
+    if (t.inLibrary) joinWall(t.id);
     setChanged((c) => ({ ...c, [t.id]: t }));
     setLive((l) => {
       const rest = { ...l };
       delete rest[t.id];
       return rest;
     });
-  }, []);
+  }, [joinWall]);
   const notify = useCallback((text: string) => setToast((prev) => ({ n: (prev?.n ?? 0) + 1, text })), []);
 
   const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;

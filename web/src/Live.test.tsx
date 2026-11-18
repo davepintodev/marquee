@@ -65,3 +65,21 @@ test("after the stream reconnects the wall is fetched again, since events were l
   act(() => live().emit("title", { titleId: "movie-1", badge: { state: "stalled", label: "Stalled" } }));
   await tile(/^Dune \(2021\), Stalled$/);
 });
+
+test("a title the wall does not show yet brings the wall back for it, once", async () => {
+  walls = 0;
+  let added = false;
+  setupApp((url) => {
+    if (url.pathname !== "/api/wall") return json({ error: "nope" }, 404);
+    walls++;
+    const items = [dune, arrival, ...(added ? [movie(3, "Heat")] : [])];
+    return json({ items: items.map((title) => ({ source: "library", title })) });
+  }, "#/");
+  await tile(/^Dune/);
+
+  added = true;
+  act(() => live().emit("title", { titleId: "movie-3", badge: { state: "searching", label: "Searching" } }));
+  act(() => live().emit("progress", { downloadId: "d9", titleId: "movie-3", state: "downloading", percent: 1, bytesDone: 1, bytesTotal: 100 }));
+  await tile(/^Heat \(2021\)/);
+  expect(walls).toBe(2);
+});
