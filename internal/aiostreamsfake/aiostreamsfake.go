@@ -46,6 +46,7 @@ type Fake struct {
 	answers  map[string][]byte
 	searches []Search
 	always   *Step
+	before   func(Search)
 }
 
 // Search is one request the fake received.
@@ -82,6 +83,15 @@ func (f *Fake) Answer(typ, id string, body []byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.answers[typ+"|"+id] = body
+}
+
+// Before sets a function called with each search once it is recorded and
+// before it is answered, for tests that change the world while a search is
+// in flight. It runs outside the fake's lock.
+func (f *Fake) Before(fn func(Search)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.before = fn
 }
 
 // Fail makes every search answer with the step instead of the body.
@@ -122,7 +132,11 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	f.searches = append(f.searches, Search{typ, id})
 	step := f.always
 	body, ok := f.answers[typ+"|"+id]
+	before := f.before
 	f.mu.Unlock()
+	if before != nil {
+		before(Search{typ, id})
+	}
 	if step != nil {
 		if step.Hang {
 			select {

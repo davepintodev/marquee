@@ -95,6 +95,20 @@ func (f *Fake) Add(t Title) {
 	f.titles = append(f.titles, t)
 }
 
+// Replace swaps the title with the same kind and id for t, as TMDB does
+// when it lists a new episode, and adds it when it is not there yet.
+func (f *Fake) Replace(t Title) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, old := range f.titles {
+		if old.Kind == t.Kind && old.ID == t.ID {
+			f.titles[i] = t
+			return
+		}
+	}
+	f.titles = append(f.titles, t)
+}
+
 // SetTrending lists the TMDB ids, in order, that trending returns.
 func (f *Fake) SetTrending(ids ...int) {
 	f.mu.Lock()

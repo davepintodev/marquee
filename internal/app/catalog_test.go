@@ -19,6 +19,7 @@ import (
 
 	"github.com/davepintodev/marquee/internal/apitest"
 	"github.com/davepintodev/marquee/internal/app"
+	"github.com/davepintodev/marquee/internal/scheduler"
 	"github.com/davepintodev/marquee/internal/tmdbfake"
 )
 
@@ -57,6 +58,7 @@ func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcO
 		TMDBAPIBase:   tm.APIBase(),
 		TMDBImageBase: tm.ImageBase(),
 		TMDBTimeout:   2 * time.Second,
+		Scheduler:     scheduler.Tuning{Tick: -1},
 		Sleep: func(_ context.Context, d time.Duration) error {
 			s.sleepMu.Lock()
 			s.sleeps = append(s.sleeps, d)
@@ -785,7 +787,7 @@ func TestTheCatalogSurvivesARestart(t *testing.T) {
 	}
 	env["MARQUEE_LISTEN"] = "127.0.0.1:0"
 	go func() {
-		_ = app.RunWith(ctx, app.Options{TMDBAPIBase: tm.APIBase(), TMDBImageBase: tm.ImageBase()}, func(k string) string { return env[k] }, io.Discard, fstest.MapFS{}, func(a net.Addr) { addrc <- a })
+		_ = app.RunWith(ctx, app.Options{TMDBAPIBase: tm.APIBase(), TMDBImageBase: tm.ImageBase(), Scheduler: scheduler.Tuning{Tick: -1}}, func(k string) string { return env[k] }, io.Discard, fstest.MapFS{}, func(a net.Addr) { addrc <- a })
 	}()
 	a := <-addrc
 	resp, err := http.Get("http://" + a.String() + "/api/titles/series-1408")
@@ -802,8 +804,6 @@ func TestRoutesOfLaterTicketsAnswer501InTheContractsErrorShape(t *testing.T) {
 	s := startReal(t, newTMDB(t))
 	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
 	for _, c := range [][2]string{
-		{"POST", "/api/titles/movie-438631/search"},
-		{"POST", "/api/titles/movie-438631/episodes/s01e01/search"},
 		{"POST", "/api/titles/movie-438631/releases/r1/grab"},
 		{"POST", "/api/history/h1/retry"},
 		{"GET", "/api/events"},
