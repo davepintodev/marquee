@@ -93,12 +93,16 @@ export function App({ api }: { api: Api }) {
       )}
 
       <div className="bar">
+        <svg className="bar-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-4-4" />
+        </svg>
         <input
           ref={bar}
           role="searchbox"
           type="text"
           aria-label="Search movies and series"
-          placeholder="Search movies and series…"
+          placeholder="search"
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
