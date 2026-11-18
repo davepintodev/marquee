@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
+import { Popup } from "./Popup";
 import { Results } from "./Results";
 import { useViewport } from "./useViewport";
 import { Wall } from "./Wall";
@@ -8,6 +9,8 @@ import { Wall } from "./Wall";
 // Waiting this long after the last keystroke keeps one TMDB search per
 // pause instead of one per letter.
 const TYPING_PAUSE_MS = 200;
+
+const TOAST_MS = 5000;
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; message: string };
 
@@ -25,6 +28,10 @@ export function App({ api }: { api: Api }) {
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
   const [answer, setAnswer] = useState<{ query: string; load: Load<TitleSummary[]> }>({ query: "", load: { status: "loading" } });
+  const [selected, setSelected] = useState<TitleSummary | null>(null);
+  // Titles changed from the popup: the wall and results lists were fetched before.
+  const [changed, setChanged] = useState<Record<string, TitleSummary>>({});
+  const [toast, setToast] = useState<{ n: number; text: string } | null>(null);
   const bar = useRef<HTMLInputElement>(null);
 
   const q = query.trim();
@@ -54,6 +61,12 @@ export function App({ api }: { api: Api }) {
     };
   }, [api, q]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const clear = useCallback(() => {
     setQuery("");
     bar.current?.focus();
@@ -61,19 +74,25 @@ export function App({ api }: { api: Api }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") clear();
+      if (e.key !== "Escape") return;
+      if (selected) setSelected(null);
+      else clear();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clear]);
+  }, [clear, selected]);
 
-  const results: Load<TitleSummary[]> = answer.query === q ? answer.load : { status: "loading" };
+  const current = useCallback((t: TitleSummary) => changed[t.id] ?? t, [changed]);
+  const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map(current) : null), [wall, current]);
+  const results: Load<TitleSummary[]> =
+    answer.query !== q ? { status: "loading" } : answer.load.status === "ok" ? { status: "ok", data: answer.load.data.map(current) } : answer.load;
+  const open = selected ? current(selected) : null;
 
   const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
 
   return (
     <div className="app" data-mode={searching ? "search" : "wall"}>
-      <Wall api={api} inert={searching} items={wall.status === "ok" ? wall.data : null} width={width} height={height} />
+      <Wall api={api} inert={searching || !!open} items={wallTitles} width={width} height={height} onSelect={setSelected} />
 
       {!searching && wall.status === "error" && (
         <div className="notice" role="alert">
@@ -92,7 +111,7 @@ export function App({ api }: { api: Api }) {
         </div>
       )}
 
-      <div className="bar">
+      <div className="bar" inert={!!open}>
         <svg className="bar-icon" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="M20 20l-4-4" />
@@ -113,7 +132,7 @@ export function App({ api }: { api: Api }) {
         />
       </div>
 
-      <div className="results" aria-hidden={!searching} inert={!searching}>
+      <div className="results" aria-hidden={!searching} inert={!searching || !!open}>
         {searching && results.status === "error" && (
           <div className="notice inline" role="alert">
             <p>{results.message}</p>
@@ -121,8 +140,23 @@ export function App({ api }: { api: Api }) {
         )}
         {searching && results.status === "loading" && <p className="hint">Searching…</p>}
         {searching && results.status === "ok" && results.data.length === 0 && <p className="hint">Nothing found.</p>}
-        {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} />}
+        {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} onSelect={setSelected} />}
       </div>
+
+      {open && (
+        <Popup
+          api={api}
+          title={open}
+          onClose={() => setSelected(null)}
+          onChanged={(t) => setChanged((c) => ({ ...c, [t.id]: t }))}
+          onToast={(text) => setToast((prev) => ({ n: (prev?.n ?? 0) + 1, text }))}
+        />
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast.text}
+        </div>
+      )}
     </div>
   );
 }
