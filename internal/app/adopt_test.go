@@ -229,6 +229,35 @@ func TestAnAdoptedSeriesMonitorsOnlyMissingEpisodesOfSeasonsOnDiskAndFutureOnes(
 	}
 }
 
+func TestASeasonFolderThatIsASymlinkHasItsEpisodesAdoptedAsOwned(t *testing.T) {
+	elsewhere := t.TempDir()
+	s, err := startAdopt(t, adoptTMDB(t), func(env map[string]string) {
+		library(t, nil, []string{"House/Season 02/House - S02E01 - Episode 1 [Bluray-1080p].mkv"})(env)
+		lay(t, elsewhere,
+			"House Season 4/House - S04E01 - Episode 1 [Bluray-1080p].mkv",
+			"House Season 4/House - S04E02 - Episode 2 [Bluray-1080p].mkv")
+		link := filepath.Join(env["MARQUEE_SERIES_PATH"], "House", "Season 04")
+		if err := os.Symlink(filepath.Join(elsewhere, "House Season 4"), link); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]struct {
+		monitored bool
+		state     string
+	}{
+		"s02e01": {true, "downloaded"},
+		"s04e01": {true, "downloaded"}, "s04e02": {true, "downloaded"}, "s04e03": {true, "searching"},
+	} {
+		got, ok := s.episodes("series-1622")[id]
+		if !ok || got["monitored"] != want.monitored || got["state"] != want.state {
+			t.Errorf("%s = %v, want monitored %v, state %s", id, got, want.monitored, want.state)
+		}
+	}
+}
+
 func TestFoldersWithNoOrSeveralTMDBMatchesAreListedForHealthWithTheReason(t *testing.T) {
 	s, err := startAdopt(t, adoptTMDB(t), library(t,
 		[]string{

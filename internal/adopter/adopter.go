@@ -24,7 +24,6 @@ import (
 	"github.com/davepintodev/marquee/internal/naming"
 )
 
-// TMDB is the part of the metadata client adoption uses.
 type TMDB interface {
 	Search(ctx context.Context, q string) ([]metadata.Summary, error)
 	Details(ctx context.Context, kind string, id int) (metadata.Details, error)
@@ -172,50 +171,63 @@ func (r *run) episodes(where, dir string, d metadata.Details, n catalog.NewTitle
 		known[catalog.EpisodeRef{Season: e.Season, Number: e.Number}] = true
 	}
 	var refs []catalog.EpisodeRef
-	err := filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
-		switch {
-		case err != nil && p == dir:
-			return err
-		case err != nil:
-			r.problem(where+"/"+filepath.ToSlash(relTo(dir, p)), catalog.ProblemUnparseable, "Cannot be read (%v); ignored.", why(err))
-			if e != nil && e.IsDir() {
-				return fs.SkipDir
+	// A link that points back up the tree would otherwise be followed for ever.
+	const maxLinkDepth = 4
+	var walk func(root, shown string, depth int) error
+	walk = func(root, shown string, depth int) error {
+		return filepath.WalkDir(root, func(p string, e fs.DirEntry, err error) error {
+			rel := path.Join(shown, filepath.ToSlash(relTo(root, p)))
+			switch {
+			case err != nil && p == root && depth == 0:
+				return err
+			case err != nil:
+				r.problem(where+"/"+rel, catalog.ProblemUnparseable, "Cannot be read (%v); ignored.", why(err))
+				if e != nil && e.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			case e.IsDir():
+				if p != root && skipped(e.Name()) {
+					return fs.SkipDir
+				}
+				return nil
+			case e.Type()&fs.ModeSymlink != 0 && isFolder(filepath.Dir(p), e):
+				if depth == maxLinkDepth {
+					return nil
+				}
+				target, err := filepath.EvalSymlinks(p)
+				if err != nil {
+					r.problem(where+"/"+rel, catalog.ProblemUnparseable, "Cannot be read (%v); ignored.", why(err))
+					return nil
+				}
+				return walk(target, rel, depth+1)
+			case !chooser.IsVideoFile(e.Name()):
+				return nil
+			}
+			file := where + "/" + rel
+			tok, ok := naming.ParseEpisodeToken(e.Name())
+			if !ok {
+				r.problem(file, catalog.ProblemUnparseable, "The file name has no S01E01 token; ignored.")
+				return nil
+			}
+			if tok.Season == 0 {
+				return nil
+			}
+			var unknown []string
+			for _, ep := range tok.Episodes {
+				ref := catalog.EpisodeRef{Season: tok.Season, Number: ep}
+				refs = append(refs, ref)
+				if !known[ref] {
+					unknown = append(unknown, fmt.Sprintf("S%02dE%02d", tok.Season, ep))
+				}
+			}
+			if len(unknown) > 0 {
+				r.problem(file, catalog.ProblemUnparseable, "%s not an episode TMDB lists for %q; ignored.", isOrAre(unknown), d.Title)
 			}
 			return nil
-		case e.IsDir():
-			if p != dir && skipped(e.Name()) {
-				return fs.SkipDir
-			}
-			return nil
-		case !chooser.IsVideoFile(e.Name()):
-			return nil
-		}
-		rel, err := filepath.Rel(dir, p)
-		if err != nil {
-			return err
-		}
-		file := where + "/" + filepath.ToSlash(rel)
-		tok, ok := naming.ParseEpisodeToken(e.Name())
-		if !ok {
-			r.problem(file, catalog.ProblemUnparseable, "The file name has no S01E01 token; ignored.")
-			return nil
-		}
-		if tok.Season == 0 {
-			return nil
-		}
-		var unknown []string
-		for _, ep := range tok.Episodes {
-			ref := catalog.EpisodeRef{Season: tok.Season, Number: ep}
-			refs = append(refs, ref)
-			if !known[ref] {
-				unknown = append(unknown, fmt.Sprintf("S%02dE%02d", tok.Season, ep))
-			}
-		}
-		if len(unknown) > 0 {
-			r.problem(file, catalog.ProblemUnparseable, "%s not an episode TMDB lists for %q; ignored.", isOrAre(unknown), d.Title)
-		}
-		return nil
-	})
+		})
+	}
+	err := walk(dir, "", 0)
 	sort.Slice(refs, func(i, j int) bool {
 		if refs[i].Season != refs[j].Season {
 			return refs[i].Season < refs[j].Season
