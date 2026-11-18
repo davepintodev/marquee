@@ -1,0 +1,18 @@
+{
+  "status": "warning",
+  "dryRun": true,
+  "checks": [
+    {"id": "fake_data", "name": "Data", "status": "warning", "message": "Fake data mode: everything here is fixture data and nothing is downloaded."},
+    {"id": "dry_run", "name": "Dry-run", "status": "warning", "message": "Dry-run is on: marquee searches and chooses but never downloads."},
+    {"id": "aiostreams", "name": "AIOStreams", "status": "ok", "message": "Reachable."},
+    {"id": "tmdb", "name": "TMDB", "status": "ok", "message": "Key accepted."},
+    {"id": "library_paths", "name": "Library paths", "status": "ok", "message": "Movie and series folders are readable and writable."},
+    {"id": "temp_path", "name": "Temp path", "status": "ok", "message": "On the same filesystem as the library, so imports are atomic."},
+    {"id": "jellyfin", "name": "Jellyfin", "status": "error", "message": "Jellyfin is unreachable. Imports still succeed; refreshes are skipped."}
+  ],
+  "libraryProblems": [
+    {"path": "Movies/Heat", "reason": "ambiguous", "message": "Matched more than one TMDB title (1995 and 1986); add the title to pick one."},
+    {"path": "Series/Unknown Show", "reason": "unmatched", "message": "No TMDB title matches this folder name."},
+    {"path": "Series/House/Season 4/notes.txt", "reason": "unparsed_file", "message": "The file name has no S01E01 token; ignored."}
+  ]
+}

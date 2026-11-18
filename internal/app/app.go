@@ -10,9 +10,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/davepintodev/marquee/internal/config"
+	"github.com/davepintodev/marquee/internal/fake"
 	"github.com/davepintodev/marquee/internal/server"
 )
 
@@ -21,21 +23,48 @@ import (
 func Run(ctx context.Context, getenv func(string) string, logOut io.Writer, ui fs.FS, ready func(net.Addr)) error {
 	log := slog.New(slog.NewTextHandler(logOut, nil))
 
-	cfg, err := config.Load(getenv)
-	if err != nil {
-		return err
+	var (
+		listen string
+		api    http.Handler
+		msg    string
+		attrs  []any
+	)
+	fakeMode := false
+	if v := getenv("MARQUEE_FAKE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return errors.New("MARQUEE_FAKE must be true or false")
+		}
+		fakeMode = b
 	}
-	if err := cfg.CheckPaths(); err != nil {
-		return err
+	if fakeMode {
+		listen = getenv("MARQUEE_LISTEN")
+		if listen == "" {
+			listen = ":8080"
+		}
+		f := fake.New(fake.Options{})
+		defer f.Close()
+		api = f
+		msg = "marquee starting in fake mode: the API serves committed fixtures and nothing is downloaded; TMDB key, library paths and the other essential settings are not required"
+	} else {
+		cfg, err := config.Load(getenv)
+		if err != nil {
+			return err
+		}
+		if err := cfg.CheckPaths(); err != nil {
+			return err
+		}
+		listen = cfg.Listen
+		msg, attrs = "marquee starting", []any{"config", cfg}
 	}
 
-	ln, err := net.Listen("tcp", cfg.Listen)
+	ln, err := net.Listen("tcp", listen)
 	if err != nil {
-		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s: %w", cfg.Listen, err)
+		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s: %w", listen, err)
 	}
-	srv := &http.Server{Handler: server.New(ui), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(ui, api), ReadHeaderTimeout: 10 * time.Second}
 
-	log.Info("marquee starting", "addr", ln.Addr().String(), "config", cfg)
+	log.Info(msg, append([]any{"addr", ln.Addr().String()}, attrs...)...)
 	if ready != nil {
 		ready(ln.Addr())
 	}

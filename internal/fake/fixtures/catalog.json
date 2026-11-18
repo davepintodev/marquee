@@ -1,0 +1,53 @@
+[
+  {"tmdbId": 687163, "kind": "movie", "title": "Project Hail Mary", "year": 2026, "inLibrary": true, "state": "downloaded",
+   "overview": "A lone astronaut wakes with no memory and a mission to save Earth."},
+  {"tmdbId": 13187, "kind": "movie", "title": "A Charlie Brown Christmas", "year": 1965, "inLibrary": true, "state": "downloaded",
+   "overview": "Charlie Brown finds the true meaning of the holiday."},
+  {"tmdbId": 693134, "kind": "movie", "title": "Dune: Part Two", "year": 2024, "inLibrary": true, "state": "missing",
+   "overview": "Paul unites with the Fremen to avenge his family."},
+  {"tmdbId": 329865, "kind": "movie", "title": "Arrival", "year": 2016, "inLibrary": true, "state": "missing",
+   "overview": "A linguist decodes an alien language."},
+  {"tmdbId": 335984, "kind": "movie", "title": "Blade Runner 2049", "year": 2017, "inLibrary": true, "state": "missing",
+   "overview": "A new blade runner unearths a long-buried secret."},
+  {"tmdbId": 1408, "kind": "series", "title": "House", "year": 2004, "inLibrary": true,
+   "overview": "A diagnostician and his team of brilliant, difficult doctors.",
+   "seasons": [
+     {"number": 1, "episodes": [
+       {"number": 1, "name": "Pilot", "airDate": "2004-11-16", "state": "downloaded"},
+       {"number": 2, "name": "Paternity", "airDate": "2004-11-23", "state": "downloaded"}]},
+     {"number": 2, "episodes": [
+       {"number": 1, "name": "Acceptance", "airDate": "2005-09-13", "state": "downloaded"},
+       {"number": 2, "name": "Autopsy", "airDate": "2005-09-20", "state": "downloaded"}]},
+     {"number": 3, "episodes": [
+       {"number": 1, "name": "Meaning", "airDate": "2006-09-05", "state": "downloaded"},
+       {"number": 2, "name": "Cane and Able", "airDate": "2006-09-12", "state": "downloaded"}]},
+     {"number": 4, "episodes": [
+       {"number": 1, "name": "Alone", "airDate": "2007-09-25", "state": "downloaded"},
+       {"number": 2, "name": "Big Baby", "airDate": "2007-10-02", "state": "missing"},
+       {"number": 3, "name": "You Don't Want to Know", "airDate": "2007-10-09", "state": "missing"},
+       {"number": 4, "name": "Sex Kills", "airDate": "2007-10-16", "state": "missing"}]}]},
+  {"tmdbId": 245001, "kind": "series", "title": "Camp Snoopy", "year": 2024, "inLibrary": true,
+   "overview": "Snoopy and the Beagle Scouts at summer camp.",
+   "seasons": [{"number": 1, "episodes": [
+     {"number": 1, "name": "Arrival at Camp", "airDate": "2024-06-14", "state": "searching"},
+     {"number": 2, "name": "Campfire Songs", "airDate": "2024-06-14", "state": "searching"}]}]},
+  {"tmdbId": 245002, "kind": "series", "title": "VisionQuest", "year": 2026, "inLibrary": true,
+   "overview": "Vision searches for his lost identity.",
+   "seasons": [{"number": 1, "episodes": [
+     {"number": 1, "name": "Reboot", "airDate": "2026-10-01", "state": "downloaded"},
+     {"number": 2, "name": "Memory", "airDate": "2026-10-08", "state": "downloaded"},
+     {"number": 3, "name": "Identity", "airDate": "2099-01-01", "state": "unaired"}]}]},
+
+  {"tmdbId": 438631, "kind": "movie", "title": "Dune", "year": 2021, "inLibrary": false, "state": "missing",
+   "overview": "Paul Atreides leads nomadic tribes in a battle for the desert planet."},
+  {"tmdbId": 95396, "kind": "series", "title": "Severance", "year": 2022, "inLibrary": false,
+   "overview": "Employees whose memories are split between work and home.",
+   "seasons": [{"number": 1, "episodes": [
+     {"number": 1, "name": "Good News About Hell", "airDate": "2022-02-18", "state": "missing"},
+     {"number": 2, "name": "Half Loop", "airDate": "2022-02-18", "state": "missing"},
+     {"number": 3, "name": "In Perpetuity", "airDate": "2099-01-01", "state": "unaired"}]}]},
+  {"tmdbId": 83867, "kind": "series", "title": "Andor", "year": 2022, "inLibrary": false,
+   "overview": "A rebel spy in the Star Wars galaxy."},
+  {"tmdbId": 62560, "kind": "series", "title": "Mr. Robot", "year": 2015, "inLibrary": false,
+   "overview": "A hacker is recruited by an underground group."}
+]

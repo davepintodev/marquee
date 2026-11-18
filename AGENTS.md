@@ -12,6 +12,10 @@ One small Go service with one React screen: it searches AIOStreams for releases,
 - Comments only for a non-obvious why. No hostnames, domains, IPs, usernames or home paths anywhere; use placeholders.
 - Commits: `<type>(<scope>): <summary>`, imperative, lowercase, with the why in the body.
 
+## API contract and fake
+
+`api/openapi.yaml` is the one description of the HTTP API; change it first, then run `make api`. `marquee --fake` (or `MARQUEE_FAKE=1`) serves the whole contract from the fixtures in `internal/fake/fixtures/`, with no essential settings needed, so the UI can be built against it. A new operation needs a fake route and a case in `internal/fake/contract_test.go`, or the test fails.
+
 ## Fresh checkout
 
 Needs Go (see `go.mod`), Node 24 with npm, and `golangci-lint` v2.15+ on `PATH`. `make gate` runs `npm ci` in `web/` by itself the first time; run `cd web && npm ci` to set up the web side without the gate.
@@ -22,10 +26,11 @@ Needs Go (see `go.mod`), Node 24 with npm, and `golangci-lint` v2.15+ on `PATH`.
 
 1. `go vet`
 2. `golangci-lint run`
-3. `go test`
-4. web typecheck (`tsc --noEmit`)
-5. web lint (`eslint`)
-6. web tests (`vitest`)
-7. build: Vite build into `web/dist`, then `go build -o bin/marquee ./cmd/marquee`
+3. `go test` (includes the contract test: `api/openapi.yaml` must validate and every operation must match the fake)
+4. web API types check: `web/src/api/schema.d.ts` is generated from the contract and committed; the gate regenerates it and fails when it differs (`make api` rewrites it)
+5. web typecheck (`tsc --noEmit`)
+6. web lint (`eslint`)
+7. web tests (`vitest`)
+8. build: Vite build into `web/dist`, then `go build -o bin/marquee ./cmd/marquee`
 
 CI also runs a `gitleaks` job.

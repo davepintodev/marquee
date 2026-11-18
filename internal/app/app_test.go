@@ -165,3 +165,31 @@ func TestStartupFailuresDoNotLeakSecrets(t *testing.T) {
 		t.Fatalf("want an error naming MARQUEE_LISTEN, got %v", err)
 	}
 }
+
+func TestFakeModeServesTheContractWithoutEssentialSettings(t *testing.T) {
+	logs := newSyncBuf()
+	base := start(t, map[string]string{"MARQUEE_FAKE": "1", "MARQUEE_LISTEN": "127.0.0.1:0"}, logs)
+
+	code, body, ctype := get(t, base+"/api/wall")
+	if code != 200 || ctype != "application/json" || !strings.Contains(body, "Downloading 43%") {
+		t.Fatalf("wall: %d %q %s", code, ctype, body)
+	}
+	if code, _, _ := get(t, base+"/"); code != 200 {
+		t.Errorf("UI still served in fake mode: %d", code)
+	}
+	if !strings.Contains(logs.String(), "fake mode") || !strings.Contains(logs.String(), "not required") {
+		t.Errorf("startup log must say fake mode needs no essential settings: %s", logs.String())
+	}
+}
+
+func TestInvalidFakeSettingIsRejected(t *testing.T) {
+	err := app.Run(context.Background(), func(k string) string {
+		if k == "MARQUEE_FAKE" {
+			return "maybe"
+		}
+		return ""
+	}, io.Discard, fstest.MapFS{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "MARQUEE_FAKE") {
+		t.Fatalf("want an error naming MARQUEE_FAKE, got %v", err)
+	}
+}
