@@ -1,0 +1,88 @@
+{
+  "success": true,
+  "data": {
+    "results": [
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-1/Dune.2021.1080p.BluRay.x264.mkv",
+        "filename": "Dune.2021.1080p.BluRay.x264-GROUP.mkv",
+        "folderName": "Dune.2021.1080p.BluRay.x264-GROUP",
+        "size": 12884901888,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Torrentio",
+        "indexer": "ExampleIndexer",
+        "infoHash": "1111111111111111111111111111111111111111",
+        "age": 400.5,
+        "parsedFile": {"title": "Dune", "resolution": "1080p", "quality": "BluRay", "encode": "AVC", "releaseGroup": "GROUP", "seasons": [], "episodes": []}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-2/Dune.2021.2160p.WEB-DL.mkv",
+        "filename": "Dune.2021.2160p.WEB-DL.mkv",
+        "folderName": "Dune.2021.2160p.WEB-DL",
+        "size": 34359738368,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": false,
+        "addon": "Comet",
+        "indexer": "ExampleIndexer",
+        "infoHash": "2222222222222222222222222222222222222222",
+        "age": null,
+        "parsedFile": {"title": "Dune", "resolution": "2160p", "quality": "WEB-DL", "encode": "HEVC", "releaseGroup": "", "seasons": [], "episodes": []}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-3/Dune.2021.1080p.exe",
+        "filename": "Dune.2021.1080p.WEB-DL.exe",
+        "folderName": "Dune.2021.1080p.WEB-DL",
+        "size": 4194304000,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Torrentio",
+        "indexer": "ExampleIndexer",
+        "infoHash": "3333333333333333333333333333333333333333",
+        "parsedFile": {"title": "Dune", "resolution": "1080p", "quality": "WEB-DL", "encode": "", "releaseGroup": "", "seasons": [], "episodes": []}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-4/Dune.2021.720p.7z",
+        "filename": "Dune.2021.720p.BluRay.7z",
+        "folderName": "Dune.2021.720p.BluRay",
+        "size": 1073741824,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Comet",
+        "indexer": "ExampleIndexer",
+        "infoHash": "4444444444444444444444444444444444444444",
+        "parsedFile": {"title": "Dune", "resolution": "720p", "quality": "BluRay", "encode": "", "releaseGroup": "", "seasons": [], "episodes": []}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-5/Dune.2021.sample.mkv",
+        "filename": "Dune.2021.sample.mkv",
+        "folderName": "Dune.2021.1080p.BluRay.x264-GROUP",
+        "size": 31457280,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Torrentio",
+        "indexer": "ExampleIndexer",
+        "infoHash": "5555555555555555555555555555555555555555",
+        "parsedFile": {"title": "Dune", "resolution": "1080p", "quality": "BluRay", "encode": "", "releaseGroup": "", "seasons": [], "episodes": []}
+      },
+      {
+        "url": "https://aio.example.test/api/v1/playback/PLAYBACK-TOKEN-6/Dune.2021.720p.WEB-DL.mkv",
+        "filename": "Dune.2021.720p.WEB-DL.mkv",
+        "folderName": "Dune.2021.720p.WEB-DL",
+        "size": 2147483648,
+        "type": "debrid",
+        "service": "torbox",
+        "cached": true,
+        "addon": "Comet",
+        "indexer": "ExampleIndexer",
+        "infoHash": "6666666666666666666666666666666666666666",
+        "age": 12,
+        "parsedFile": {"title": "Dune", "resolution": "720p", "quality": "WEB-DL", "encode": "AVC", "releaseGroup": "", "seasons": [], "episodes": []}
+      }
+    ]
+  }
+}

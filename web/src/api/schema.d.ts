@@ -553,6 +553,33 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description AIOStreams, the release source, did not answer or refused marquee's credentials. This is a source error, never an empty result; the error says which. */
+        SourceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description AIOStreams is rate-limiting marquee; try again shortly. This is a source error, never an empty result. */
+        SourceRateLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description TMDB lists no id that AIOStreams understands for this title (a series needs a TVDB or IMDb id), so it cannot be searched. */
+        NoSourceId: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description No such title, episode, release or entry. */
         NotFound: {
             headers: {
@@ -863,6 +890,9 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["NoSourceId"];
+            502: components["responses"]["SourceUnavailable"];
+            503: components["responses"]["SourceRateLimited"];
         };
     };
     grabRelease: {
