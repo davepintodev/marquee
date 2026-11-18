@@ -286,3 +286,12 @@ func TestOpenStreamsDoNotHoldUpShutdown(t *testing.T) {
 		t.Errorf("shutdown took %v with streams open", d)
 	}
 }
+
+func TestAnUnmonitoredSeriesStillShowsItsDownload(t *testing.T) {
+	r, _ := setup(t)
+	r.mustCall("PATCH", "/api/titles/series-1408", `{"monitored":false}`, 200)
+	r.enqueue(episodeJob(r.cdn.Add("ep.mkv", debridfake.File{Data: debridfake.MKV(1 << 20), Pace: 100 * time.Millisecond}), "ep.mkv"))
+	waitFor(t, "the download on the badge", 5*time.Second, func() bool {
+		return badgeOf(r.getTitle("series-1408"))["state"] == "downloading"
+	})
+}
