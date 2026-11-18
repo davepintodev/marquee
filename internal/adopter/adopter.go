@@ -147,10 +147,12 @@ func (r *run) folder(ctx context.Context, label, kind, dir, dirName string) erro
 	if kind == "movie" {
 		f.Movie, err = hasVideo(dir)
 	} else {
-		f.Episodes, err = r.episodes(label+"/"+dirName, dir, d, n)
+		f.Episodes, err = r.episodes(where, dir, d, n)
 	}
 	if err != nil {
-		return fmt.Errorf("reading %q: %w", dirName, err)
+		// One folder the service cannot read must not keep the rest of the library from being adopted.
+		r.problem(where, catalog.ProblemUnmatched, "The folder cannot be read (%v); not adopted.", why(err))
+		return nil
 	}
 	if _, _, err := r.Catalog.Adopt(ctx, n, f); err != nil {
 		return err
@@ -172,8 +174,14 @@ func (r *run) episodes(where, dir string, d metadata.Details, n catalog.NewTitle
 	var refs []catalog.EpisodeRef
 	err := filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
 		switch {
-		case err != nil:
+		case err != nil && p == dir:
 			return err
+		case err != nil:
+			r.problem(where+"/"+filepath.ToSlash(relTo(dir, p)), catalog.ProblemUnparseable, "Cannot be read (%v); ignored.", why(err))
+			if e != nil && e.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		case e.IsDir():
 			if p != dir && skipped(e.Name()) {
 				return fs.SkipDir
@@ -215,6 +223,23 @@ func (r *run) episodes(where, dir string, d metadata.Details, n catalog.NewTitle
 		return refs[i].Number < refs[j].Number
 	})
 	return refs, err
+}
+
+// why is what went wrong without the path, which the problem already names.
+func why(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+func relTo(dir, p string) string {
+	rel, err := filepath.Rel(dir, p)
+	if err != nil {
+		return p
+	}
+	return rel
 }
 
 func isOrAre(eps []string) string {

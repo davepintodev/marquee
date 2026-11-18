@@ -435,3 +435,38 @@ func TestAdoptionKeepsTheMonitoringOfATitleAddedByHandAndLearnsItsFiles(t *testi
 		t.Errorf("a series added by hand keeps monitoring every aired episode: %v %v", e["s01e01"], e["s04e02"])
 	}
 }
+
+func TestAFolderTheServiceCannotReadIsListedAndTheRestIsStillAdopted(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not stop root")
+	}
+	s, err := startAdopt(t, adoptTMDB(t), func(env map[string]string) {
+		library(t, []string{"Arrival (2016)/Arrival (2016) [Bluray-1080p].mkv", "Dune (2021)/Dune (2021) [Bluray-1080p].mkv"}, []string{
+			"House/Season 04/House - S04E01 - Name [Bluray-1080p].mkv",
+			"House/Season 05/House - S05E01 - Name [Bluray-1080p].mkv",
+		})(env)
+		for _, dir := range []string{
+			filepath.Join(env["MARQUEE_MOVIES_PATH"], "Arrival (2016)"),
+			filepath.Join(env["MARQUEE_SERIES_PATH"], "House", "Season 05"),
+		} {
+			if err := os.Chmod(dir, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(dir, 0o750) })
+		}
+	})
+	if err != nil {
+		t.Fatalf("one unreadable folder must not stop adoption: %v", err)
+	}
+	if got := s.titleIDs(); strings.Join(got, ",") != "movie-438631,series-1622" {
+		t.Errorf("titles: %v", got)
+	}
+	for _, path := range []string{"Movies/Arrival (2016)", "Series/House/Season 05"} {
+		if p, ok := s.problem(path); !ok || !strings.Contains(p.message, "permission denied") || strings.Contains(p.message, s.env["MARQUEE_MOVIES_PATH"]) {
+			t.Errorf("%s = %+v (listed %v)", path, p, ok)
+		}
+	}
+	if e := s.episodes("series-1622"); e["s04e01"]["state"] != "downloaded" {
+		t.Errorf("the readable season is adopted: %v", e["s04e01"])
+	}
+}
