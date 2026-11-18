@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Title, TitleSummary } from "./api/types";
 import { Activity } from "./Activity";
+import { Health } from "./Health";
 import { Popup } from "./Popup";
 import { Results } from "./Results";
 import { goTo, useRoute } from "./route";
@@ -38,6 +39,8 @@ export function App({ api }: { api: Api }) {
   const bar = useRef<HTMLInputElement>(null);
   const route = useRoute();
   const onPage = route.name !== "wall";
+  // Failure here is quiet by design: the icon stays neutral when Health cannot be read.
+  const [attention, setAttention] = useState(false);
   const toWall = useCallback(() => goTo({ name: "wall" }), []);
 
   const q = query.trim();
@@ -51,6 +54,16 @@ export function App({ api }: { api: Api }) {
     );
     return () => ctl.abort();
   }, [api, wallTry]);
+
+  useEffect(() => {
+    if (onPage) return;
+    const ctl = new AbortController();
+    api.health(ctl.signal).then(
+      (h) => !ctl.signal.aborted && setAttention(h.checks.some((c) => c.status === "error")),
+      () => !ctl.signal.aborted && setAttention(false),
+    );
+    return () => ctl.abort();
+  }, [api, onPage]);
 
   useEffect(() => {
     if (!q) return;
@@ -121,12 +134,25 @@ export function App({ api }: { api: Api }) {
         </div>
       )}
 
-      <a className="nav-link" href="#/activity" inert={!!open || onPage || searching}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 12h4l3 8 4-16 3 8h4" />
-        </svg>
-        Activity
-      </a>
+      <nav className="nav" aria-label="Pages" inert={!!open || onPage || searching}>
+        <a className="nav-link" href="#/activity">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12h4l3 8 4-16 3 8h4" />
+          </svg>
+          Activity
+        </a>
+        <a
+          className="nav-link nav-icon"
+          href="#/health"
+          aria-label={attention ? "Health: something needs attention" : "Health"}
+          title={attention ? "Health: something needs attention" : "Health"}
+          data-attention={attention ? "true" : undefined}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />
+          </svg>
+        </a>
+      </nav>
 
       <div className="bar" inert={!!open || onPage}>
         <svg className="bar-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -185,6 +211,7 @@ export function App({ api }: { api: Api }) {
           onToast={notify}
         />
       )}
+      {route.name === "health" && <Health api={api} onClose={toWall} />}
       {route.name === "activity" && <Activity api={api} onClose={toWall} onChanged={keep} onToast={notify} />}
       {toast && (
         <div className="toast" role="status">

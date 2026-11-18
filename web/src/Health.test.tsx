@@ -31,7 +31,7 @@ function setup(answers: (() => Response)[]) {
   let n = 0;
   const fetchStub = vi.fn(async () => answers[Math.min(n++, answers.length - 1)]());
   const api = createApi({ baseUrl: BASE, fetch: fetchStub as unknown as typeof fetch });
-  render(<Health api={api} />);
+  render(<Health api={api} onClose={() => {}} />);
   return fetchStub;
 }
 

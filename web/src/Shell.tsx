@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { App } from "./App";
-import { Health } from "./Health";
 import { Unlock } from "./Unlock";
 import { createApi } from "./api/client";
 import { tokenStore } from "./token";
@@ -13,6 +12,10 @@ interface Props {
 }
 
 export function Shell({ baseUrl, fetch: f, path = window.location.pathname }: Props) {
+  // /health stays a working address: it opens the same Health page the wall links to by hash.
+  useState(() => {
+    if (path.replace(/\/+$/, "") === "/health") window.history.replaceState(null, "", "/#/health");
+  });
   const store = useMemo(() => tokenStore(), []);
   // rejected: a token was sent and marquee refused it, as opposed to none being stored yet.
   const [lock, setLock] = useState<{ rejected: boolean } | null>(null);
@@ -46,6 +49,5 @@ export function Shell({ baseUrl, fetch: f, path = window.location.pathname }: Pr
       />
     );
   }
-  const page = path.replace(/\/+$/, "");
-  return page === "/health" ? <Health key={round} api={api} /> : <App key={round} api={api} />;
+  return <App key={round} api={api} />;
 }

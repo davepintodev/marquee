@@ -297,3 +297,37 @@ test("detail and Activity read well in the light theme", async ({ browser }) => 
   await page.screenshot({ path: join(shots, "activity-light.png") });
   await ctx.close();
 });
+
+const allWell = { status: "ok", dryRun: false, checks: [{ id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." }], libraryProblems: [] };
+
+for (const s of screens.slice(0, 2)) {
+  test(`the Health icon is neutral when all is well, orange when a check fails, and opens Health on ${s.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: s.width, height: s.height });
+    const icon = page.locator(".nav-icon");
+    const stroke = () => icon.locator("svg").evaluate((el) => getComputedStyle(el).stroke);
+    const header = { x: s.width - 200, y: 0, width: 200, height: 80 };
+
+    await page.route("**/api/health", (r) => r.fulfill({ json: allWell }));
+    await page.goto("/");
+    await expect(icon).toBeVisible();
+    await expect(icon).toHaveAccessibleName("Health");
+    const quiet = await stroke();
+    await page.screenshot({ path: join(shots, `health-icon-ok-${s.name}.png`), clip: header });
+
+    await page.unroute("**/api/health");
+    await page.goto("/");
+    await expect(icon).toHaveAccessibleName(/needs attention/);
+    expect(await stroke()).not.toBe(quiet);
+    await page.screenshot({ path: join(shots, `health-icon-failing-${s.name}.png`), clip: header });
+
+    await icon.click();
+    await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: join(shots, `health-page-${s.name}.png`) });
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("searchbox")).toBeVisible();
+
+    await page.goto("/health");
+    await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
+  });
+}
