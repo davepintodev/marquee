@@ -13,8 +13,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/davepintodev/marquee/internal/app"
 	"github.com/davepintodev/marquee/internal/aiostreams"
+	"github.com/davepintodev/marquee/internal/aiostreamsfake"
+	"github.com/davepintodev/marquee/internal/app"
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/chooser"
 	"github.com/davepintodev/marquee/internal/config"
@@ -104,6 +105,15 @@ func (r *rig) startService() {
 	_ = awaitAdoption(r.t, adopted)
 }
 
+// quietAIOStreams starts an AIOStreams fake that answers no results and
+// returns the manifest URL for it, so Health has something to ask.
+func quietAIOStreams(t *testing.T) string {
+	t.Helper()
+	aio := aiostreamsfake.New()
+	t.Cleanup(aio.Close)
+	return aio.ManifestURL()
+}
+
 func setup(t *testing.T) (*rig, string) {
 	t.Helper()
 	cdn := debridfake.New()
@@ -112,6 +122,7 @@ func setup(t *testing.T) (*rig, string) {
 	t.Cleanup(jf.Close)
 	env := testEnv(t)
 	env["MARQUEE_TMDB_KEY"] = tmdbfake.Key
+	env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] = quietAIOStreams(t)
 	env["MARQUEE_JELLYFIN_URL"] = jf.URL
 	env["MARQUEE_JELLYFIN_KEY"] = jellyfinfake.Key
 	r := newRig(t, env, cdn, jf, newTMDB(t))
@@ -475,11 +486,19 @@ func TestJellyfinBeingDownLeavesTheImportSuccessfulAndShowsOnHealth(t *testing.T
 		health = r.mustCall("GET", "/api/health", "", 200)
 		return health["status"] != "ok"
 	})
-	checks := health["checks"].([]any)
-	if len(checks) != 1 || checks[0].(map[string]any)["id"] != "jellyfin" || checks[0].(map[string]any)["status"] != "warning" {
-		t.Fatalf("health checks = %v, want one Jellyfin warning", checks)
+	var jellyfin map[string]any
+	for _, c := range health["checks"].([]any) {
+		if m := c.(map[string]any); m["status"] != "ok" {
+			if m["id"] != "jellyfin" || jellyfin != nil {
+				t.Fatalf("health checks = %v, want the Jellyfin warning alone", health["checks"])
+			}
+			jellyfin = m
+		}
 	}
-	if msg := checks[0].(map[string]any)["message"].(string); !strings.Contains(msg, "503") {
+	if jellyfin == nil || jellyfin["status"] != "warning" {
+		t.Fatalf("health checks = %v, want a Jellyfin warning", health["checks"])
+	}
+	if msg := jellyfin["message"].(string); !strings.Contains(msg, "503") {
 		t.Errorf("health message %q does not say what Jellyfin answered", msg)
 	}
 
@@ -498,6 +517,7 @@ func TestWithoutAJellyfinURLNothingIsRefreshedAndNothingIsReported(t *testing.T)
 	defer cdn.Close()
 	env := testEnv(t)
 	env["MARQUEE_TMDB_KEY"] = tmdbfake.Key
+	env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] = quietAIOStreams(t)
 	r := newRig(t, env, cdn, nil, newTMDB(t))
 	r.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
 	r.enqueue(movieJob(cdn.Add("a.mkv", debridfake.File{Data: debridfake.MKV(100 << 10)}), "a.mkv"))

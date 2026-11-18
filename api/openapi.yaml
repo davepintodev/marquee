@@ -401,6 +401,10 @@ components:
         Optional API token (MARQUEE_API_TOKEN). With no token configured the
         API is open and clients send no Authorization header; with one, every
         operation answers 401 without `Authorization: Bearer <token>`.
+        Until a later change lets them carry it, `getImage` and `streamEvents`
+        are the exceptions: the browser loads them through `<img>` and
+        `EventSource`, which cannot send the header, so they answer without
+        the token.
   parameters:
     TitleId:
       name: id

@@ -20,6 +20,7 @@ import (
 	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/fake"
 	"github.com/davepintodev/marquee/internal/httpapi"
+	"github.com/davepintodev/marquee/internal/importer"
 	"github.com/davepintodev/marquee/internal/metadata"
 	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/scheduler"
@@ -49,6 +50,8 @@ type Options struct {
 	// OnAdopted is called once the first-run adoption has finished, with
 	// its error, or with nil when an earlier run had already completed it.
 	OnAdopted func(error)
+	// HealthTimeout bounds each probe of a Health read; zero is eight seconds.
+	HealthTimeout time.Duration
 	// Scheduler tunes the scheduler; the zero value is production.
 	Scheduler scheduler.Tuning
 	// OnScheduler is called with the scheduler once it is built; tests
@@ -68,6 +71,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 
 	var (
 		listen string
+		token  config.Secret
 		api    http.Handler
 		closer func()
 		msg    string
@@ -86,6 +90,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		if listen == "" {
 			listen = ":8080"
 		}
+		token = config.Secret(getenv("MARQUEE_API_TOKEN"))
 		f := fake.New(fake.Options{})
 		defer f.Close()
 		api, closer = f, f.Close
@@ -172,8 +177,14 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			<-schedDone
 		}()
 		listen = cfg.Listen
+		token = cfg.APIToken
+		var jellyfin httpapi.Pinger
+		if cfg.JellyfinURL != "" {
+			jellyfin = importer.NewJellyfin(cfg.JellyfinURL, cfg.JellyfinKey, opts.HealthTimeout)
+		}
 		api = httpapi.New(httpapi.Deps{
 			Catalog: store, TMDB: tmdb, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
+			Paths: cfg.Paths(), Jellyfin: jellyfin, HealthTimeout: opts.HealthTimeout,
 			Images: metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 		})
 		msg, attrs = "marquee starting", []any{"config", cfg}
@@ -183,7 +194,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 	if err != nil {
 		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s: %w", listen, err)
 	}
-	srv := &http.Server{Handler: server.New(ui, api), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(ui, httpapi.RequireToken(token, api)), ReadHeaderTimeout: 10 * time.Second}
 	if closer != nil {
 		// Shutdown waits for handlers, and an event stream only returns once the fake closes.
 		srv.RegisterOnShutdown(closer)

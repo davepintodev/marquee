@@ -60,6 +60,13 @@ func (s *Server) FailWith(status int) {
 }
 
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
+	// The public info page answers anyone, whatever FailWith says: a server
+	// that is up but refuses refreshes is still reachable.
+	if r.Method == http.MethodGet && r.URL.Path == "/System/Info/Public" {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ServerName":"fake","Version":"10.10.0"}`))
+		return
+	}
 	if r.Method != http.MethodPost || r.URL.Path != "/Library/Refresh" {
 		http.NotFound(w, r)
 		return
