@@ -17,9 +17,13 @@ const TYPING_PAUSE_MS = 200;
 
 const TOAST_MS = 5000;
 
-// The wall starts below the header pills: their offset and height (about 40px) plus a
-// gap. The pills' offset changes at the phone breakpoint in styles.css, so this does too.
-const wallTop = (width: number) => (width <= 640 ? 62 : 68);
+// The wall's frame follows --edge in styles.css (16px, 12px at the phone breakpoint): the
+// header pills sit that far in, the wall starts a gap below their 40px height, and each
+// tile's own half-gap padding is taken off so the visible art lines up with the pills.
+const TILE_PAD = 5;
+const edgeOf = (width: number) => (width <= 640 ? 12 : 16);
+const wallTop = (width: number) => edgeOf(width) + 40 + 12 - TILE_PAD;
+const wallEdge = (width: number) => edgeOf(width) - TILE_PAD;
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; message: string };
 
@@ -145,7 +149,7 @@ export function App({ api }: { api: Api }) {
     },
     [changed, live],
   );
-  const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map(current) : null), [wall, current]);
+  const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map(current) : wall.status === "error" ? [] : null), [wall, current]);
   const results: Load<TitleSummary[]> =
     answer.query !== q ? { status: "loading" } : answer.load.status === "ok" ? { status: "ok", data: answer.load.data.map(current) } : answer.load;
   const open = selected && !onPage ? current(selected) : null;
@@ -166,7 +170,7 @@ export function App({ api }: { api: Api }) {
 
   return (
     <div className="app" data-mode={onPage ? "page" : searching ? "search" : "wall"}>
-      <Wall api={api} inert={searching || !!open || onPage} items={wallTitles} width={width} height={height} top={wallTop(width)} onSelect={setSelected} />
+      <Wall api={api} inert={searching || !!open || onPage} items={wallTitles} width={width} height={height} top={wallTop(width)} edge={wallEdge(width)} onSelect={setSelected} />
 
       {!searching && !onPage && wall.status === "error" && (
         <div className="notice" role="alert">
