@@ -77,7 +77,13 @@ type Result struct {
 // carries credentials and may change: the info hash, the file name and
 // the size.
 func Identity(s aiostreams.Stream) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d", strings.ToLower(s.InfoHash), s.Filename, s.Size)))
+	return IdentityOf(s.InfoHash, s.Filename, s.Size)
+}
+
+// IdentityOf is Identity for a release known only by its parts, such as
+// a download taken from the history.
+func IdentityOf(infoHash, fileName string, size int64) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d", strings.ToLower(infoHash), fileName, size)))
 	return hex.EncodeToString(sum[:identityHash])
 }
 

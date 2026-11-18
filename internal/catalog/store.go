@@ -108,6 +108,36 @@ CREATE TABLE blocklist (
   blocked_at TEXT NOT NULL,
   reason     TEXT NOT NULL
 ) WITHOUT ROWID;
+`, `
+CREATE TABLE downloads (
+  id           TEXT PRIMARY KEY,
+  title_id     TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+  season       INTEGER NOT NULL DEFAULT 0,
+  number       INTEGER NOT NULL DEFAULT 0,
+  state        TEXT NOT NULL CHECK (state IN ('queued', 'downloading', 'verifying', 'importing', 'done', 'failed')),
+  info_hash    TEXT NOT NULL,
+  file_name    TEXT NOT NULL,
+  size         INTEGER NOT NULL,
+  release_name TEXT NOT NULL,
+  resolution   TEXT NOT NULL DEFAULT '',
+  quality      TEXT NOT NULL DEFAULT '',
+  url          TEXT NOT NULL,
+  bytes_done   INTEGER NOT NULL DEFAULT 0,
+  bytes_total  INTEGER NOT NULL DEFAULT 0,
+  reason       TEXT NOT NULL DEFAULT '',
+  message      TEXT NOT NULL DEFAULT '',
+  library_path TEXT NOT NULL DEFAULT '',
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX downloads_one_active ON downloads (title_id, season, number)
+  WHERE state NOT IN ('done', 'failed');
+CREATE TABLE component_status (
+  component TEXT PRIMARY KEY,
+  ok        INTEGER NOT NULL,
+  message   TEXT NOT NULL,
+  at        TEXT NOT NULL
+) WITHOUT ROWID;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {
@@ -137,3 +167,6 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	}
 	return nil
 }
+
+// Now is the store's clock, the one that stamps its rows.
+func (s *Store) Now() time.Time { return s.now() }

@@ -54,6 +54,8 @@ func New(d Deps) http.Handler {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", a.health)
+	mux.HandleFunc("GET /api/downloads", a.listDownloads)
+	mux.HandleFunc("GET /api/history", a.listHistory)
 	mux.HandleFunc("GET /api/wall", a.wall)
 	mux.HandleFunc("GET /api/search", a.search)
 	mux.HandleFunc("GET /api/titles", a.listTitles)
@@ -68,8 +70,6 @@ func New(d Deps) http.Handler {
 		"POST /api/titles/{id}/search",
 		"POST /api/titles/{id}/episodes/{episodeId}/search",
 		"POST /api/titles/{id}/releases/{releaseId}/grab",
-		"GET /api/downloads",
-		"GET /api/history",
 		"POST /api/history/{historyId}/retry",
 		"GET /api/events",
 	} {
@@ -83,9 +83,17 @@ func New(d Deps) http.Handler {
 	return mux
 }
 
-func (a *api) health(w http.ResponseWriter, _ *http.Request) {
+func (a *api) health(w http.ResponseWriter, r *http.Request) {
+	checks := []map[string]any{}
+	status := "ok"
+	// A refresh that failed after an import is the one check recorded so
+	// far; the Health page proper adds the rest.
+	if st, ok, err := a.Catalog.GetComponentStatus(r.Context(), "jellyfin"); err == nil && ok && !st.OK {
+		checks = append(checks, map[string]any{"id": "jellyfin", "name": "Jellyfin", "status": "warning", "message": st.Message})
+		status = "warning"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "ok", "dryRun": a.DryRun, "checks": []any{}, "libraryProblems": []any{},
+		"status": status, "dryRun": a.DryRun, "checks": checks, "libraryProblems": []any{},
 	})
 }
 

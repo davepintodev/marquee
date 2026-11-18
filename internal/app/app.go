@@ -20,6 +20,7 @@ import (
 	"github.com/davepintodev/marquee/internal/fake"
 	"github.com/davepintodev/marquee/internal/httpapi"
 	"github.com/davepintodev/marquee/internal/metadata"
+	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/server"
 )
 
@@ -38,6 +39,11 @@ type Options struct {
 	AIOStreamsTimeout time.Duration
 	// Sleep waits out a TMDB rate limit; nil really sleeps.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Transfers tunes the download pipeline; the zero value is production.
+	Transfers pipeline.Tuning
+	// OnPipeline is called with the download manager once it is built,
+	// before it starts; tests use it to queue a release, as the scheduler will.
+	OnPipeline func(*pipeline.Manager)
 }
 
 // Run loads and checks the configuration, then serves until ctx ends.
@@ -87,6 +93,28 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			return err
 		}
 		defer func() { _ = store.Close() }()
+		transfers := pipeline.New(pipeline.Options{
+			Catalog: store, JellyfinURL: cfg.JellyfinURL, JellyfinKey: cfg.JellyfinKey,
+			MoviesPath: cfg.MoviesPath, SeriesPath: cfg.SeriesPath, TempPath: cfg.TempPath,
+			Log: log, Tuning: opts.Transfers,
+		})
+		if opts.OnPipeline != nil {
+			opts.OnPipeline(transfers)
+		}
+		// Dry-run never downloads or writes to the library, so the queue is not worked at all.
+		if !cfg.DryRun {
+			transfersCtx, stopTransfers := context.WithCancel(context.Background())
+			transfersDone := make(chan struct{})
+			go func() {
+				defer close(transfersDone)
+				transfers.Run(transfersCtx)
+			}()
+			// The database closes after this: a download in flight must stop and save its progress first.
+			defer func() {
+				stopTransfers()
+				<-transfersDone
+			}()
+		}
 		tmdb := metadata.New(metadata.Options{
 			APIBase: opts.TMDBAPIBase, ImageBase: opts.TMDBImageBase, Key: cfg.TMDBKey,
 			Timeout: opts.TMDBTimeout, ImageTimeout: opts.TMDBImageTimeout, Sleep: opts.Sleep,
