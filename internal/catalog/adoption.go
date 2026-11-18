@@ -86,14 +86,12 @@ const (
 	ProblemUnparseable = "unparsed_file"
 )
 
-// LibraryProblem is a folder or file adoption could not use.
 type LibraryProblem struct {
 	Path    string // "Movies/<folder>" or "Series/<folder>[/<file>]"
 	Reason  string
 	Message string
 }
 
-// AdoptionDone reports whether a first-run adoption has completed.
 func (s *Store) AdoptionDone(ctx context.Context) (bool, error) {
 	var n int
 	if err := s.r.QueryRowContext(ctx, `SELECT count(*) FROM adoption`).Scan(&n); err != nil {
@@ -125,7 +123,6 @@ func (s *Store) FinishAdoption(ctx context.Context, problems []LibraryProblem) e
 	return tx.Commit()
 }
 
-// LibraryProblems lists what adoption left for the owner, by path.
 func (s *Store) LibraryProblems(ctx context.Context) ([]LibraryProblem, error) {
 	rows, err := s.r.QueryContext(ctx, `SELECT path, reason, message FROM library_problems ORDER BY path`)
 	if err != nil {

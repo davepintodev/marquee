@@ -42,7 +42,6 @@ var videoExtensions = map[string]bool{
 	".wmv": true, ".ts": true, ".m2ts": true, ".webm": true, ".mpg": true, ".mpeg": true,
 }
 
-// IsVideoFile reports whether name's extension is on the video allowlist.
 func IsVideoFile(name string) bool { return videoExtensions[strings.ToLower(path.Ext(name))] }
 
 // Context is what the releases are chosen for.
