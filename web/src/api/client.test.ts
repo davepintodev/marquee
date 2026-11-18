@@ -52,7 +52,11 @@ test("a 200 with a body that is not the contract's shape is an ApiError, not a c
 test("an aborted request rethrows the abort so callers can ignore it", async () => {
   const ctl = new AbortController();
   const fetchStub = vi.fn(async (r: Request) => {
-    await new Promise((_, rej) => r.signal.addEventListener("abort", () => rej(r.signal.reason)));
+    await new Promise((_, rej) => {
+      // Like fetch, which rejects at once for a signal that is already aborted.
+      if (r.signal.aborted) rej(r.signal.reason);
+      r.signal.addEventListener("abort", () => rej(r.signal.reason));
+    });
     return ok({});
   });
   const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
@@ -112,4 +116,37 @@ test("events delivers progress and title messages, skips garbage and says when t
 test("events does nothing where there is no EventSource", () => {
   const api = createApi({});
   expect(() => api.events(() => {})()).not.toThrow();
+});
+
+test("every request carries the token the caller holds, and none when there is none", async () => {
+  const seen: (string | null)[] = [];
+  const fetchStub = vi.fn(async (r: Request) => {
+    seen.push(r.headers.get("Authorization"));
+    return ok({ items: [] });
+  });
+  let token: string | null = null;
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch, getToken: () => token });
+
+  await api.wall();
+  token = "t0ken";
+  await api.wall();
+
+  expect(seen).toEqual([null, "Bearer t0ken"]);
+});
+
+test("a 401 tells the caller the token is needed and still fails the call", async () => {
+  const fetchStub = vi.fn(async () => new Response(JSON.stringify({ error: "this marquee needs its API token" }), { status: 401, headers: { "Content-Type": "application/json" } }));
+  const onUnauthorized = vi.fn();
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch, onUnauthorized });
+
+  await expect(api.wall()).rejects.toMatchObject({ status: 401 });
+  expect(onUnauthorized).toHaveBeenCalledTimes(1);
+});
+
+test("health reads the contract's shape", async () => {
+  const health = { status: "ok", dryRun: false, checks: [], libraryProblems: [] };
+  const fetchStub = vi.fn(async (r: Request) => (new URL(r.url).pathname === "/api/health" ? ok(health) : ok({})));
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  await expect(api.health()).resolves.toEqual(health);
 });

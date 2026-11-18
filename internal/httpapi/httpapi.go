@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/davepintodev/marquee/internal/catalog"
+	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/keylock"
 	"github.com/davepintodev/marquee/internal/metadata"
 )
@@ -36,6 +37,12 @@ type Deps struct {
 	Now func() time.Time
 	// Wake tells the scheduler a Search now was asked for; nil does nothing.
 	Wake func()
+	// Paths are the folders Health looks at.
+	Paths config.Paths
+	// Jellyfin is nil when Jellyfin is not set up, which leaves it off Health.
+	Jellyfin Pinger
+	// HealthTimeout bounds each probe a Health read makes; zero is eight seconds.
+	HealthTimeout time.Duration
 }
 
 type api struct {
@@ -83,34 +90,6 @@ func New(d Deps) http.Handler {
 		fail(w, http.StatusNotFound, "not found")
 	})
 	return mux
-}
-
-func (a *api) health(w http.ResponseWriter, r *http.Request) {
-	checks := []map[string]any{}
-	status := "ok"
-	// A refresh that failed after an import is the one check recorded so
-	// far; the Health page proper adds the rest.
-	if st, ok, err := a.Catalog.GetComponentStatus(r.Context(), "jellyfin"); err == nil && ok && !st.OK {
-		checks = append(checks, map[string]any{"id": "jellyfin", "name": "Jellyfin", "status": "warning", "message": st.Message})
-		status = "warning"
-	}
-	problems, err := a.Catalog.LibraryProblems(r.Context())
-	if err != nil {
-		a.internal(w, r, err)
-		return
-	}
-	type problemJSON struct {
-		Path    string `json:"path"`
-		Reason  string `json:"reason"`
-		Message string `json:"message"`
-	}
-	library := make([]problemJSON, 0, len(problems))
-	for _, p := range problems {
-		library = append(library, problemJSON(p))
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": status, "dryRun": a.DryRun, "checks": checks, "libraryProblems": library,
-	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

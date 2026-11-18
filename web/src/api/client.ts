@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Download, HistoryEntry, LiveEvent, ProgressEvent, Title, TitleEvent, TitleSummary, Wall } from "./types";
+import type { Download, Health, HistoryEntry, LiveEvent, ProgressEvent, Title, TitleEvent, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -29,6 +29,7 @@ export interface Api {
   retry(historyId: string, signal?: AbortSignal): Promise<Title>;
   // Returns the function that closes the stream. Without EventSource (a test, an old browser) nothing is delivered.
   events(on: (e: LiveEvent) => void): () => void;
+  health(signal?: AbortSignal): Promise<Health>;
   imageUrl(path: string): string;
 }
 
@@ -37,6 +38,8 @@ export interface ApiOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
   eventSource?: (url: string) => EventSource;
+  getToken?: () => string | null;
+  onUnauthorized?: (sentToken: string | null) => void;
 }
 
 function isAbort(e: unknown) {
@@ -85,9 +88,19 @@ function parse<T>(e: Event): T | null {
 
 const isTitle = (d: Title) => typeof d.id === "string";
 
-export function createApi({ baseUrl = "", fetch: f, eventSource }: ApiOptions): Api {
+export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUnauthorized }: ApiOptions): Api {
   const base = baseUrl.replace(/\/+$/, "");
   const client = createClient<paths>({ baseUrl: base, ...(f ? { fetch: f } : {}) });
+  client.use({
+    onRequest({ request }) {
+      const token = getToken?.();
+      if (token) request.headers.set("Authorization", `Bearer ${token}`);
+      return request;
+    },
+    onResponse({ request, response }) {
+      if (response.status === 401) onUnauthorized?.(request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null);
+    },
+  });
   return {
     async wall(signal) {
       const data = await call(() => client.GET("/api/wall", { signal }), (d) => Array.isArray(d.items));
@@ -151,6 +164,9 @@ export function createApi({ baseUrl = "", fetch: f, eventSource }: ApiOptions): 
         if (data) on({ type: "title", data });
       });
       return () => es.close();
+    },
+    health(signal) {
+      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems));
     },
     imageUrl: (path) => base + path,
   };
