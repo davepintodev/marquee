@@ -207,6 +207,19 @@ func TestFakeModeServesTheContractWithoutEssentialSettings(t *testing.T) {
 	}
 }
 
+func TestFakeModeServesArtFromMarqueeFakeArtDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "poster-movie-438631.jpg"), []byte("jpeg-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	base := start(t, map[string]string{"MARQUEE_FAKE": "1", "MARQUEE_LISTEN": "127.0.0.1:0", "MARQUEE_FAKE_ART_DIR": dir}, newSyncBuf())
+
+	code, body, ctype := get(t, base+"/api/images/poster/movie-438631")
+	if code != 200 || ctype != "image/jpeg" || body != "jpeg-bytes" {
+		t.Fatalf("poster: %d %q %q", code, ctype, body)
+	}
+}
+
 func TestInvalidFakeSettingIsRejected(t *testing.T) {
 	err := app.Run(context.Background(), func(k string) string {
 		if k == "MARQUEE_FAKE" {

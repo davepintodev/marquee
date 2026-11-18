@@ -26,12 +26,12 @@
        {"number": 2, "name": "Big Baby", "airDate": "2007-10-02", "state": "missing"},
        {"number": 3, "name": "You Don't Want to Know", "airDate": "2007-10-09", "state": "missing"},
        {"number": 4, "name": "Sex Kills", "airDate": "2007-10-16", "state": "missing"}]}]},
-  {"tmdbId": 245001, "kind": "series", "title": "Camp Snoopy", "year": 2024, "inLibrary": true,
+  {"tmdbId": 226745, "kind": "series", "title": "Camp Snoopy", "year": 2024, "inLibrary": true,
    "overview": "Snoopy and the Beagle Scouts at summer camp.",
    "seasons": [{"number": 1, "episodes": [
      {"number": 1, "name": "Arrival at Camp", "airDate": "2024-06-14", "state": "searching"},
      {"number": 2, "name": "Campfire Songs", "airDate": "2024-06-14", "state": "searching"}]}]},
-  {"tmdbId": 245002, "kind": "series", "title": "VisionQuest", "year": 2026, "inLibrary": true,
+  {"tmdbId": 213375, "kind": "series", "title": "VisionQuest", "year": 2026, "inLibrary": true,
    "overview": "Vision searches for his lost identity.",
    "seasons": [{"number": 1, "episodes": [
      {"number": 1, "name": "Reboot", "airDate": "2026-10-01", "state": "downloaded"},

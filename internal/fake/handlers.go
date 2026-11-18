@@ -85,11 +85,12 @@ func (f *Fake) routes() http.Handler {
 	h("GET /api/downloads", f.listDownloads)
 	h("GET /api/history", f.listHistory)
 	h("POST /api/history/{historyId}/retry", f.retry)
-	h("GET /api/images/{kind}/{titleId}", f.image)
 	h("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(f.health)
 	})
+	// Outside h: a slow client reading a large file must not hold the fake's lock.
+	mux.HandleFunc("GET /api/images/{kind}/{titleId}", f.image)
 	mux.HandleFunc("GET /api/events", f.events)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "not found") })
 	return mux
@@ -586,10 +587,15 @@ func (f *Fake) retry(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *Fake) image(w http.ResponseWriter, r *http.Request) {
-	t := f.find(r.PathValue("titleId"))
 	kind := r.PathValue("kind")
+	f.mu.Lock()
+	t := f.find(r.PathValue("titleId"))
+	f.mu.Unlock()
 	if t == nil || (kind != "poster" && kind != "backdrop") {
 		fail(w, http.StatusNotFound, "no such image")
+		return
+	}
+	if f.serveArt(w, r, kind, t.id()) {
 		return
 	}
 	hue := fnv.New32a()
