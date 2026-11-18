@@ -1,7 +1,7 @@
 GO_PKGS := ./cmd/... ./internal/... ./web
 WEB := web
 
-.PHONY: gate smoke fake-art api vet lint test web-api web-api-check web-typecheck web-lint web-test web-build build
+.PHONY: gate smoke smokeserve fake-art api vet lint test web-api web-api-check web-typecheck web-lint web-test web-build build
 
 gate: vet lint test web-api-check web-typecheck web-lint web-test build
 
@@ -45,9 +45,14 @@ web-build: $(WEB)/node_modules
 build: web-build
 	go build -o bin/marquee ./cmd/marquee
 
+# The real service with its outside world faked, serving the built UI: the
+# smoke test's second server, and the fakes for the idle-memory measurement.
+smokeserve: web-build
+	go build -o bin/smokeserve ./cmd/smokeserve
+
 # Not part of the gate: needs a Playwright browser (`cd web && npx playwright
 # install chromium`). Screenshots and recordings go to MARQUEE_SHOTS_DIR.
-smoke: build
+smoke: build smokeserve
 	cd $(WEB) && npx playwright test
 
 # Not part of the gate: downloads the fixture titles' real posters and
