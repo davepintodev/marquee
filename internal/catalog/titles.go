@@ -42,7 +42,8 @@ type Episode struct {
 	Name      string
 	AirDate   string
 	Monitored bool
-	State     string // downloaded, searching, missing or unaired
+	State     string // downloaded, searching, downloading, stalled, missing or unaired
+	Percent   *int   // set while downloading
 }
 
 type Season struct {
@@ -124,16 +125,51 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 		return nil, err
 	}
 
+	flying, err := s.inFlight(ctx, q, where, args)
+	if err != nil {
+		return nil, err
+	}
+
 	today := s.now().UTC().Format(time.DateOnly)
 	for i := range titles {
 		t := &titles[i]
 		if t.Kind == "movie" {
-			t.Badge = movieBadge(t.Monitored, have[t.ID])
+			t.Badge = movieBadge(t.Monitored, have[t.ID], flying[target{t.ID, 0, 0}])
 			continue
 		}
-		t.Seasons, t.Badge = buildSeasons(eps[t.ID], today)
+		t.Seasons, t.Badge = buildSeasons(eps[t.ID], today, func(season, number int) *inFlight { return flying[target{t.ID, season, number}] })
 	}
 	return titles, nil
+}
+
+type target struct {
+	titleID string
+	season  int
+	number  int
+}
+
+// inFlight returns the unfinished downloads of the titles selected by
+// where, by movie or episode.
+func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []any) (map[target]*inFlight, error) {
+	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, updated_at FROM downloads
+		WHERE state NOT IN ('done', 'failed') AND title_id IN (SELECT id FROM titles `+where+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	now := s.now()
+	out := map[target]*inFlight{}
+	for rows.Next() {
+		var k target
+		var d Download
+		var updated string
+		if err := rows.Scan(&k.titleID, &k.season, &k.number, &d.State, &d.BytesDone, &d.BytesTotal, &updated); err != nil {
+			return nil, err
+		}
+		d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+		out[k] = &inFlight{stalled: d.Stalled(now), percent: d.Percent()}
+	}
+	return out, rows.Err()
 }
 
 // Get returns one title, or ErrNotFound.
@@ -343,7 +379,7 @@ type epRow struct {
 	monitored, haveFile bool
 }
 
-func buildSeasons(rows []epRow, today string) ([]Season, *Badge) {
+func buildSeasons(rows []epRow, today string, flying func(season, number int) *inFlight) ([]Season, *Badge) {
 	eps := map[int][]Episode{}
 	views := map[int][]epView{}
 	var numbers []int
@@ -353,8 +389,19 @@ func buildSeasons(rows []epRow, today string) ([]Season, *Badge) {
 			numbers = append(numbers, r.season)
 		}
 		state := episodeState(r, today)
-		eps[r.season] = append(eps[r.season], Episode{Number: r.number, Name: r.name, AirDate: r.airDate, Monitored: r.monitored, State: state})
-		v := epView{r.season, r.monitored, state}
+		percent := 0
+		if dl := flying(r.season, r.number); dl != nil {
+			state, percent = "downloading", dl.percent
+			if dl.stalled {
+				state = "stalled"
+			}
+		}
+		ep := Episode{Number: r.number, Name: r.name, AirDate: r.airDate, Monitored: r.monitored, State: state}
+		if state == "downloading" {
+			ep.Percent = &percent
+		}
+		eps[r.season] = append(eps[r.season], ep)
+		v := epView{r.season, r.monitored, state, percent}
 		views[r.season] = append(views[r.season], v)
 		all = append(all, v)
 	}

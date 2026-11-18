@@ -125,7 +125,17 @@ func (a *api) getTitle(w http.ResponseWriter, r *http.Request) {
 		a.internal(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, titleOf(t))
+	a.writeTitle(w, r, http.StatusOK, t)
+}
+
+// writeTitle answers with a title and its history.
+func (a *api) writeTitle(w http.ResponseWriter, r *http.Request, status int, t catalog.Title) {
+	history, err := a.history(r.Context(), t.ID)
+	if err != nil {
+		a.internal(w, r, err)
+		return
+	}
+	writeJSON(w, status, titleOf(t, history))
 }
 
 func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +160,7 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 
 	defer a.adds.Lock(id)()
 	if t, err := a.Catalog.Get(r.Context(), id); err == nil {
-		writeJSON(w, http.StatusOK, titleOf(t))
+		a.writeTitle(w, r, http.StatusOK, t)
 		return
 	} else if !errors.Is(err, catalog.ErrNotFound) {
 		a.internal(w, r, err)
@@ -175,7 +185,7 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	if created {
 		status = http.StatusCreated
 	}
-	writeJSON(w, status, titleOf(t))
+	a.writeTitle(w, r, status, t)
 }
 
 func isQuality(q string) bool {
@@ -247,7 +257,7 @@ func (a *api) titleReply(w http.ResponseWriter, r *http.Request, t catalog.Title
 	case err != nil:
 		a.internal(w, r, err)
 	default:
-		writeJSON(w, http.StatusOK, titleOf(t))
+		a.writeTitle(w, r, http.StatusOK, t)
 	}
 }
 

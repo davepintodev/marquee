@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -8,10 +9,6 @@ import (
 
 	"github.com/davepintodev/marquee/internal/catalog"
 )
-
-// stallAfter is how long a download's bytes may stand still before the
-// queue shows it as stalled; the downloader itself fails it after a minute.
-const stallAfter = 15 * time.Second
 
 func episodeRef(d catalog.Download) string {
 	if d.Season == 0 && d.Number == 0 {
@@ -29,14 +26,10 @@ func (a *api) listDownloads(w http.ResponseWriter, r *http.Request) {
 	now := a.Catalog.Now()
 	out := make([]map[string]any, 0, len(ds))
 	for _, d := range ds {
-		percent := 0
-		if d.BytesTotal > 0 {
-			percent = int(min(d.BytesDone*100/d.BytesTotal, 100))
-		}
 		item := map[string]any{
 			"id": d.ID, "titleId": d.TitleID, "titleName": d.TitleName, "releaseName": d.ReleaseName,
-			"state": d.State, "percent": percent, "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
-			"stalled": d.State == catalog.StateDownloading && now.Sub(d.UpdatedAt) > stallAfter,
+			"state": d.State, "percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
+			"stalled": d.Stalled(now),
 		}
 		if ep := episodeRef(d); ep != "" {
 			item["episode"] = ep
@@ -44,6 +37,59 @@ func (a *api) listDownloads(w http.ResponseWriter, r *http.Request) {
 		out = append(out, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"downloads": out})
+}
+
+type historyJSON struct {
+	ID        string `json:"id"`
+	At        string `json:"at"`
+	Kind      string `json:"kind"`
+	TitleID   string `json:"titleId"`
+	TitleName string `json:"titleName"`
+	Episode   string `json:"episode,omitempty"`
+	Message   string `json:"message"`
+	Reason    string `json:"reason,omitempty"`
+	Retryable bool   `json:"retryable"`
+}
+
+// history is what happened, newest first, to one title or, with an empty
+// titleID, to all of them: finished downloads and the scheduler's notes.
+func (a *api) history(ctx context.Context, titleID string) ([]historyJSON, error) {
+	ds, err := a.Catalog.FinishedDownloads(ctx, titleID)
+	if err != nil {
+		return nil, err
+	}
+	events, err := a.Catalog.Activities(ctx, titleID)
+	if err != nil {
+		return nil, err
+	}
+	type entry struct {
+		at   time.Time
+		item historyJSON
+	}
+	entries := make([]entry, 0, len(ds)+len(events))
+	for _, d := range ds {
+		item := historyJSON{ID: d.ID, At: d.UpdatedAt.UTC().Format(time.RFC3339), TitleID: d.TitleID, TitleName: d.TitleName, Episode: episodeRef(d)}
+		if d.State == catalog.StateDone {
+			item.Kind, item.Message = "imported", "Imported "+filepath.Base(d.LibraryPath)
+		} else {
+			item.Kind, item.Message, item.Reason = "failed", d.Message, d.Reason
+		}
+		entries = append(entries, entry{d.UpdatedAt, item})
+	}
+	for _, e := range events {
+		item := historyJSON{ID: e.ID, At: e.At.UTC().Format(time.RFC3339), TitleID: e.TitleID, TitleName: e.TitleName, Kind: e.Kind, Message: e.Message, Reason: e.Reason}
+		if e.Season != 0 || e.Number != 0 {
+			item.Episode = catalog.EpisodeID(e.Season, e.Number)
+		}
+		entries = append(entries, entry{e.At, item})
+	}
+	// Stable, so that entries of the same instant keep downloads before the scheduler's notes.
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].at.After(entries[j].at) })
+	out := make([]historyJSON, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.item)
+	}
+	return out, nil
 }
 
 func (a *api) listHistory(w http.ResponseWriter, r *http.Request) {
@@ -54,55 +100,10 @@ func (a *api) listHistory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ds, err := a.Catalog.FinishedDownloads(r.Context(), titleID)
+	out, err := a.history(r.Context(), titleID)
 	if err != nil {
 		a.internal(w, r, err)
 		return
-	}
-	events, err := a.Catalog.Activities(r.Context(), titleID)
-	if err != nil {
-		a.internal(w, r, err)
-		return
-	}
-	type entry struct {
-		at   time.Time
-		item map[string]any
-	}
-	entries := make([]entry, 0, len(ds)+len(events))
-	for _, d := range ds {
-		item := map[string]any{
-			"id": d.ID, "at": d.UpdatedAt.UTC().Format(time.RFC3339), "titleId": d.TitleID, "titleName": d.TitleName,
-			// The retry route is not built, so no failure can be retried yet.
-			"retryable": false,
-		}
-		if d.State == catalog.StateDone {
-			item["kind"], item["message"] = "imported", "Imported "+filepath.Base(d.LibraryPath)
-		} else {
-			item["kind"], item["message"], item["reason"] = "failed", d.Message, d.Reason
-		}
-		if ep := episodeRef(d); ep != "" {
-			item["episode"] = ep
-		}
-		entries = append(entries, entry{d.UpdatedAt, item})
-	}
-	for _, e := range events {
-		item := map[string]any{
-			"id": e.ID, "at": e.At.UTC().Format(time.RFC3339), "titleId": e.TitleID, "titleName": e.TitleName,
-			"kind": e.Kind, "message": e.Message, "retryable": false,
-		}
-		if e.Reason != "" {
-			item["reason"] = e.Reason
-		}
-		if e.Season != 0 || e.Number != 0 {
-			item["episode"] = catalog.EpisodeID(e.Season, e.Number)
-		}
-		entries = append(entries, entry{e.At, item})
-	}
-	// Stable, so that entries of the same instant keep downloads before the scheduler's notes.
-	sort.SliceStable(entries, func(i, j int) bool { return entries[i].at.After(entries[j].at) })
-	out := make([]map[string]any, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, e.item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"history": out})
 }

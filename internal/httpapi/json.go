@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"fmt"
+	"slices"
+
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/metadata"
 )
@@ -8,6 +11,7 @@ import (
 type badgeJSON struct {
 	State        string `json:"state"`
 	Label        string `json:"label"`
+	Percent      *int   `json:"percent,omitempty"`
 	Season       *int   `json:"season,omitempty"`
 	MissingCount *int   `json:"missingCount,omitempty"`
 }
@@ -16,7 +20,7 @@ func badgeOf(b *catalog.Badge) *badgeJSON {
 	if b == nil {
 		return nil
 	}
-	return &badgeJSON{State: b.State, Label: b.Label, Season: b.Season, MissingCount: b.MissingCount}
+	return &badgeJSON{State: b.State, Label: b.Label, Percent: b.Percent, Season: b.Season, MissingCount: b.MissingCount}
 }
 
 type summaryJSON struct {
@@ -65,6 +69,7 @@ type episodeJSON struct {
 	AirDate   string `json:"airDate"`
 	Monitored bool   `json:"monitored"`
 	State     string `json:"state"`
+	Percent   *int   `json:"percent,omitempty"`
 }
 
 type seasonJSON struct {
@@ -75,30 +80,23 @@ type seasonJSON struct {
 
 type titleJSON struct {
 	summaryJSON
-	Seasons          []seasonJSON `json:"seasons"`
-	PreferredQuality *string      `json:"preferredQuality"`
-	HistorySummary   string       `json:"historySummary"`
+	Seasons          []seasonJSON  `json:"seasons"`
+	PreferredQuality *string       `json:"preferredQuality"`
+	HistorySummary   string        `json:"historySummary"`
+	History          []historyJSON `json:"history"`
 }
 
-func titleOf(t catalog.Title) titleJSON {
-	out := titleJSON{summaryJSON: fromLibrary(t), Seasons: []seasonJSON{}}
+func titleOf(t catalog.Title, history []historyJSON) titleJSON {
+	out := titleJSON{summaryJSON: fromLibrary(t), Seasons: []seasonJSON{}, History: history, HistorySummary: summarize(t, history)}
 	if t.PreferredQuality != "" {
 		out.PreferredQuality = &t.PreferredQuality
-	}
-	switch {
-	case !t.Monitored:
-		out.HistorySummary = "Not monitored."
-	case t.Badge != nil && t.Badge.State == "downloaded":
-		out.HistorySummary = "Added and monitored. Everything wanted is downloaded."
-	default:
-		out.HistorySummary = "Added and monitored."
 	}
 	for _, s := range t.Seasons {
 		sj := seasonJSON{Number: s.Number, Badge: badgeOf(s.Badge), Episodes: []episodeJSON{}}
 		for _, e := range s.Episodes {
 			sj.Episodes = append(sj.Episodes, episodeJSON{
 				ID: catalog.EpisodeID(s.Number, e.Number), Number: e.Number, Name: e.Name,
-				AirDate: e.AirDate, Monitored: e.Monitored, State: e.State,
+				AirDate: e.AirDate, Monitored: e.Monitored, State: e.State, Percent: e.Percent,
 			})
 		}
 		out.Seasons = append(out.Seasons, sj)
@@ -111,4 +109,48 @@ func imageRefs(id string, m metadata.Summary) []catalog.ImageRef {
 		{TitleID: id, Kind: "poster", Path: m.PosterPath},
 		{TitleID: id, Kind: "backdrop", Path: m.BackdropPath},
 	}
+}
+
+var reasonWords = map[string]string{
+	"stalled": "stalled", "not_video": "fake", "wrong_episode": "wrong episode",
+	"too_small": "too small", "size_mismatch": "wrong size", "source_down": "source down", "local_error": "local error",
+}
+
+// summarize says in one sentence what was tried, such as "Tried 3
+// releases, 2 fake, 1 stalled." The reasons come most common first.
+func summarize(t catalog.Title, history []historyJSON) string {
+	if !t.Monitored {
+		return "Not monitored."
+	}
+	tried := 0
+	reasons := map[string]int{}
+	var order []string
+	for _, h := range history {
+		switch h.Kind {
+		case "failed":
+			tried++
+			if reasons[h.Reason] == 0 {
+				order = append(order, h.Reason)
+			}
+			reasons[h.Reason]++
+		case "imported", "would_grab":
+			tried++
+		}
+	}
+	if tried == 0 {
+		return "Nothing tried yet."
+	}
+	out := fmt.Sprintf("Tried %d release", tried)
+	if tried != 1 {
+		out += "s"
+	}
+	slices.SortStableFunc(order, func(a, b string) int { return reasons[b] - reasons[a] })
+	for _, r := range order {
+		words := reasonWords[r]
+		if words == "" {
+			words = r
+		}
+		out += fmt.Sprintf(", %d %s", reasons[r], words)
+	}
+	return out + "."
 }
