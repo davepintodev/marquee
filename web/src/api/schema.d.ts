@@ -178,7 +178,7 @@ export interface paths {
         put?: never;
         /**
          * Pick one release. It goes through the same download, check and import path and overrides the blocklist.
-         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video or too small answers 409 with the reason; a blocklisted one can be grabbed.
+         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video or too small answers 409 with the reason; a blocklisted one can be grabbed. In dry-run nothing is downloaded, so every grab answers 409.
          */
         post: operations["grabRelease"];
         delete?: never;

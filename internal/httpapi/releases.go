@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/chooser"
 	"github.com/davepintodev/marquee/internal/metadata"
+	"github.com/davepintodev/marquee/internal/pipeline"
 )
 
 // Source is the part of the AIOStreams client the API uses.
@@ -124,22 +126,33 @@ func qualityOf(p *aiostreams.ParsedFile) string {
 	return strings.Join(parts, "-")
 }
 
-func (a *api) listReleases(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+// releaseSearch is a title's releases as the chooser sees them, and what
+// they were searched for.
+type releaseSearch struct {
+	kind            string
+	tmdbID          int
+	season, episode int
+	result          chooser.Result
+}
+
+// searchReleases finds and chooses the releases for a title, or for one of
+// its episodes, and answers the error itself, returning false, when it cannot.
+// With ignoreBlocklist a release that failed before is a candidate again.
+func (a *api) searchReleases(w http.ResponseWriter, r *http.Request, id, episodeID string, ignoreBlocklist bool) (releaseSearch, bool) {
 	kind, tmdbID, ok := parseTitleID(id)
 	if !ok {
 		fail(w, http.StatusNotFound, "no such title")
-		return
+		return releaseSearch{}, false
 	}
-	var season, episode int
+	out := releaseSearch{kind: kind, tmdbID: tmdbID}
 	if kind == "series" {
-		m := episodeIDRe.FindStringSubmatch(r.URL.Query().Get("episode"))
+		m := episodeIDRe.FindStringSubmatch(episodeID)
 		if m == nil {
 			fail(w, http.StatusBadRequest, "episode must name an episode of this series, such as s01e02")
-			return
+			return releaseSearch{}, false
 		}
-		season, _ = strconv.Atoi(m[1])
-		episode, _ = strconv.Atoi(m[2])
+		out.season, _ = strconv.Atoi(m[1])
+		out.episode, _ = strconv.Atoi(m[2])
 	}
 	t, err := a.target(r, id, kind, tmdbID)
 	if err != nil {
@@ -148,42 +161,120 @@ func (a *api) listReleases(w http.ResponseWriter, r *http.Request) {
 		} else {
 			a.internal(w, r, err)
 		}
-		return
+		return releaseSearch{}, false
 	}
-	if kind == "series" && !t.hasEpisode(season, episode) {
+	if kind == "series" && !t.hasEpisode(out.season, out.episode) {
 		fail(w, http.StatusBadRequest, "episode must name an episode of this series, such as s01e02")
-		return
+		return releaseSearch{}, false
 	}
-	sourceID, ok := t.sourceID(season, episode)
+	sourceID, ok := t.sourceID(out.season, out.episode)
 	if !ok {
 		fail(w, http.StatusUnprocessableEntity, "TMDB lists neither a TVDB nor an IMDb id for this series, so AIOStreams cannot be asked about it")
-		return
+		return releaseSearch{}, false
 	}
 	streams, err := a.Source.Search(r.Context(), kind, sourceID)
 	if err != nil {
 		a.sourceFailure(w, r, err)
-		return
+		return releaseSearch{}, false
 	}
-	blocked, err := a.Catalog.Blocklist(r.Context())
-	if err != nil {
-		a.internal(w, r, err)
-		return
+	var blocked map[string]time.Time
+	if !ignoreBlocklist {
+		if blocked, err = a.Catalog.Blocklist(r.Context()); err != nil {
+			a.internal(w, r, err)
+			return releaseSearch{}, false
+		}
 	}
-	res := chooser.Choose(streams, chooser.Context{
-		Kind: kind, Season: season, Episode: episode, PreferredQuality: t.preferredQuality,
+	out.result = chooser.Choose(streams, chooser.Context{
+		Kind: kind, Season: out.season, Episode: out.episode, PreferredQuality: t.preferredQuality,
 		Blocklist: blocked, Now: a.Now(),
 	})
+	return out, true
+}
+
+func (a *api) listReleases(w http.ResponseWriter, r *http.Request) {
+	found, ok := a.searchReleases(w, r, r.PathValue("id"), r.URL.Query().Get("episode"), false)
+	if !ok {
+		return
+	}
 	out := struct {
 		Candidates []releaseJSON `json:"candidates"`
 		Dropped    []droppedJSON `json:"dropped"`
 	}{Candidates: []releaseJSON{}, Dropped: []droppedJSON{}}
-	for _, c := range res.Candidates {
+	for _, c := range found.result.Candidates {
 		out.Candidates = append(out.Candidates, releaseOf(c))
 	}
-	for _, d := range res.Dropped {
+	for _, d := range found.result.Dropped {
 		out.Dropped = append(out.Dropped, droppedJSON{Release: releaseOf(d.Candidate), Reason: string(d.Reason), Message: d.Message})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// grabRelease queues the release the owner picked. The same search is made
+// again to find it, since a release's playback link is never kept or sent
+// to the browser; a blocklisted release can be picked, one the chooser
+// drops for being unusable cannot.
+func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Episode string `json:"episode"`
+	}
+	if r.ContentLength != 0 {
+		if err := decode(r, &req); err != nil {
+			fail(w, http.StatusBadRequest, "body must be {\"episode\": \"sNNeNN\"} or empty")
+			return
+		}
+	}
+	id := r.PathValue("id")
+	if a.DryRun {
+		fail(w, http.StatusConflict, "dry-run is on, so nothing is downloaded; turn it off to grab a release")
+		return
+	}
+	found, ok := a.searchReleases(w, r, id, req.Episode, true)
+	if !ok {
+		return
+	}
+	releaseID := r.PathValue("releaseId")
+	var pick *chooser.Candidate
+	for i, c := range found.result.Candidates {
+		if c.ID == releaseID {
+			pick = &found.result.Candidates[i]
+		}
+	}
+	if pick == nil {
+		for _, d := range found.result.Dropped {
+			if d.ID == releaseID {
+				fail(w, http.StatusConflict, "this release cannot be grabbed: "+d.Message)
+				return
+			}
+		}
+		fail(w, http.StatusNotFound, "no such release; the search may have changed, so list the releases again")
+		return
+	}
+	if err := a.ensureTitle(r, id, found.kind, found.tmdbID); err != nil {
+		if isTMDBError(err) || r.Context().Err() != nil {
+			a.upstream(w, r, err)
+		} else {
+			a.internal(w, r, err)
+		}
+		return
+	}
+	st := pick.Stream
+	job := pipeline.Job{
+		TitleID: id, Season: found.season, Number: found.episode,
+		Release:     catalog.ReleaseID{InfoHash: st.InfoHash, FileName: st.Filename, Size: st.Size},
+		ReleaseName: releaseOf(*pick).Name, URL: st.URL,
+	}
+	if p := st.ParsedFile; p != nil {
+		job.Resolution, job.Quality = p.Resolution, p.Quality
+	}
+	d, err := a.Transfers.Enqueue(r.Context(), job)
+	switch {
+	case err == nil, errors.Is(err, catalog.ErrActiveDownload):
+		writeJSON(w, http.StatusAccepted, downloadOf(d, a.Catalog.Now()))
+	case errors.Is(err, pipeline.ErrBadJob):
+		fail(w, http.StatusNotFound, "no such title or episode in the library")
+	default:
+		a.internal(w, r, err)
+	}
 }
 
 func isTMDBError(err error) bool {

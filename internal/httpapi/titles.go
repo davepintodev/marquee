@@ -188,6 +188,23 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	a.writeTitle(w, r, status, t)
 }
 
+// ensureTitle adds and monitors a title that is not in the library yet,
+// as picking one of its releases does.
+func (a *api) ensureTitle(r *http.Request, id, kind string, tmdbID int) error {
+	defer a.adds.Lock(id)()
+	if _, err := a.Catalog.Get(r.Context(), id); err == nil {
+		return nil
+	} else if !errors.Is(err, catalog.ErrNotFound) {
+		return err
+	}
+	d, err := a.TMDB.Details(r.Context(), kind, tmdbID)
+	if err != nil {
+		return err
+	}
+	_, _, err = a.Catalog.Add(r.Context(), catalog.NewTitleFromTMDB(d))
+	return err
+}
+
 func isQuality(q string) bool {
 	for _, v := range catalog.Qualities {
 		if v == q {
