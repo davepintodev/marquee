@@ -90,10 +90,17 @@ func TestWithAnAPITokenTheAPIAnswers401WithoutIt(t *testing.T) {
 
 func TestImagesAndTheEventStreamStayOpenUntilTheyCanCarryTheToken(t *testing.T) {
 	base := start(t, testEnv(t), io.Discard)
-	for _, p := range []string{"/api/images/poster/movie-438631", "/api/events"} {
-		if code, body, _ := authGet(t, base+p, nil); code == 401 {
-			t.Errorf("%s answered 401 without a token: %s", p, body)
-		}
+	if code, body, _ := authGet(t, base+"/api/images/poster/movie-438631", nil); code == 401 {
+		t.Errorf("an image answered 401 without a token: %s", body)
+	}
+	// The event stream never ends, so only its status is read.
+	resp, err := http.Get(base + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode == 401 {
+		t.Error("the event stream answered 401 without a token")
 	}
 }
 

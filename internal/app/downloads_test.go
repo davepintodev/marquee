@@ -35,6 +35,8 @@ type rig struct {
 	jf   *jellyfinfake.Server
 	mgr  *pipeline.Manager
 	stop func()
+	// stallTimeout is how long the downloader waits for bytes; zero is 400 ms.
+	stallTimeout time.Duration
 }
 
 func fastDownloads() download.Options {
@@ -50,6 +52,7 @@ func newRig(t *testing.T, env map[string]string, cdn *debridfake.Server, jf *jel
 	t.Helper()
 	r := &rig{t: t, cdn: cdn, jf: jf}
 	r.realSvc = &realSvc{t: t, env: env, logs: newSyncBuf(), tmdb: tm}
+	r.now.Store(today.UnixNano())
 	r.startService()
 	return r
 }
@@ -58,16 +61,21 @@ func newRig(t *testing.T, env map[string]string, cdn *debridfake.Server, jf *jel
 // stopService is a restart on the same directories.
 func (r *rig) startService() {
 	r.t.Helper()
+	dl := fastDownloads()
+	if r.stallTimeout > 0 {
+		dl.StallTimeout = r.stallTimeout
+	}
 	opts := app.Options{
-		Now:           func() time.Time { return today },
+		Now:           func() time.Time { return time.Unix(0, r.now.Load()).UTC() },
 		TMDBAPIBase:   r.tmdb.APIBase(),
 		TMDBImageBase: r.tmdb.ImageBase(),
 		Transfers: pipeline.Tuning{
 			MovieFloor: 1 << 10, EpisodeFloor: 1 << 10, Poll: 20 * time.Millisecond,
-			JellyfinTimeout: time.Second, Download: fastDownloads(),
+			JellyfinTimeout: time.Second, Download: dl,
 		},
-		OnPipeline: func(m *pipeline.Manager) { r.mgr = m },
-		Scheduler:  scheduler.Tuning{Tick: -1},
+		OnPipeline:  func(m *pipeline.Manager) { r.mgr = m },
+		Scheduler:   scheduler.Tuning{Tick: -1},
+		EventsEvery: 20 * time.Millisecond,
 	}
 	adopted := make(chan error, 1)
 	opts.OnAdopted = func(err error) { adopted <- err }

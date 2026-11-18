@@ -21,6 +21,25 @@ const (
 	StateFailed      = "failed"
 )
 
+// StallAfter is how long a download's bytes may stand still before the
+// queue and the badges show it as stalled; the downloader itself fails it
+// after a minute.
+const StallAfter = 15 * time.Second
+
+// Percent is how much of the file has arrived, 0 until the size is known.
+func (d Download) Percent() int {
+	if d.BytesTotal <= 0 {
+		return 0
+	}
+	return int(min(d.BytesDone*100/d.BytesTotal, 100))
+}
+
+// Stalled reports a download whose bytes stopped moving; one still queued
+// or past downloading is not waiting on bytes.
+func (d Download) Stalled(now time.Time) bool {
+	return d.State == StateDownloading && now.Sub(d.UpdatedAt) > StallAfter
+}
+
 // ErrActiveDownload means the title or episode already has a download
 // that has not finished.
 var ErrActiveDownload = errors.New("catalog: the title or episode already has an active download")

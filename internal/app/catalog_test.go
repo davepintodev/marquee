@@ -842,21 +842,10 @@ func TestTheCatalogSurvivesARestart(t *testing.T) {
 	}
 }
 
-func TestRoutesOfLaterTicketsAnswer501InTheContractsErrorShape(t *testing.T) {
+func TestAnUnknownAPIRouteAnswers404InTheContractsErrorShape(t *testing.T) {
 	s := startReal(t, newTMDB(t))
-	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
-	for _, c := range [][2]string{
-		{"POST", "/api/titles/movie-438631/releases/r1/grab"},
-		{"POST", "/api/history/h1/retry"},
-		{"GET", "/api/events"},
-	} {
-		r := s.call(c[0], c[1], "")
-		if r.status != 501 || r.json(t)["error"] == "" {
-			t.Errorf("%s %s: %d %s", c[0], c[1], r.status, r.body)
-		}
-	}
-	if r := s.bad("GET", "/api/unknown", ""); r.status != 404 {
-		t.Errorf("unknown route: %d", r.status)
+	if r := s.bad("GET", "/api/unknown", ""); r.status != 404 || r.json(t)["error"] == "" {
+		t.Errorf("unknown route: %d %s", r.status, r.body)
 	}
 }
 

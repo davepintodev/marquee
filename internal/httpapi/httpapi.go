@@ -1,5 +1,5 @@
 // Package httpapi serves the contract in api/openapi.yaml from the catalog
-// and TMDB. Operations that belong to later work answer 501.
+// and TMDB.
 package httpapi
 
 import (
@@ -16,6 +16,7 @@ import (
 	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/keylock"
 	"github.com/davepintodev/marquee/internal/metadata"
+	"github.com/davepintodev/marquee/internal/pipeline"
 )
 
 // TMDB is the part of the metadata client the API uses.
@@ -26,8 +27,16 @@ type TMDB interface {
 	Details(ctx context.Context, kind string, id int) (metadata.Details, error)
 }
 
+// Transfers is the part of the download manager the API uses; an
+// unfinished download of the same title or episode comes back with
+// catalog.ErrActiveDownload.
+type Transfers interface {
+	Enqueue(ctx context.Context, j pipeline.Job) (catalog.Download, error)
+}
+
 type Deps struct {
-	Catalog *catalog.Store
+	Catalog   *catalog.Store
+	Transfers Transfers
 	TMDB    TMDB
 	Source  Source
 	Images  *metadata.Images
@@ -43,11 +52,18 @@ type Deps struct {
 	Jellyfin Pinger
 	// HealthTimeout bounds each probe a Health read makes; zero is eight seconds.
 	HealthTimeout time.Duration
+	// EventsEvery is how often the event stream looks for changes while a
+	// client is connected; zero is one second.
+	EventsEvery time.Duration
+	// Stop ends every open event stream when closed, so that shutdown does
+	// not wait for browsers to hang up; nil never ends them.
+	Stop <-chan struct{}
 }
 
 type api struct {
 	Deps
 	adds keylock.Locks
+	hub  *hub
 }
 
 var (
@@ -58,6 +74,7 @@ var (
 // New returns the handler for every /api/ request.
 func New(d Deps) http.Handler {
 	a := &api{Deps: d}
+	a.hub = newHub(a, d.EventsEvery)
 	if a.Now == nil {
 		a.Now = time.Now
 	}
@@ -76,16 +93,10 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/titles/{id}/search", a.searchNow)
 	mux.HandleFunc("POST /api/titles/{id}/episodes/{episodeId}/search", a.searchNow)
 	mux.HandleFunc("GET /api/titles/{id}/releases", a.listReleases)
+	mux.HandleFunc("POST /api/titles/{id}/releases/{releaseId}/grab", a.grabRelease)
+	mux.HandleFunc("POST /api/history/{historyId}/retry", a.retry)
 	mux.HandleFunc("GET /api/images/{kind}/{titleId}", a.image)
-	for _, route := range []string{
-		"POST /api/titles/{id}/releases/{releaseId}/grab",
-		"POST /api/history/{historyId}/retry",
-		"GET /api/events",
-	} {
-		mux.HandleFunc(route, func(w http.ResponseWriter, _ *http.Request) {
-			fail(w, http.StatusNotImplemented, "this part of marquee is not built yet")
-		})
-	}
+	mux.HandleFunc("GET /api/events", a.events)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		fail(w, http.StatusNotFound, "not found")
 	})
