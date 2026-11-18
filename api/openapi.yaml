@@ -1,0 +1,694 @@
+openapi: 3.1.0
+info:
+  title: marquee API
+  version: 0.1.0
+  description: >
+    The HTTP API the web UI and the backend build against. This file is the
+    single source of truth: the web client types are generated from it and a
+    fixture-backed fake (`marquee --fake`) implements every operation.
+
+
+    A title id is `<kind>-<tmdbId>`, for example `movie-438631`. An episode id
+    is `sNNeNN`, for example `s04e02`. Ids are the same for a title found by
+    search and for the same title in the library.
+security:
+  - {}
+  - bearerAuth: []
+tags:
+  - name: titles
+  - name: discovery
+  - name: releases
+  - name: activity
+  - name: system
+
+paths:
+  /api/wall:
+    get:
+      tags: [discovery]
+      operationId: getWall
+      summary: The home wall, the library first and then TMDB trending.
+      responses:
+        "200":
+          description: Tiles in display order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Wall" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/search:
+    get:
+      tags: [discovery]
+      operationId: searchTitles
+      summary: Search TMDB for movies and series; library titles carry their badge.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Matching movies and series together.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResults" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/titles:
+    get:
+      tags: [titles]
+      operationId: listTitles
+      summary: Titles in the library.
+      responses:
+        "200":
+          description: The library.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [titles]
+                properties:
+                  titles:
+                    type: array
+                    items: { $ref: "#/components/schemas/TitleSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [titles]
+      operationId: addTitle
+      summary: Add and monitor a title. Adding a title already in the library changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddTitleRequest" }
+      responses:
+        "200":
+          description: The title was already in the library.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "201":
+          description: The title was added and is monitored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    get:
+      tags: [titles]
+      operationId: getTitle
+      summary: A title with its seasons, episodes and plain-language history.
+      responses:
+        "200":
+          description: The title.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [titles]
+      operationId: updateTitle
+      summary: Monitor or unmonitor a title, or set its preferred quality.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTitleRequest" }
+      responses:
+        "200":
+          description: The updated title.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [titles]
+      operationId: removeTitle
+      summary: Remove a title from marquee. Files on disk are never deleted.
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/search:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    post:
+      tags: [titles]
+      operationId: searchTitleNow
+      summary: Search now, skipping the backoff.
+      responses:
+        "200":
+          description: The title, now searching.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/episodes/{episodeId}:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+      - { $ref: "#/components/parameters/EpisodeId" }
+    patch:
+      tags: [titles]
+      operationId: updateEpisode
+      summary: Monitor or unmonitor one episode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [monitored]
+              additionalProperties: false
+              properties:
+                monitored: { type: boolean }
+      responses:
+        "200":
+          description: The updated title.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/episodes/{episodeId}/search:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+      - { $ref: "#/components/parameters/EpisodeId" }
+    post:
+      tags: [titles]
+      operationId: searchEpisodeNow
+      summary: Search now for one episode, skipping the backoff.
+      responses:
+        "200":
+          description: The title, with the episode now searching.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/releases:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    get:
+      tags: [releases]
+      operationId: listReleases
+      summary: Interactive search, the ranked candidates and why others were dropped.
+      description: Works for any title marquee knows, in the library or not; listing releases never adds a title.
+      parameters:
+        - name: episode
+          in: query
+          description: Episode id for a series; omit for a movie.
+          required: false
+          schema: { $ref: "#/components/schemas/EpisodeId" }
+      responses:
+        "200":
+          description: Candidates in the order marquee would try them, and the drops.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Releases" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/releases/{releaseId}/grab:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+      - name: releaseId
+        in: path
+        required: true
+        schema: { type: string, minLength: 1 }
+    post:
+      tags: [releases]
+      operationId: grabRelease
+      summary: Pick one release. It goes through the same download, check and import path and overrides the blocklist.
+      description: >
+        A title that is not in the library yet is added and monitored first.
+        A release the chooser would drop as not cached, not a video or too
+        small answers 409 with the reason; a blocklisted one can be grabbed.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                episode: { $ref: "#/components/schemas/EpisodeId" }
+      responses:
+        "202":
+          description: The download was queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Download" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The release was dropped (not cached, not a video or too small) and cannot be grabbed; the error says why.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/downloads:
+    get:
+      tags: [activity]
+      operationId: listDownloads
+      summary: The download queue.
+      responses:
+        "200":
+          description: Downloads that are not finished.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [downloads]
+                properties:
+                  downloads:
+                    type: array
+                    items: { $ref: "#/components/schemas/Download" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/history:
+    get:
+      tags: [activity]
+      operationId: listHistory
+      summary: What happened, newest first, failures in plain language.
+      parameters:
+        - name: titleId
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/TitleId" }
+      responses:
+        "200":
+          description: History entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [history]
+                properties:
+                  history:
+                    type: array
+                    items: { $ref: "#/components/schemas/HistoryEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/history/{historyId}/retry:
+    parameters:
+      - name: historyId
+        in: path
+        required: true
+        schema: { type: string, minLength: 1 }
+    post:
+      tags: [activity]
+      operationId: retryHistoryEntry
+      summary: Push a failed item back into the queue.
+      responses:
+        "200":
+          description: The title, now searching again.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The entry is not a failure that can be retried.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/events:
+    get:
+      tags: [activity]
+      operationId: streamEvents
+      summary: Live events as Server-Sent Events.
+      description: >
+        Each message has an `event:` name and a JSON `data:` line. `progress`
+        carries a ProgressEvent for a running download; `title` carries a
+        TitleEvent whenever a title's badge changes, including when it is
+        added to or removed from the library. Lines starting with `:` are
+        keep-alive comments to ignore. The stream never ends on its own;
+        clients reconnect when it drops.
+      responses:
+        "200":
+          description: An open event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/images/{kind}/{titleId}:
+    parameters:
+      - name: kind
+        in: path
+        required: true
+        schema: { type: string, enum: [poster, backdrop] }
+      - name: titleId
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/TitleId" }
+    get:
+      tags: [discovery]
+      operationId: getImage
+      summary: A poster (2:3) or backdrop (16:9). Fetched and cached by marquee, so the browser never contacts TMDB.
+      responses:
+        "200":
+          description: The image.
+          content:
+            image/svg+xml:
+              schema: { type: string }
+            image/jpeg:
+              schema: { type: string, contentEncoding: base64 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: What is misconfigured or broken. Read-only.
+      responses:
+        "200":
+          description: Overall status, checks and library problems.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Optional API token (MARQUEE_API_TOKEN). With no token configured the
+        API is open and clients send no Authorization header; with one, every
+        operation answers 401 without `Authorization: Bearer <token>`.
+  parameters:
+    TitleId:
+      name: id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/TitleId" }
+    EpisodeId:
+      name: episodeId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/EpisodeId" }
+  responses:
+    BadRequest:
+      description: The request is malformed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: An API token is required and was missing or wrong.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: No such title, episode, release or entry.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: A plain-language reason. }
+      examples:
+        - { error: not found }
+    TitleId:
+      type: string
+      pattern: "^(movie|series)-[0-9]+$"
+      examples: [movie-438631]
+    EpisodeId:
+      type: string
+      pattern: "^s[0-9]{2,3}e[0-9]{2,3}$"
+      examples: [s04e02]
+    Kind:
+      type: string
+      enum: [movie, series]
+    BadgeState:
+      type: string
+      description: The closed set of states a tile can show.
+      enum: [downloaded, searching, downloading, stalled, missing, partial_season]
+    Badge:
+      type: object
+      required: [state, label]
+      properties:
+        state: { $ref: "#/components/schemas/BadgeState" }
+        label:
+          type: string
+          description: Display text, such as "Downloading 43%" or "Season 4 · 3 missing".
+        percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Present when state is downloading.
+        season:
+          type: integer
+          minimum: 0
+          description: Present when state is partial_season.
+        missingCount:
+          type: integer
+          minimum: 1
+          description: Present when state is partial_season.
+      examples:
+        - { state: partial_season, label: "Season 4 · 3 missing", season: 4, missingCount: 3 }
+    TitleSummary:
+      type: object
+      required: [id, tmdbId, kind, title, year, overview, posterPath, backdropPath, inLibrary]
+      properties:
+        id: { $ref: "#/components/schemas/TitleId" }
+        tmdbId: { type: integer }
+        kind: { $ref: "#/components/schemas/Kind" }
+        title: { type: string }
+        year: { type: integer }
+        overview: { type: string }
+        posterPath: { type: string, description: Same-origin URL path of the poster. }
+        backdropPath: { type: string, description: Same-origin URL path of the backdrop. }
+        inLibrary: { type: boolean }
+        monitored: { type: boolean, description: Present when inLibrary. }
+        badge:
+          $ref: "#/components/schemas/Badge"
+          description: Present when inLibrary.
+    WallItem:
+      type: object
+      required: [source, title]
+      properties:
+        source: { type: string, enum: [library, trending] }
+        title: { $ref: "#/components/schemas/TitleSummary" }
+    Wall:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/WallItem" }
+    SearchResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/TitleSummary" }
+    AddTitleRequest:
+      type: object
+      required: [kind, tmdbId]
+      additionalProperties: false
+      properties:
+        kind: { $ref: "#/components/schemas/Kind" }
+        tmdbId: { type: integer }
+        preferredQuality: { $ref: "#/components/schemas/Quality" }
+    UpdateTitleRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        monitored: { type: boolean }
+        preferredQuality:
+          description: Send null to clear the preference.
+          anyOf:
+            - { $ref: "#/components/schemas/Quality" }
+            - { type: "null" }
+    Quality:
+      type: string
+      description: A soft preference over AIOStreams' own order.
+      enum: [2160p, 1080p, 720p]
+    EpisodeState:
+      type: string
+      enum: [downloaded, searching, downloading, stalled, missing, unaired]
+    Episode:
+      type: object
+      required: [id, number, name, airDate, monitored, state]
+      properties:
+        id: { $ref: "#/components/schemas/EpisodeId" }
+        number: { type: integer, minimum: 1 }
+        name: { type: string }
+        airDate: { type: string, format: date }
+        monitored: { type: boolean }
+        state: { $ref: "#/components/schemas/EpisodeState" }
+        percent: { type: integer, minimum: 0, maximum: 100, description: Present when state is downloading. }
+        nextSearchAt: { $ref: "#/components/schemas/NextSearchAt" }
+    NextSearchAt:
+      description: When marquee searches next. Null unless the item is monitored and searching or missing.
+      anyOf:
+        - { type: string, format: date-time }
+        - { type: "null" }
+    Season:
+      type: object
+      required: [number, episodes]
+      properties:
+        number: { type: integer, minimum: 0 }
+        badge:
+          $ref: "#/components/schemas/Badge"
+          description: Present when the season has episodes to show a state for.
+        episodes:
+          type: array
+          items: { $ref: "#/components/schemas/Episode" }
+    Title:
+      description: A title with everything the detail view needs.
+      allOf:
+        - { $ref: "#/components/schemas/TitleSummary" }
+        - type: object
+          required: [seasons, historySummary]
+          properties:
+            seasons:
+              type: array
+              description: Empty for a movie.
+              items: { $ref: "#/components/schemas/Season" }
+            preferredQuality:
+              description: Null when no preference is set.
+              anyOf:
+                - { $ref: "#/components/schemas/Quality" }
+                - { type: "null" }
+            nextSearchAt: { $ref: "#/components/schemas/NextSearchAt" }
+            historySummary:
+              type: string
+              description: One plain sentence, such as "Tried 3 releases, 2 fake, 1 stalled, retrying in 6h."
+            history:
+              type: array
+              items: { $ref: "#/components/schemas/HistoryEntry" }
+    Release:
+      type: object
+      required: [id, name, quality, sizeBytes, source, cached]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        quality: { type: string, examples: [Bluray-1080p] }
+        sizeBytes: { type: integer, minimum: 0 }
+        source: { type: string, description: The AIOStreams addon or tracker that listed it. }
+        cached: { type: boolean }
+    DropReason:
+      type: string
+      enum: [not_cached, not_video, too_small, wrong_episode, blocklisted]
+    DroppedRelease:
+      type: object
+      required: [release, reason, message]
+      properties:
+        release: { $ref: "#/components/schemas/Release" }
+        reason: { $ref: "#/components/schemas/DropReason" }
+        message:
+          type: string
+          description: Plain language, such as "a .exe file, not a video".
+    Releases:
+      type: object
+      required: [candidates, dropped]
+      properties:
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/Release" }
+        dropped:
+          type: array
+          items: { $ref: "#/components/schemas/DroppedRelease" }
+    DownloadState:
+      type: string
+      enum: [queued, downloading, verifying, importing]
+    Download:
+      type: object
+      required: [id, titleId, titleName, releaseName, state, percent, bytesDone, bytesTotal, stalled]
+      properties:
+        id: { type: string }
+        titleId: { $ref: "#/components/schemas/TitleId" }
+        titleName: { type: string }
+        episode: { $ref: "#/components/schemas/EpisodeId" }
+        releaseName: { type: string }
+        state: { $ref: "#/components/schemas/DownloadState" }
+        percent: { type: integer, minimum: 0, maximum: 100 }
+        bytesDone: { type: integer, minimum: 0 }
+        bytesTotal: { type: integer, minimum: 0 }
+        stalled: { type: boolean, description: No bytes have arrived recently. }
+    HistoryKind:
+      type: string
+      enum: [added, searched, would_grab, imported, failed]
+    FailureReason:
+      type: string
+      enum: [stalled, not_video, wrong_episode, too_small, size_mismatch, source_down]
+    HistoryEntry:
+      type: object
+      required: [id, at, kind, titleId, titleName, message, retryable]
+      properties:
+        id: { type: string }
+        at: { type: string, format: date-time }
+        kind: { $ref: "#/components/schemas/HistoryKind" }
+        titleId: { $ref: "#/components/schemas/TitleId" }
+        titleName: { type: string }
+        episode: { $ref: "#/components/schemas/EpisodeId" }
+        message: { type: string, description: "What happened, in words." }
+        reason: { $ref: "#/components/schemas/FailureReason" }
+        retryable: { type: boolean, description: True for a failure that can be pushed back into the queue. }
+    ProgressEvent:
+      type: object
+      description: Data of the `progress` event.
+      required: [downloadId, titleId, state, percent, bytesDone, bytesTotal]
+      properties:
+        downloadId: { type: string }
+        titleId: { $ref: "#/components/schemas/TitleId" }
+        episode: { $ref: "#/components/schemas/EpisodeId" }
+        state: { $ref: "#/components/schemas/DownloadState" }
+        percent: { type: integer, minimum: 0, maximum: 100 }
+        bytesDone: { type: integer, minimum: 0 }
+        bytesTotal: { type: integer, minimum: 0 }
+    TitleEvent:
+      type: object
+      description: Data of the `title` event.
+      required: [titleId, badge]
+      properties:
+        titleId: { $ref: "#/components/schemas/TitleId" }
+        badge:
+          description: Null when the title left the library.
+          anyOf:
+            - { $ref: "#/components/schemas/Badge" }
+            - { type: "null" }
+    CheckStatus:
+      type: string
+      enum: [ok, warning, error]
+    HealthCheck:
+      type: object
+      required: [id, name, status, message]
+      properties:
+        id:
+          type: string
+          enum: [fake_data, dry_run, aiostreams, tmdb, library_paths, temp_path, jellyfin]
+        name: { type: string }
+        status: { $ref: "#/components/schemas/CheckStatus" }
+        message: { type: string }
+    LibraryProblem:
+      type: object
+      required: [path, reason, message]
+      properties:
+        path: { type: string, description: Relative to the library root. }
+        reason: { type: string, enum: [unmatched, ambiguous, unparsed_file] }
+        message: { type: string }
+    Health:
+      type: object
+      required: [status, dryRun, checks, libraryProblems]
+      properties:
+        status: { $ref: "#/components/schemas/CheckStatus" }
+        dryRun: { type: boolean }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/HealthCheck" }
+        libraryProblems:
+          type: array
+          items: { $ref: "#/components/schemas/LibraryProblem" }

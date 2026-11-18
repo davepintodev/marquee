@@ -1,0 +1,6 @@
+[
+  {"id": "dl-1", "titleId": "movie-693134", "releaseName": "Dune.Part.Two.2024.2160p.WEB-DL", "bytesTotal": 21474836480, "percent": 43},
+  {"id": "dl-2", "titleId": "movie-329865", "releaseName": "Arrival.2016.1080p.BluRay", "bytesTotal": 8589934592, "percent": 12, "stalled": true},
+  {"id": "dl-3", "titleId": "movie-157336", "releaseName": "Interstellar.2014.1080p.BluRay", "bytesTotal": 10737418240, "percent": 0, "state": "queued"},
+  {"id": "dl-4", "titleId": "movie-286217", "releaseName": "The.Martian.2015.1080p.BluRay", "bytesTotal": 9663676416, "percent": 100, "state": "verifying"}
+]

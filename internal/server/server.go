@@ -10,11 +10,19 @@ import (
 )
 
 // New serves /api and, for every other path, the UI files in ui with
-// index.html as the fallback for client-side routes.
-func New(ui fs.FS) http.Handler {
+// index.html as the fallback for client-side routes. A non-nil api
+// answers every /api/ request instead of the built-in routes.
+func New(ui fs.FS, api http.Handler, dryRun bool) http.Handler {
 	mux := http.NewServeMux()
+	if api != nil {
+		mux.Handle("/api/", api)
+		mux.Handle("/", uiHandler(ui))
+		return mux
+	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "ok", "dryRun": dryRun, "checks": []any{}, "libraryProblems": []any{},
+		})
 	})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
