@@ -57,6 +57,9 @@ type Options struct {
 	// OnScheduler is called with the scheduler once it is built; tests
 	// drive it with Step.
 	OnScheduler func(*scheduler.Scheduler)
+	// EventsEvery is how often the live event stream looks for changes;
+	// zero is one second.
+	EventsEvery time.Duration
 }
 
 // Run loads and checks the configuration, then serves until ctx ends.
@@ -178,6 +181,8 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		}()
 		listen = cfg.Listen
 		token = cfg.APIToken
+		streamsStop := make(chan struct{})
+		closer = func() { close(streamsStop) }
 		var jellyfin httpapi.Pinger
 		if cfg.JellyfinURL != "" {
 			jellyfin = importer.NewJellyfin(cfg.JellyfinURL, cfg.JellyfinKey, opts.HealthTimeout)
@@ -186,6 +191,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			Catalog: store, TMDB: tmdb, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
 			Paths: cfg.Paths(), Jellyfin: jellyfin, HealthTimeout: opts.HealthTimeout,
 			Images: metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
+			EventsEvery: opts.EventsEvery, Stop: streamsStop,
 		})
 		msg, attrs = "marquee starting", []any{"config", cfg}
 	}

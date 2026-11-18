@@ -1,6 +1,11 @@
 package app_test
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +25,7 @@ func badgeOf(m map[string]any) map[string]any {
 
 // slowMovie keeps a download in flight for a few seconds.
 func (r *rig) slowMovie() {
-	r.enqueue(movieJob(r.cdn.Add("slow.mkv", debridfake.File{Data: debridfake.MKV(1 << 20), Pace: 50 * time.Millisecond}), "slow.mkv"))
+	r.enqueue(movieJob(r.cdn.Add("slow.mkv", debridfake.File{Data: debridfake.MKV(1 << 20), Pace: 100 * time.Millisecond}), "slow.mkv"))
 }
 
 func tileOf(items []any, id string) map[string]any {
@@ -68,7 +73,7 @@ func TestAMoviesBadgeFollowsItsDownloadOnTheWallSearchAndDetail(t *testing.T) {
 
 func TestASeriesBadgesFollowAnEpisodeDownload(t *testing.T) {
 	r, _ := setup(t)
-	r.enqueue(episodeJob(r.cdn.Add("ep.mkv", debridfake.File{Data: debridfake.MKV(1 << 20), Pace: 50 * time.Millisecond}), "ep.mkv"))
+	r.enqueue(episodeJob(r.cdn.Add("ep.mkv", debridfake.File{Data: debridfake.MKV(1 << 20), Pace: 100 * time.Millisecond}), "ep.mkv"))
 
 	var detail map[string]any
 	waitFor(t, "an episode download in progress", 5*time.Second, func() bool {
@@ -148,5 +153,136 @@ func TestATitleCarriesItsHistoryAndASummaryOfIt(t *testing.T) {
 	// The series' history is its own.
 	if h := r.getTitle("series-1408")["history"].([]any); len(h) != 0 {
 		t.Errorf("series history = %v", h)
+	}
+}
+
+// stream is an open /api/events connection, read as a browser's
+// EventSource reads it.
+type stream struct {
+	t      *testing.T
+	events chan sseEvent
+	body   io.Closer
+}
+
+type sseEvent struct {
+	name string
+	data map[string]any
+}
+
+func (r *realSvc) openStream() *stream {
+	r.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "GET", r.base+"/api/events", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		cancel()
+		r.t.Fatal(err)
+	}
+	if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		r.t.Fatalf("GET /api/events = %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+	s := &stream{t: r.t, events: make(chan sseEvent, 256), body: resp.Body}
+	r.t.Cleanup(func() { cancel(); _ = resp.Body.Close() })
+	go func() {
+		defer close(s.events)
+		sc := bufio.NewScanner(resp.Body)
+		var name string
+		for sc.Scan() {
+			line := sc.Text()
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				name = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				var data map[string]any
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &data); err != nil {
+					data = map[string]any{"bad": line}
+				}
+				s.events <- sseEvent{name, data}
+			}
+		}
+	}()
+	return s
+}
+
+// next waits for an event that satisfies ok, skipping the others.
+func (s *stream) next(what string, ok func(sseEvent) bool) sseEvent {
+	s.t.Helper()
+	deadline := time.After(8 * time.Second)
+	for {
+		select {
+		case e, open := <-s.events:
+			if !open {
+				s.t.Fatalf("the stream closed while waiting for %s", what)
+			}
+			if ok(e) {
+				return e
+			}
+		case <-deadline:
+			s.t.Fatalf("timed out waiting for %s", what)
+		}
+	}
+}
+
+func isTitle(id string, state string) func(sseEvent) bool {
+	return func(e sseEvent) bool {
+		if e.name != "title" || e.data["titleId"] != id {
+			return false
+		}
+		b, _ := e.data["badge"].(map[string]any)
+		if state == "" {
+			return e.data["badge"] == nil
+		}
+		return b["state"] == state
+	}
+}
+
+func TestTheEventStreamReportsProgressAndEveryBadgeChangeOfATitle(t *testing.T) {
+	r, _ := setup(t)
+	s := r.openStream()
+	r.slowMovie()
+
+	s.next("the badge turning to downloading", isTitle("movie-438631", "downloading"))
+	p := s.next("a progress event", func(e sseEvent) bool { return e.name == "progress" && e.data["percent"].(float64) > 0 })
+	if p.data["titleId"] != "movie-438631" || p.data["downloadId"] == "" || p.data["state"] != "downloading" || p.data["bytesTotal"].(float64) != 1<<20 {
+		t.Errorf("progress = %v", p.data)
+	}
+	if _, has := p.data["episode"]; has {
+		t.Errorf("a movie's progress names an episode: %v", p.data)
+	}
+	s.next("the badge turning to downloaded", isTitle("movie-438631", "downloaded"))
+}
+
+func TestTheEventStreamNamesTheEpisodeAndReportsATitleAddedAndRemoved(t *testing.T) {
+	r, _ := setup(t)
+	s := r.openStream()
+	r.enqueue(episodeJob(r.cdn.Add("ep.mkv", debridfake.File{Data: debridfake.MKV(1 << 20), Pace: 100 * time.Millisecond}), "ep.mkv"))
+	p := s.next("episode progress", func(e sseEvent) bool { return e.name == "progress" })
+	if p.data["episode"] != "s01e01" || p.data["titleId"] != "series-1408" {
+		t.Errorf("progress = %v", p.data)
+	}
+
+	r.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":7}`, 201)
+	s.next("the added title", isTitle("movie-7", "searching"))
+	r.mustCall("DELETE", "/api/titles/movie-7", "", 204)
+	s.next("the removed title", isTitle("movie-7", ""))
+}
+
+func TestAFailedDownloadReachesTheStreamAsTheTitleGoingBackToSearching(t *testing.T) {
+	r, _ := setup(t)
+	s := r.openStream()
+	r.enqueue(movieJob(r.cdn.Add("stuck.mkv", debridfake.File{Data: debridfake.MKV(400 << 10), StallAt: 100 << 10}), "stuck.mkv"))
+	// The title goes searching, downloading, then back to searching with the failure in its history.
+	s.next("the download", isTitle("movie-438631", "downloading"))
+	s.next("the title back to searching", isTitle("movie-438631", "searching"))
+}
+
+func TestOpenStreamsDoNotHoldUpShutdown(t *testing.T) {
+	r, _ := setup(t)
+	r.openStream()
+	r.openStream()
+	start := time.Now()
+	r.stop()
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("shutdown took %v with streams open", d)
 	}
 }

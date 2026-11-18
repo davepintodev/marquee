@@ -73,8 +73,9 @@ func (r *rig) startService() {
 			MovieFloor: 1 << 10, EpisodeFloor: 1 << 10, Poll: 20 * time.Millisecond,
 			JellyfinTimeout: time.Second, Download: dl,
 		},
-		OnPipeline: func(m *pipeline.Manager) { r.mgr = m },
-		Scheduler:  scheduler.Tuning{Tick: -1},
+		OnPipeline:  func(m *pipeline.Manager) { r.mgr = m },
+		Scheduler:   scheduler.Tuning{Tick: -1},
+		EventsEvery: 20 * time.Millisecond,
 	}
 	adopted := make(chan error, 1)
 	opts.OnAdopted = func(err error) { adopted <- err }

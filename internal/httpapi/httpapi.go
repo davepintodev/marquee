@@ -43,11 +43,18 @@ type Deps struct {
 	Jellyfin Pinger
 	// HealthTimeout bounds each probe a Health read makes; zero is eight seconds.
 	HealthTimeout time.Duration
+	// EventsEvery is how often the event stream looks for changes while a
+	// client is connected; zero is one second.
+	EventsEvery time.Duration
+	// Stop ends every open event stream when closed, so that shutdown does
+	// not wait for browsers to hang up; nil never ends them.
+	Stop <-chan struct{}
 }
 
 type api struct {
 	Deps
 	adds keylock.Locks
+	hub  *hub
 }
 
 var (
@@ -58,6 +65,7 @@ var (
 // New returns the handler for every /api/ request.
 func New(d Deps) http.Handler {
 	a := &api{Deps: d}
+	a.hub = newHub(a, d.EventsEvery)
 	if a.Now == nil {
 		a.Now = time.Now
 	}
@@ -77,10 +85,10 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/titles/{id}/episodes/{episodeId}/search", a.searchNow)
 	mux.HandleFunc("GET /api/titles/{id}/releases", a.listReleases)
 	mux.HandleFunc("GET /api/images/{kind}/{titleId}", a.image)
+	mux.HandleFunc("GET /api/events", a.events)
 	for _, route := range []string{
 		"POST /api/titles/{id}/releases/{releaseId}/grab",
 		"POST /api/history/{historyId}/retry",
-		"GET /api/events",
 	} {
 		mux.HandleFunc(route, func(w http.ResponseWriter, _ *http.Request) {
 			fail(w, http.StatusNotImplemented, "this part of marquee is not built yet")
