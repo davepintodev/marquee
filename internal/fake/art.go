@@ -43,7 +43,7 @@ func (f *Fake) serveArt(w http.ResponseWriter, r *http.Request, kind, titleID st
 		return false
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, "", info.ModTime(), file)
 	return true
 }

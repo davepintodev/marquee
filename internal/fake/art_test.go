@@ -125,3 +125,51 @@ func TestFixtureTmdbIdsAreTheRealTMDBEntries(t *testing.T) {
 		}
 	}
 }
+
+func TestGradientsRevalidateInsteadOfCaching(t *testing.T) {
+	srv := startFakeWithArt(t, "")
+	resp, err := srv.Client().Get(srv.URL + "/api/images/poster/movie-438631")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control %q, want no-cache", got)
+	}
+}
+
+func TestArtRevalidatesAndAnswers304WhenUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "poster-movie-438631.jpg"), []byte{0xff, 0xd8, 0xff, 0xd9}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := startFakeWithArt(t, dir)
+	url := srv.URL + "/api/images/poster/movie-438631"
+
+	resp, err := srv.Client().Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("Cache-Control %q, want no-cache", got)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "image/jpeg" {
+		t.Errorf("Content-Type %q, want image/jpeg", got)
+	}
+	lastModified := resp.Header.Get("Last-Modified")
+	if lastModified == "" {
+		t.Fatal("no Last-Modified to revalidate with")
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("If-Modified-Since", lastModified)
+	resp, err = srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotModified {
+		t.Errorf("conditional request: status %d, want 304", resp.StatusCode)
+	}
+}
