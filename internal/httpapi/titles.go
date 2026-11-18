@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/metadata"
@@ -165,20 +164,8 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 		a.upstream(w, r, err)
 		return
 	}
-	n := catalog.NewTitle{
-		Kind: req.Kind, TMDBID: req.TMDBID, Title: d.Title, Year: d.Year, Overview: d.Overview,
-		IMDbID: d.IMDbID, TVDBID: d.TVDBID, PreferredQuality: req.PreferredQuality, Images: imageRefs(id, d.Summary),
-	}
-	for _, s := range d.Seasons {
-		for _, e := range s.Episodes {
-			// An episode TMDB lists without a date cannot be waited for yet;
-			// it is stored once a refresh brings its date.
-			if _, err := time.Parse(time.DateOnly, e.AirDate); err != nil {
-				continue
-			}
-			n.Episodes = append(n.Episodes, catalog.NewEpisode{Season: s.Number, Number: e.Number, Name: e.Name, AirDate: e.AirDate})
-		}
-	}
+	n := catalog.NewTitleFromTMDB(d)
+	n.PreferredQuality = req.PreferredQuality
 	t, created, err := a.Catalog.Add(r.Context(), n)
 	if err != nil {
 		a.internal(w, r, err)

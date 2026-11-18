@@ -138,6 +138,16 @@ CREATE TABLE component_status (
   message   TEXT NOT NULL,
   at        TEXT NOT NULL
 ) WITHOUT ROWID;
+`, `
+CREATE TABLE library_problems (
+  path    TEXT PRIMARY KEY,
+  reason  TEXT NOT NULL CHECK (reason IN ('unmatched', 'ambiguous', 'unparsed_file')),
+  message TEXT NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE adoption (
+  done INTEGER PRIMARY KEY CHECK (done = 1),
+  at   TEXT NOT NULL
+);
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

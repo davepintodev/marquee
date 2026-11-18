@@ -33,6 +33,9 @@ type realSvc struct {
 	now     atomic.Int64
 	sleeps  []time.Duration
 	sleepMu sync.Mutex
+	stop    func()
+	// adoptErr is how the first-run adoption ended.
+	adoptErr error
 }
 
 type svcOpt func(*app.Options)
@@ -46,7 +49,18 @@ func startReal(t *testing.T, tm *tmdbfake.Fake, opts ...svcOpt) *realSvc {
 // placeholder, whose host nothing answers.
 func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcOpt) *realSvc {
 	t.Helper()
+	return startRealWith(t, tm, manifest, nil, opts...)
+}
+
+// startRealWith is startRealAIO with prep run on the environment before the
+// service starts, which is where a test lays out the media folders; a
+// non-nil env is a restart on the same directories.
+func startRealWith(t *testing.T, tm *tmdbfake.Fake, manifest string, prep func(env map[string]string), opts ...svcOpt) *realSvc {
+	t.Helper()
 	s := &realSvc{t: t, env: testEnv(t), logs: newSyncBuf(), tmdb: tm}
+	if prep != nil {
+		prep(s.env)
+	}
 	if manifest != "" {
 		s.env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] = manifest
 	}
@@ -64,6 +78,8 @@ func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcO
 			return nil
 		},
 	}
+	adopted := make(chan error, 4)
+	o.OnAdopted = func(err error) { adopted <- err }
 	for _, f := range opts {
 		f(&o)
 	}
@@ -73,7 +89,12 @@ func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcO
 	go func() {
 		done <- app.RunWith(ctx, o, func(k string) string { return s.env[k] }, s.logs, fstest.MapFS{}, func(a net.Addr) { addrc <- a })
 	}()
-	t.Cleanup(func() {
+	stopped := false
+	s.stop = func() {
+		if stopped {
+			return
+		}
+		stopped = true
 		cancel()
 		select {
 		case err := <-done:
@@ -83,7 +104,8 @@ func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcO
 		case <-time.After(5 * time.Second):
 			t.Error("service did not shut down")
 		}
-	})
+	}
+	t.Cleanup(s.stop)
 	select {
 	case a := <-addrc:
 		s.base = "http://" + a.String()
@@ -92,7 +114,22 @@ func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcO
 	case <-time.After(5 * time.Second):
 		t.Fatal("service did not start")
 	}
+	s.adoptErr = awaitAdoption(t, adopted)
 	return s
+}
+
+// awaitAdoption waits for the first-run adoption, which runs in the
+// background from the start, so a test lays out its library either before
+// the service starts (to be adopted) or after this returns (to be left alone).
+func awaitAdoption(t *testing.T, adopted <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-adopted:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatal("adoption did not finish")
+		return nil
+	}
 }
 
 type reply struct {
