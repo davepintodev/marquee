@@ -13,6 +13,35 @@
   --warn: #ffb547;
   --bad: #ff6b6b;
   --info: #6bb5ff;
+  --line: color-mix(in srgb, var(--fg) 14%, transparent);
+  --line-strong: color-mix(in srgb, var(--fg) 26%, transparent);
+  --ring: color-mix(in srgb, var(--fg) 72%, transparent);
+  --hover: color-mix(in srgb, var(--fg) 10%, var(--glass));
+  --shadow-float: 0 20px 80px rgba(0, 0, 0, 0.55);
+  --shadow-soft: 0 10px 40px rgba(0, 0, 0, 0.45);
+
+  --edge: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+
+  --radius-tile: 14px;
+  --radius-box: 16px;
+  --radius-control: 10px;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 0.18s;
+  --dur-med: 0.35s;
+  --dur-slow: 0.5s;
 }
 
 @media (prefers-color-scheme: light) {
@@ -30,6 +59,14 @@
     --warn: #a86400;
     --bad: #c62828;
     --info: #1565c0;
+    --shadow-float: 0 18px 48px rgba(20, 20, 40, 0.16);
+    --shadow-soft: 0 8px 28px rgba(20, 20, 40, 0.14);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --edge: 12px;
   }
 }
 
@@ -47,8 +84,17 @@ body,
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.4 system-ui, sans-serif;
+  font: var(--text-md) / 1.4 system-ui, sans-serif;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  caret-color: var(--fg);
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--fg) 22%, transparent);
+  color: var(--fg);
 }
 
 button {
@@ -67,8 +113,8 @@ button {
   position: absolute;
   inset: 0;
   transition:
-    filter 0.5s,
-    transform 0.6s;
+    filter var(--dur-slow) var(--ease-out),
+    transform 0.6s var(--ease-out);
 }
 
 .tile {
@@ -86,11 +132,11 @@ button {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 14px;
+  border-radius: var(--radius-tile);
   background: var(--tile);
   transition:
-    transform 0.25s,
-    filter 0.25s;
+    transform 0.25s var(--ease-out),
+    filter 0.25s var(--ease-out);
 }
 
 .tile:hover .tile-frame,
@@ -99,11 +145,16 @@ button {
   filter: brightness(1.12);
 }
 
+.tile:active .tile-frame {
+  transform: scale(0.98);
+  transition-duration: 0.08s;
+}
+
 .tile:focus-visible,
 .card:focus-visible {
-  outline: 2px solid var(--acc);
+  outline: 2px solid var(--ring);
   outline-offset: -3px;
-  border-radius: 14px;
+  border-radius: var(--radius-tile);
 }
 
 .tile img,
@@ -114,17 +165,21 @@ button {
   display: block;
 }
 
-.skeleton {
+.placeholder {
   pointer-events: none;
 }
 
-.skeleton::after {
+.placeholder::after {
   content: "";
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 14px;
+  border-radius: var(--radius-tile);
   background: var(--tile);
+  opacity: 0.35;
+}
+
+.wall[aria-busy="true"] .placeholder::after {
   opacity: 0.5;
   animation: pulse 1.6s ease-in-out infinite;
 }
@@ -143,9 +198,10 @@ button {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  padding: 12px;
+  padding: var(--space-3);
   text-align: center;
   font-weight: 600;
+  text-wrap: balance;
   background: linear-gradient(160deg, color-mix(in srgb, var(--acc) 35%, var(--tile)), var(--tile));
 }
 
@@ -156,18 +212,20 @@ button {
 
 .badge {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  max-width: calc(100% - 20px);
+  top: var(--space-2);
+  left: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-2));
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
-  border-radius: 99px;
+  padding: var(--space-1) 9px;
+  border-radius: var(--radius-pill);
   background: var(--pill);
   color: var(--pill-fg);
   font-size: 11px;
   font-weight: 500;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -203,11 +261,11 @@ button {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(680px, 90vw);
+  width: min(680px, calc(100vw - 2 * max(var(--edge), 4vw)));
   z-index: 5;
   transition:
-    top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
-    transform 0.5s;
+    top var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
 }
 
 .bar input {
@@ -215,17 +273,18 @@ button {
   font: inherit;
   font-size: clamp(20px, 2.6vw, 30px);
   padding: 22px 30px 22px 62px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
   background: var(--glass);
   color: var(--fg);
   backdrop-filter: blur(22px);
   outline: none;
-  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-float);
   text-align: center;
   transition:
-    font-size 0.5s,
-    padding 0.5s;
+    font-size var(--dur-slow) var(--ease-out),
+    padding var(--dur-slow) var(--ease-out),
+    border-color var(--dur-fast);
 }
 
 .bar input:focus {
@@ -246,12 +305,14 @@ button {
   pointer-events: none;
   z-index: 1;
   font-size: clamp(20px, 2.6vw, 30px);
-  transition: font-size 0.5s;
+  transition:
+    font-size var(--dur-slow) var(--ease-out),
+    left var(--dur-slow) var(--ease-out);
 }
 
 [data-mode="search"] .bar-icon {
-  font-size: 20px;
-  left: 24px;
+  font-size: var(--text-lg);
+  left: var(--space-5);
 }
 
 .bar input::placeholder {
@@ -263,11 +324,11 @@ button {
   position: absolute;
   inset: 120px 0 0 0;
   overflow: auto;
-  padding: 12px 4vw 60px;
+  padding: var(--space-3) max(var(--edge), 4vw) 60px;
   z-index: 4;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.35s;
+  transition: opacity var(--dur-med) var(--ease-out);
 }
 
 .notice {
@@ -275,14 +336,17 @@ button {
   left: 50%;
   top: calc(50% + 70px);
   transform: translateX(-50%);
-  width: min(520px, 90vw);
+  width: min(520px, calc(100vw - 2 * var(--edge)));
   z-index: 5;
-  padding: 14px 18px;
-  border-radius: 16px;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-box);
   text-align: center;
+  text-wrap: balance;
   background: var(--glass);
   backdrop-filter: blur(22px);
-  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  animation: fade var(--dur-med) var(--ease-out) both;
 }
 
 .notice.inline {
@@ -292,12 +356,23 @@ button {
 }
 
 .notice button {
-  margin-top: 10px;
-  padding: 8px 16px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line-strong);
   background: transparent;
+  font-weight: 600;
   cursor: pointer;
+  transition: background var(--dur-fast);
+}
+
+.notice button:hover {
+  background: var(--hover);
+}
+
+.notice button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .hint {
@@ -311,10 +386,10 @@ button {
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
   max-width: 1200px;
   margin: 0 auto;
-  animation: fade-in 0.35s both;
+  animation: fade-in var(--dur-med) var(--ease-out) both;
 }
 
 @keyframes fade-in {
@@ -344,15 +419,16 @@ button {
 
 .card-name {
   display: block;
-  margin-top: 8px;
+  margin-top: var(--space-2);
   font-weight: 600;
   line-height: 1.25;
 }
 
 .card-meta {
   display: block;
+  margin-top: 2px;
   color: var(--mute);
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 /* search mode */
@@ -369,8 +445,8 @@ button {
 
 [data-mode="search"] .bar input {
   text-align: left;
-  font-size: 20px;
-  padding: 16px 26px 16px 56px;
+  font-size: var(--text-lg);
+  padding: var(--space-4) 26px var(--space-4) 56px;
 }
 
 [data-mode="search"] .results {
@@ -557,19 +633,20 @@ button {
 .toast {
   position: absolute;
   left: 50%;
-  bottom: 28px;
+  bottom: var(--space-6);
   transform: translateX(-50%);
   z-index: 30;
   width: max-content;
-  max-width: min(520px, 90vw);
-  padding: 12px 20px;
-  border-radius: 999px;
+  max-width: min(520px, calc(100vw - 2 * var(--edge)));
+  padding: var(--space-3) 20px;
+  border-radius: var(--radius-pill);
   text-align: center;
+  text-wrap: balance;
   background: var(--glass);
   backdrop-filter: blur(22px);
-  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
-  animation: fade 0.2s both;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  animation: fade 0.2s var(--ease-out) both;
 }
 
 .ix {
@@ -662,7 +739,7 @@ button {
 
   .toast {
     bottom: auto;
-    top: 16px;
+    top: var(--edge);
     border-radius: 18px;
   }
 }
@@ -836,27 +913,34 @@ button {
 /* wall link to Activity */
 .nav {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: var(--edge);
+  right: var(--edge);
   z-index: 6;
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .nav-link {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
-  border-radius: 999px;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
   color: var(--fg);
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
   background: var(--glass);
   backdrop-filter: blur(22px);
-  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
-  transition: opacity 0.35s;
+  border: 1px solid var(--line);
+  transition:
+    opacity var(--dur-med) var(--ease-out),
+    background var(--dur-fast);
+}
+
+.nav-link:active {
+  transform: scale(0.97);
 }
 
 .nav-link svg {
@@ -878,14 +962,14 @@ button {
 }
 
 .nav-link:hover {
-  background: color-mix(in srgb, var(--fg) 12%, var(--glass));
+  background: var(--hover);
 }
 
 .nav-link:focus-visible,
 .page a:focus-visible,
 .page button:focus-visible,
 .page summary:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--fg) 70%, transparent);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -1287,10 +1371,5 @@ a.btn-secondary {
 
   .row-main {
     flex-basis: 100%;
-  }
-
-  .nav {
-    top: 12px;
-    right: 12px;
   }
 }

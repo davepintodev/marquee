@@ -214,6 +214,27 @@ test("an empty wall still shows the search bar", async () => {
   expect(bar()).toBeTruthy();
 });
 
+test("the wall reads as loading only while it loads, not when it is empty or failed", async () => {
+  let answer!: () => void;
+  const held = new Promise<void>((r) => (answer = r));
+  setup(async (url) => {
+    if (url.pathname !== "/api/wall") return json({ checks: [] });
+    await held;
+    return json({ items: [] });
+  });
+  expect(screen.getByTestId("wall").getAttribute("aria-busy")).toBe("true");
+
+  answer();
+  await screen.findByText(/nothing to show yet/i);
+  expect(screen.getByTestId("wall").getAttribute("aria-busy")).toBe("false");
+});
+
+test("a failed wall stops reading as loading", async () => {
+  setup((url) => (url.pathname === "/api/wall" ? json({ error: "down" }, 502) : json({ checks: [] })));
+  await screen.findByRole("alert");
+  expect(screen.getByTestId("wall").getAttribute("aria-busy")).toBe("false");
+});
+
 test("a poster that fails to load falls back to the title instead of a broken image", async () => {
   setup((url) => (url.pathname === "/api/wall" ? json(wall) : json({ results: [dune] })));
   const [tile] = await screen.findAllByRole("button", { name: /house/i });
@@ -289,6 +310,19 @@ test("a wall given a top inset sits below it and lays its tiles out in the heigh
   expect(screen.getByTestId("wall").style.top).toBe("68px");
   const bottoms = screen.getAllByRole("button").map((b) => parseFloat(b.style.top) + parseFloat(b.style.height));
   expect(Math.max(...bottoms)).toBeCloseTo(800 - 68, 0);
+});
+
+test("a wall given an edge inset keeps that margin on the sides and bottom", () => {
+  const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
+  render(<WallView api={api} items={[house, hail]} width={1200} height={800} top={68} edge={11} />);
+
+  const el = screen.getByTestId("wall");
+  expect([el.style.left, el.style.right, el.style.bottom]).toEqual(["11px", "11px", "11px"]);
+  const tiles = screen.getAllByRole("button");
+  const rights = tiles.map((b) => parseFloat(b.style.left) + parseFloat(b.style.width));
+  const bottoms = tiles.map((b) => parseFloat(b.style.top) + parseFloat(b.style.height));
+  expect(Math.max(...rights)).toBeCloseTo(1200 - 22, 0);
+  expect(Math.max(...bottoms)).toBeCloseTo(800 - 68 - 11, 0);
 });
 
 const dunePage = { ...dune, overview: "Paul Atreides leads the Fremen." };
