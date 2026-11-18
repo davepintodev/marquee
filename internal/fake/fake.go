@@ -23,6 +23,10 @@ type Options struct {
 	// KeepAlive is how often an idle event stream gets a comment line so
 	// a proxy does not cut it.
 	KeepAlive time.Duration
+	// ArtDir, when set, holds real posters and backdrops named
+	// poster-<titleId>.jpg and backdrop-<titleId>.jpg. A title without a
+	// file keeps its generated gradient.
+	ArtDir string
 }
 
 type episode struct {

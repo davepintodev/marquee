@@ -1,7 +1,7 @@
 GO_PKGS := ./cmd/... ./internal/... ./web
 WEB := web
 
-.PHONY: gate smoke api vet lint test web-api web-api-check web-typecheck web-lint web-test web-build build
+.PHONY: gate smoke fake-art api vet lint test web-api web-api-check web-typecheck web-lint web-test web-build build
 
 gate: vet lint test web-api-check web-typecheck web-lint web-test build
 
@@ -49,3 +49,9 @@ build: web-build
 # install chromium`). Screenshots and recordings go to MARQUEE_SHOTS_DIR.
 smoke: build
 	cd $(WEB) && npx playwright test
+
+# Not part of the gate: downloads the fixture titles' real posters and
+# backdrops into ART_DIR for `marquee --fake`. Needs MARQUEE_TMDB_KEY.
+fake-art:
+	@test -n "$(ART_DIR)" || { echo "usage: make fake-art ART_DIR=<art-dir>"; exit 2; }
+	go run ./cmd/fakeart "$(ART_DIR)"

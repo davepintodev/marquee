@@ -30,6 +30,7 @@ MARQUEE_LISTEN=:8080 bin/marquee --fake
 ```
 
 - Serve over Tailscale with plain HTTP: the person looking opens `http://<machine-tailscale-name-or-ip>:8080` from a device on the tailnet. Bind to all interfaces (`:8080`, no host before the colon), no TLS, no `tailscale serve --https`, no public tunnel or funnel. Hand over that address and the tab, never `localhost`.
+- Real art: the fake draws gradients unless `MARQUEE_FAKE_ART_DIR` points at a folder of `poster-<titleId>.jpg` and `backdrop-<titleId>.jpg` (a title without a file keeps its gradient). Fill it once with `MARQUEE_TMDB_KEY=<your-tmdb-key> make fake-art ART_DIR=<art-dir>`, then run `MARQUEE_FAKE_ART_DIR=<art-dir> MARQUEE_LISTEN=:8080 bin/marquee --fake`. The art is TMDB's: keep the folder outside the repo and never commit it.
 - Preview against the fake (`--fake`) unless the ticket needs real mode; real mode needs the essential settings, which never go in a command line you print, a log or a PR.
 - Check the preview yourself before handing it over: drive each acceptance flow in the real page (clicks, toasts, state changes, Esc and close, laptop and phone width) with the preview tools. `make smoke` (not part of the gate) takes the Playwright screenshots and recordings.
 - The hand-off says in one line what passed and asks the person only for what needs taste (spacing, colour, wording, feel) or what you could not check. Never give them a checklist of steps you can run.

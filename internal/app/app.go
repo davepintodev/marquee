@@ -91,7 +91,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			listen = ":8080"
 		}
 		token = config.Secret(getenv("MARQUEE_API_TOKEN"))
-		f := fake.New(fake.Options{})
+		f := fake.New(fake.Options{ArtDir: getenv("MARQUEE_FAKE_ART_DIR")})
 		defer f.Close()
 		api, closer = f, f.Close
 		msg = "marquee starting in fake mode: the API serves committed fixtures and nothing is downloaded; TMDB key, library paths and the other essential settings are not required"
