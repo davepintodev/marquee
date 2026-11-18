@@ -20,6 +20,20 @@ One small Go service with one React screen: it searches AIOStreams for releases,
 
 Needs Go (see `go.mod`), Node 24 with npm, and `golangci-lint` v2.15+ on `PATH`. `make gate` runs `npm ci` in `web/` by itself the first time; run `cd web && npm ci` to set up the web side without the gate.
 
+## Previews
+
+To show a running build, serve it from the one binary, not the Vite dev server (which rejects unknown `Host` headers and needs a second port):
+
+```sh
+make build
+MARQUEE_LISTEN=:8080 bin/marquee --fake
+```
+
+- Serve over Tailscale with plain HTTP: the person looking opens `http://<machine-tailscale-name-or-ip>:8080` from a device on the tailnet. Bind to all interfaces (`:8080`, no host before the colon), no TLS, no `tailscale serve --https`, no public tunnel or funnel. Hand over that address and the tab, never `localhost`.
+- Preview against the fake (`--fake`) unless the ticket needs real mode; real mode needs the essential settings, which never go in a command line you print, a log or a PR.
+- Check the page at laptop and phone width before handing it over. `make smoke` (not part of the gate) takes the Playwright screenshots and recordings.
+- Stop the server when the look is signed off.
+
 ## Gate
 
 `make gate` is the one check before a commit and the CI job named `gate`. It runs, in order:
