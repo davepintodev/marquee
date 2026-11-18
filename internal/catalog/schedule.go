@@ -108,7 +108,6 @@ ON CONFLICT (title_id, season, number) DO UPDATE SET attempts = excluded.attempt
 	return affected(res, err)
 }
 
-// EpisodeRef names an episode of a series.
 type EpisodeRef struct{ Season, Number int }
 
 // RequestSearch marks what Search now asks for, so that the scheduler
@@ -162,7 +161,6 @@ func (s *Store) SearchesToday(ctx context.Context, titleID, day string) (int, er
 	return used, err
 }
 
-// CountSearch spends one search of the title's budget for day.
 func (s *Store) CountSearch(ctx context.Context, titleID, day string) error {
 	res, err := s.w.ExecContext(ctx, `
 INSERT INTO search_budget (title_id, day, used) SELECT id, ?2, 1 FROM titles WHERE id = ?1

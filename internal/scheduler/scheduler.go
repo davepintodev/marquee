@@ -53,7 +53,6 @@ type TMDB interface {
 	Details(ctx context.Context, kind string, id int) (metadata.Details, error)
 }
 
-// Transfers is the download queue.
 type Transfers interface {
 	Enqueue(ctx context.Context, j pipeline.Job) (catalog.Download, error)
 }
