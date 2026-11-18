@@ -51,8 +51,6 @@ type Config struct {
 	DryRun                bool
 }
 
-// LogValue lets slog print the configuration; secrets stay redacted
-// through their own LogValue.
 func (c Config) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.Any("aiostreams_manifest_url", c.AIOStreamsManifestURL),
@@ -96,7 +94,11 @@ func Load(getenv func(string) string) (Config, error) {
 		dec := json.NewDecoder(bytes.NewReader(data))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&f); err != nil {
-			// Decoder errors carry offsets and field names, never values.
+			// A syntax error's text quotes a character of the file, which may be a secret.
+			var syn *json.SyntaxError
+			if errors.As(err, &syn) {
+				return Config{}, fmt.Errorf("MARQUEE_CONFIG: %s is not a valid config file: invalid JSON near byte %d", path, syn.Offset)
+			}
 			return Config{}, fmt.Errorf("MARQUEE_CONFIG: %s is not a valid config file: %w", path, err)
 		}
 	}

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/davepintodev/marquee/internal/config"
@@ -135,6 +134,32 @@ func TestMalformedConfigFileErrorNamesNoSecret(t *testing.T) {
 	assertNoSecrets(t, "error", err.Error())
 }
 
+func TestNonJSONConfigFileErrorLeaksNoContent(t *testing.T) {
+	content := "QJ#Z%K^W~9&Y@V!U"
+	file := filepath.Join(t.TempDir(), "marquee.json")
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file}))
+	if err == nil {
+		t.Fatal("want an error for a non-JSON file")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "not a valid config file") {
+		t.Errorf("error must say the config file is invalid, got %q", msg)
+	}
+	if strings.Contains(msg, "invalid character") {
+		t.Errorf("error must not carry the decoder's character message, got %q", msg)
+	}
+	for i := 0; i < len(content); i++ {
+		for j := i + 2; j <= len(content); j++ {
+			if strings.Contains(msg, content[i:j]) {
+				t.Errorf("error leaks file content %q: %q", content[i:j], msg)
+			}
+		}
+	}
+}
+
 func TestSecretsAreRedactedEverywhere(t *testing.T) {
 	cfg, err := config.Load(envOf(fullEnv()))
 	if err != nil {
@@ -151,38 +176,34 @@ func TestSecretsAreRedactedEverywhere(t *testing.T) {
 	assertNoSecrets(t, "slog", buf.String())
 }
 
-func sameFS(t *testing.T, a, b string) bool {
-	t.Helper()
-	var sa, sb syscall.Stat_t
-	if err := syscall.Stat(a, &sa); err != nil {
-		t.Fatal(err)
-	}
-	if err := syscall.Stat(b, &sb); err != nil {
-		t.Fatal(err)
-	}
-	return sa.Dev == sb.Dev
-}
-
 func TestCheckPathsRefusesTempOnAnotherFilesystem(t *testing.T) {
-	lib := t.TempDir()
-	other, err := os.MkdirTemp("/dev/shm", "marquee-test-")
-	if err != nil {
-		t.Skip("no /dev/shm to stand in for a second filesystem")
+	if _, err := os.Stat("/proc/self"); err != nil {
+		t.Skip("no /proc to stand in for a second filesystem")
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(other) })
-	if sameFS(t, lib, other) {
-		t.Skip("/dev/shm shares a filesystem with the temp dir here")
-	}
-
-	cfg := config.Config{
-		MoviesPath: lib, SeriesPath: lib, TempPath: filepath.Join(other, "tmp"), DataDir: filepath.Join(lib, "data"),
-	}
-	err = cfg.CheckPaths()
-	if err == nil {
-		t.Fatal("want a refusal")
-	}
-	if !strings.Contains(err.Error(), "MARQUEE_TEMP_PATH") || !strings.Contains(err.Error(), "filesystem") {
-		t.Errorf("unclear message: %q", err)
+	for name, libs := range map[string][2]string{
+		"movies library elsewhere": {"/proc", ""},
+		"series library elsewhere": {"", "/proc"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			cfg := config.Config{
+				MoviesPath: root, SeriesPath: root,
+				TempPath: filepath.Join(root, "tmp"), DataDir: filepath.Join(root, "data"),
+			}
+			if libs[0] != "" {
+				cfg.MoviesPath = libs[0]
+			}
+			if libs[1] != "" {
+				cfg.SeriesPath = libs[1]
+			}
+			err := cfg.CheckPaths()
+			if err == nil {
+				t.Fatal("want a refusal")
+			}
+			if !strings.Contains(err.Error(), "MARQUEE_TEMP_PATH") || !strings.Contains(err.Error(), "filesystem") {
+				t.Errorf("unclear message: %q", err)
+			}
+		})
 	}
 }
 

@@ -6,9 +6,8 @@ import (
 	"syscall"
 )
 
-// CheckPaths verifies the library paths exist, creates the temp and data
-// directories, and refuses a temp path on another filesystem than either
-// library: the final move into the library must be an atomic rename.
+// The final move into a library must be an atomic rename, so the temp
+// path has to share a filesystem with both libraries.
 func (c Config) CheckPaths() error {
 	for _, p := range []struct{ env, path string }{
 		{"MARQUEE_MOVIES_PATH", c.MoviesPath},

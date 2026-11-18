@@ -31,7 +31,7 @@ func Run(ctx context.Context, getenv func(string) string, logOut io.Writer, ui f
 
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
-		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s", cfg.Listen)
+		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s: %w", cfg.Listen, err)
 	}
 	srv := &http.Server{Handler: server.New(ui), ReadHeaderTimeout: 10 * time.Second}
 
