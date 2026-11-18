@@ -6,7 +6,7 @@ import { BadgePill, StatePill } from "./BadgePill";
 import { HistoryList } from "./HistoryList";
 import { Page } from "./Page";
 import { useLive } from "./useLive";
-import { inHours, stateLabel } from "./words";
+import { inHours, seasonBadgeLabel, stateLabel } from "./words";
 
 interface Props {
   api: Api;
@@ -191,7 +191,7 @@ function SeasonView({ season, busy, onSearch, onMonitor }: { season: Season; bus
       <details open={open}>
         <summary>
           <span className="season-name">{season.number === 0 ? "Specials" : label}</span>
-          <BadgePill badge={season.badge} inline />
+          {season.badge && <StatePill state={season.badge.state} label={seasonBadgeLabel(season.badge)} />}
         </summary>
         <ul className="rows">
           {season.episodes.map((e) => (

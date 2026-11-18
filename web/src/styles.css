@@ -1216,10 +1216,6 @@ a.btn-secondary {
     column-gap: 14px;
   }
 
-  .detail-overview {
-    display: none;
-  }
-
   .detail-actions > button,
   .detail-actions > a {
     flex: 1 1 auto;

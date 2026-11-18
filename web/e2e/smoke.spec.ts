@@ -24,17 +24,45 @@ async function tileBoxes(page: Page) {
   );
 }
 
+for (const s of screens.slice(0, 2)) {
+  test(`the header pills sit above the wall and cover no tile or badge on ${s.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: s.width, height: s.height });
+    await page.goto("/");
+    const tiles = await tileBoxes(page);
+    const nav = (await page.locator(".nav").boundingBox())!;
+
+    for (const t of tiles) expect(t.y, `tile at ${t.x},${t.y} starts below the pills`).toBeGreaterThanOrEqual(nav.y + nav.height);
+
+    const corner = page.locator(".tile[data-shape]").evaluateAll((els) => {
+      const best = els.reduce((a, b) => {
+        const ra = a.getBoundingClientRect();
+        const rb = b.getBoundingClientRect();
+        return rb.top < ra.top || (rb.top === ra.top && rb.right > ra.right) ? b : a;
+      });
+      return best.querySelector(".badge")?.getBoundingClientRect().toJSON() ?? null;
+    });
+    const badge = await corner;
+    expect(badge, "the top-right tile has a status badge").not.toBeNull();
+    const apart = badge.right <= nav.x || badge.x >= nav.x + nav.width || badge.bottom <= nav.y || badge.y >= nav.y + nav.height;
+    expect(apart, "the top-right badge does not touch the pills").toBe(true);
+    await page.screenshot({ path: join(shots, `wall-header-${s.name}.png`), clip: { x: 0, y: 0, width: s.width, height: Math.min(s.height, 400) } });
+  });
+}
+
 for (const s of screens) {
   test(`the wall fills a ${s.name} screen with 2:3 posters and 16:9 backdrops`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
     await page.goto("/");
     const tiles = await tileBoxes(page);
 
+    // The wall starts below the header pills; the tiles fill everything under that.
+    const top = Math.min(...tiles.map((t) => t.y));
+    expect(top).toBeGreaterThan(40);
+    expect(top).toBeLessThan(90);
     expect(tiles.length).toBeGreaterThan(4);
     const area = tiles.reduce((a, t) => a + t.w * t.h, 0);
-    expect(area / (s.width * s.height)).toBeGreaterThan(0.99);
+    expect(area / (s.width * (s.height - top))).toBeGreaterThan(0.99);
     expect(Math.min(...tiles.map((t) => t.x))).toBeCloseTo(0, 0);
-    expect(Math.min(...tiles.map((t) => t.y))).toBeCloseTo(0, 0);
     expect(Math.max(...tiles.map((t) => t.x + t.w))).toBeCloseTo(s.width, 0);
     expect(Math.max(...tiles.map((t) => t.y + t.h))).toBeCloseTo(s.height, 0);
     for (const t of tiles) {
@@ -193,6 +221,14 @@ for (const s of screens.slice(0, 2)) {
     await expect(season4.getByRole("listitem")).toHaveCount(4);
     await expect(season4.getByText("Missing").first()).toBeVisible();
     await expect(season4.getByText("Downloaded")).toBeVisible();
+    await expect(page.locator(".page").getByText("Season 4 · 3 missing")).toHaveCount(1);
+    await expect(season4.getByText("3 missing")).toBeVisible();
+    const overview = page.locator(".detail-overview");
+    await expect(overview).toBeVisible();
+    await expect(overview).toHaveCSS("font-size", "16px");
+    const ob = (await overview.boundingBox())!;
+    expect(ob.width, "the overview has a readable line length").toBeGreaterThan(Math.min(240, s.width - 60));
+    expect(ob.x + ob.width).toBeLessThanOrEqual(s.width);
     await expect(page.getByRole("list", { name: "History" }).getByText("Stalled")).toBeVisible();
     await noSideScroll(page, s.width);
     await page.waitForTimeout(500);

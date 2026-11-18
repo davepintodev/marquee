@@ -1,4 +1,4 @@
-import type { Episode, FailureReason } from "./api/types";
+import type { Badge, Episode, FailureReason } from "./api/types";
 
 const reasons: Record<FailureReason, string> = {
   stalled: "Stalled",
@@ -29,6 +29,12 @@ export function stateLabel(e: Pick<Episode, "state"> & { percent?: number }) {
     case "unaired":
       return "Not aired yet";
   }
+}
+
+// A season row already says which season it is, so a partial season's badge
+// ("Season 4 · 3 missing") shows only the gap.
+export function seasonBadgeLabel(badge: Badge) {
+  return badge.state === "partial_season" && badge.missingCount !== undefined ? `${badge.missingCount} missing` : badge.label;
 }
 
 // Rounds the way the backend words its history sentence ("retrying in 6h").

@@ -16,6 +16,10 @@ const TYPING_PAUSE_MS = 200;
 
 const TOAST_MS = 5000;
 
+// The wall starts below the header pills: their offset and height (about 40px) plus a
+// gap. The pills' offset changes at the phone breakpoint in styles.css, so this does too.
+const wallTop = (width: number) => (width <= 640 ? 62 : 68);
+
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; message: string };
 
 function messageOf(e: unknown) {
@@ -115,7 +119,7 @@ export function App({ api }: { api: Api }) {
 
   return (
     <div className="app" data-mode={onPage ? "page" : searching ? "search" : "wall"}>
-      <Wall api={api} inert={searching || !!open || onPage} items={wallTitles} width={width} height={height} onSelect={setSelected} />
+      <Wall api={api} inert={searching || !!open || onPage} items={wallTitles} width={width} height={height} top={wallTop(width)} onSelect={setSelected} />
 
       {!searching && !onPage && wall.status === "error" && (
         <div className="notice" role="alert">

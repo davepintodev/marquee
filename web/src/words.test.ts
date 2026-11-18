@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ago, bytesOf, inHours, reasonLabel, stateLabel } from "./words";
+import { ago, bytesOf, inHours, reasonLabel, seasonBadgeLabel, stateLabel } from "./words";
 
 const NOW = new Date("2026-11-18T12:00:00Z");
 
@@ -43,4 +43,12 @@ test("an episode's state reads in words, with the percent while it downloads", (
   expect(stateLabel({ state: "downloading", percent: 40 })).toBe("Downloading 40%");
   expect(stateLabel({ state: "unaired" })).toBe("Not aired yet");
   expect(stateLabel({ state: "missing" })).toBe("Missing");
+});
+
+test("a season row's badge drops the season name the row already shows", () => {
+  expect(seasonBadgeLabel({ state: "partial_season", label: "Season 4 · 3 missing", season: 4, missingCount: 3 })).toBe("3 missing");
+  expect(seasonBadgeLabel({ state: "partial_season", label: "Season 4 · 1 missing", season: 4, missingCount: 1 })).toBe("1 missing");
+  expect(seasonBadgeLabel({ state: "downloaded", label: "Downloaded" })).toBe("Downloaded");
+  expect(seasonBadgeLabel({ state: "searching", label: "Searching" })).toBe("Searching");
+  expect(seasonBadgeLabel({ state: "downloading", label: "Downloading 43%", percent: 43 })).toBe("Downloading 43%");
 });

@@ -77,7 +77,9 @@ test("a series opens with its seasons and episodes, each with its state, and its
   expect(screen.getByText("Tried 3 releases, 1 stalled, 2 fake, retrying in 6h.")).toBeTruthy();
 
   const s4 = screen.getByRole("region", { name: "Season 4" });
-  expect(within(s4).getByText("Season 4 · 2 missing")).toBeTruthy();
+  expect(within(s4).getByText("2 missing")).toBeTruthy();
+  expect(within(s4).queryByText(/Season 4 ·/)).toBeNull();
+  expect(screen.getAllByText("Season 4 · 2 missing")).toHaveLength(1);
   const rows = within(s4).getAllByRole("listitem");
   expect(rows).toHaveLength(4);
   expect(within(rows[0]).getByText("Downloaded")).toBeTruthy();

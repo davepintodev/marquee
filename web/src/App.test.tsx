@@ -282,6 +282,15 @@ test("a tile whose image failed tries the new image when its slot shows another 
   expect(again.querySelector("img")?.getAttribute("src")).toContain("movie-1");
 });
 
+test("a wall given a top inset sits below it and lays its tiles out in the height that is left", () => {
+  const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
+  render(<WallView api={api} items={[house, hail]} width={1200} height={800} top={68} />);
+
+  expect(screen.getByTestId("wall").style.top).toBe("68px");
+  const bottoms = screen.getAllByRole("button").map((b) => parseFloat(b.style.top) + parseFloat(b.style.height));
+  expect(Math.max(...bottoms)).toBeCloseTo(800 - 68, 0);
+});
+
 const dunePage = { ...dune, overview: "Paul Atreides leads the Fremen." };
 const houseOut = { ...house, seasons: [], historySummary: "Nothing tried yet." };
 const duneAdded = { ...dunePage, inLibrary: true, monitored: true, badge: { state: "searching" as const, label: "Searching" }, seasons: [], historySummary: "Nothing tried yet." };
