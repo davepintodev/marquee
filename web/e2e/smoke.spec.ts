@@ -120,3 +120,59 @@ test("dark for a dark system, light when the system asks for it", async ({ brows
   expect(await bg("dark")).toBe("rgb(11, 11, 15)");
   expect(await bg("light")).toBe("rgb(244, 244, 247)");
 });
+
+// Each screen adds a different trending title: the fake keeps what was added for the whole run.
+const popupTitles = [
+  { ...screens[0], title: "Severance" },
+  { ...screens[1], title: "Andor" },
+];
+
+for (const s of popupTitles) {
+  test(`the popup opens from a result on ${s.name}, adds on Add & monitor and then reads Search now`, async ({ page }) => {
+    await page.setViewportSize({ width: s.width, height: s.height });
+    await page.goto("/");
+    await expect(page.locator(".tile[data-shape] img").first()).toBeVisible();
+    const bar = page.getByRole("searchbox");
+    await bar.pressSequentially(s.title.toLowerCase(), { delay: 80 });
+    await page.getByRole("list", { name: "Results" }).getByRole("button", { name: new RegExp(s.title) }).click();
+
+    const popup = page.getByRole("dialog");
+    await expect(popup.getByRole("heading", { name: s.title })).toBeVisible();
+    await expect(popup.getByText(/2022 · series/)).toBeVisible();
+    await expect(popup.locator("img")).toBeVisible();
+    await expect(popup.getByRole("button", { name: "Add & monitor" })).toBeVisible();
+    await expect(popup.getByRole("button", { name: "Interactive search" })).toBeVisible();
+    await page.waitForTimeout(500);
+    const box = (await popup.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(s.width);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(s.height);
+    await page.screenshot({ path: join(shots, `popup-${s.name}.png`) });
+
+    await popup.getByRole("button", { name: "Add & monitor" }).click();
+
+    await expect(page.getByRole("status")).toContainText(s.title);
+    await expect(popup.getByRole("button", { name: "Search now" })).toBeVisible();
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: join(shots, `popup-added-${s.name}.png`) });
+
+    await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
+    await expect(bar).toHaveValue(s.title.toLowerCase());
+  });
+}
+
+test("a wall tile opens the popup and a title already in the library reads Search now", async ({ page }) => {
+  await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
+  await page.goto("/");
+  await expect(page.locator(".tile[data-shape] img").first()).toBeVisible();
+
+  await page.locator(".tile[data-shape]").first().click();
+
+  const popup = page.getByRole("dialog");
+  await expect(popup.getByRole("button", { name: "Search now" })).toBeVisible();
+  await expect(popup.getByRole("button", { name: "Add & monitor" })).toHaveCount(0);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(shots, "popup-library-laptop.png") });
+});
