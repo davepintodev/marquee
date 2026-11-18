@@ -39,7 +39,17 @@ type svcOpt func(*app.Options)
 
 func startReal(t *testing.T, tm *tmdbfake.Fake, opts ...svcOpt) *realSvc {
 	t.Helper()
+	return startRealAIO(t, tm, "", opts...)
+}
+
+// startRealAIO also sets the AIOStreams manifest URL; empty keeps the
+// placeholder, whose host nothing answers.
+func startRealAIO(t *testing.T, tm *tmdbfake.Fake, manifest string, opts ...svcOpt) *realSvc {
+	t.Helper()
 	s := &realSvc{t: t, env: testEnv(t), logs: newSyncBuf(), tmdb: tm}
+	if manifest != "" {
+		s.env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] = manifest
+	}
 	s.env["MARQUEE_TMDB_KEY"] = tmdbfake.Key
 	s.now.Store(today.UnixNano())
 	o := app.Options{
@@ -794,7 +804,6 @@ func TestRoutesOfLaterTicketsAnswer501InTheContractsErrorShape(t *testing.T) {
 	for _, c := range [][2]string{
 		{"POST", "/api/titles/movie-438631/search"},
 		{"POST", "/api/titles/movie-438631/episodes/s01e01/search"},
-		{"GET", "/api/titles/movie-438631/releases"},
 		{"POST", "/api/titles/movie-438631/releases/r1/grab"},
 		{"POST", "/api/history/h1/retry"},
 		{"GET", "/api/events"},

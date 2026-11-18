@@ -224,6 +224,9 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/NoSourceId" }
+        "502": { $ref: "#/components/responses/SourceUnavailable" }
+        "503": { $ref: "#/components/responses/SourceRateLimited" }
   /api/titles/{id}/releases/{releaseId}/grab:
     parameters:
       - { $ref: "#/components/parameters/TitleId" }
@@ -432,6 +435,21 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     ServiceUnavailable:
       description: TMDB is rate-limiting marquee; try again shortly.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    SourceUnavailable:
+      description: AIOStreams, the release source, did not answer or refused marquee's credentials. This is a source error, never an empty result; the error says which.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    SourceRateLimited:
+      description: AIOStreams is rate-limiting marquee; try again shortly. This is a source error, never an empty result.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NoSourceId:
+      description: TMDB lists no id that AIOStreams understands for this title (a series needs a TVDB or IMDb id), so it cannot be searched.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

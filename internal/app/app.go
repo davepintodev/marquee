@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/fake"
@@ -34,6 +35,8 @@ type Options struct {
 	TMDBTimeout time.Duration
 	// TMDBImageTimeout bounds one whole image download; zero is thirty seconds.
 	TMDBImageTimeout time.Duration
+	// AIOStreamsTimeout bounds one AIOStreams search; zero is ninety seconds.
+	AIOStreamsTimeout time.Duration
 	// Sleep waits out a TMDB rate limit; nil really sleeps.
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Transfers tunes the download pipeline; the zero value is production.
@@ -116,9 +119,13 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			APIBase: opts.TMDBAPIBase, ImageBase: opts.TMDBImageBase, Key: cfg.TMDBKey,
 			Timeout: opts.TMDBTimeout, ImageTimeout: opts.TMDBImageTimeout, Sleep: opts.Sleep,
 		})
+		source, err := aiostreams.New(aiostreams.Options{Manifest: cfg.AIOStreamsManifestURL, Timeout: opts.AIOStreamsTimeout})
+		if err != nil {
+			return fmt.Errorf("MARQUEE_AIOSTREAMS_MANIFEST_URL %w", err)
+		}
 		listen = cfg.Listen
 		api = httpapi.New(httpapi.Deps{
-			Catalog: store, TMDB: tmdb, Log: log, DryRun: cfg.DryRun,
+			Catalog: store, TMDB: tmdb, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun,
 			Images: metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 		})
 		msg, attrs = "marquee starting", []any{"config", cfg}

@@ -103,6 +103,12 @@ CREATE TABLE images (
   PRIMARY KEY (title_id, kind)
 ) WITHOUT ROWID;
 `, `
+CREATE TABLE blocklist (
+  identity   TEXT PRIMARY KEY,
+  blocked_at TEXT NOT NULL,
+  reason     TEXT NOT NULL
+) WITHOUT ROWID;
+`, `
 CREATE TABLE downloads (
   id           TEXT PRIMARY KEY,
   title_id     TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
@@ -126,14 +132,6 @@ CREATE TABLE downloads (
 );
 CREATE UNIQUE INDEX downloads_one_active ON downloads (title_id, season, number)
   WHERE state NOT IN ('done', 'failed');
-CREATE TABLE blocklist (
-  info_hash  TEXT NOT NULL,
-  file_name  TEXT NOT NULL,
-  size       INTEGER NOT NULL,
-  reason     TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (info_hash, file_name, size)
-) WITHOUT ROWID;
 CREATE TABLE component_status (
   component TEXT PRIMARY KEY,
   ok        INTEGER NOT NULL,

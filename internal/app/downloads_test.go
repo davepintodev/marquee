@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/davepintodev/marquee/internal/app"
+	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/catalog"
+	"github.com/davepintodev/marquee/internal/chooser"
 	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/debridfake"
 	"github.com/davepintodev/marquee/internal/download"
@@ -271,6 +273,18 @@ func TestRemuxQualityNamesDifferBetweenMoviesAndSeries(t *testing.T) {
 	}
 }
 
+// isBlocked asks the store's blocklist about a release by the chooser's
+// own identity, so a pass here means the chooser would drop it too.
+func isBlocked(t *testing.T, store *catalog.Store, id catalog.ReleaseID) bool {
+	t.Helper()
+	m, err := store.Blocklist(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ok := m[chooser.IdentityOf(id.InfoHash, id.FileName, id.Size)]
+	return ok
+}
+
 func TestBadFilesFailWithAReasonAreBlocklistedAndNeverReachTheLibrary(t *testing.T) {
 	notVideo := append([]byte("MZ\x90\x00"), make([]byte, 100<<10)...)
 	for _, tc := range []struct {
@@ -326,9 +340,8 @@ func TestBadFilesFailWithAReasonAreBlocklistedAndNeverReachTheLibrary(t *testing
 				{catalog.ReleaseID{InfoHash: hash, FileName: "other.mkv", Size: tc.size}, false},
 				{catalog.ReleaseID{InfoHash: "cccccccccccccccccccccccccccccccccccccccc", FileName: "bad.mkv", Size: tc.size}, false},
 			} {
-				got, err := store.Blocklisted(context.Background(), k.id)
-				if err != nil || got != k.want {
-					t.Errorf("Blocklisted(%+v) = %v, %v; want %v", k.id, got, err, k.want)
+				if got := isBlocked(t, store, k.id); got != k.want {
+					t.Errorf("blocked(%+v) = %v; want %v", k.id, got, k.want)
 				}
 			}
 			r.checkNoSecretsAnywhere()
@@ -336,23 +349,45 @@ func TestBadFilesFailWithAReasonAreBlocklistedAndNeverReachTheLibrary(t *testing
 	}
 }
 
-func TestABlocklistEntryExpiresAfterThirtyDays(t *testing.T) {
+func TestAReleaseBlockedAfterAFailedDownloadIsDroppedByTheChooser(t *testing.T) {
 	r, _ := setup(t)
-	r.enqueue(movieJob(r.cdn.Add("bad.mkv", debridfake.File{Data: append([]byte("PK\x03\x04"), make([]byte, 5<<10)...)}), "bad.mkv"))
-	r.waitHistory(1)
-	now := today
-	store, err := catalog.Open(r.env["MARQUEE_DATA_DIR"], func() time.Time { return now })
+	const hash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	const size = 300 << 20
+	job := movieJob(r.cdn.Add("bad.mkv", debridfake.File{Data: debridfake.MKV(100 << 10)}), "bad.mkv")
+	job.Release = catalog.ReleaseID{InfoHash: hash, FileName: "bad.mkv", Size: size}
+	r.enqueue(job)
+	if e := r.waitHistory(1)[0].(map[string]any); e["kind"] != "failed" || e["reason"] != "size_mismatch" {
+		t.Fatalf("history entry = %v, want a size_mismatch failure", e)
+	}
+
+	store, err := catalog.Open(r.env["MARQUEE_DATA_DIR"], nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	id := catalog.ReleaseID{InfoHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FileName: "bad.mkv"}
-	if ok, _ := store.Blocklisted(context.Background(), id); !ok {
-		t.Fatal("a fresh failure is not blocklisted")
+	blocked, err := store.Blocklist(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	now = today.Add(catalog.BlocklistTTL + time.Hour)
-	if ok, _ := store.Blocklisted(context.Background(), id); ok {
-		t.Error("the entry outlived its thirty days")
+
+	// The search lists the same release again, with another link.
+	listed := aiostreams.Stream{
+		URL: "http://other.invalid/new-link", Filename: "bad.mkv", Size: size, Cached: true,
+		InfoHash: strings.ToLower(hash),
+	}
+	ctx := chooser.Context{Kind: "movie", Blocklist: blocked, Now: today}
+	got := chooser.Choose([]aiostreams.Stream{listed}, ctx)
+	if len(got.Candidates) != 0 || len(got.Dropped) != 1 || got.Dropped[0].Reason != chooser.Blocklisted {
+		t.Fatalf("the chooser kept a release the pipeline blocked: %+v", got)
+	}
+	listed.Size++
+	if got := chooser.Choose([]aiostreams.Stream{listed}, ctx); len(got.Candidates) != 1 {
+		t.Errorf("a release of another size is not the blocked one: %+v", got)
+	}
+	ctx.Now = today.Add(chooser.BlockExpiry + time.Hour)
+	listed.Size--
+	if got := chooser.Choose([]aiostreams.Stream{listed}, ctx); len(got.Candidates) != 1 {
+		t.Errorf("the entry outlived its thirty days: %+v", got)
 	}
 }
 
@@ -553,7 +588,7 @@ func TestAFileAlreadyInTheLibraryIsNeverReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	if ok, _ := store.Blocklisted(context.Background(), catalog.ReleaseID{InfoHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FileName: "a.mkv"}); ok {
+	if isBlocked(t, store, catalog.ReleaseID{InfoHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FileName: "a.mkv"}) {
 		t.Error("a release was blocklisted for a problem on marquee's side")
 	}
 }
@@ -699,7 +734,7 @@ func TestADownloadWhoseTempFileVanishedFailsWithoutBlocklistingTheRelease(t *tes
 		t.Fatal(err)
 	}
 	defer func() { _ = store.Close() }()
-	if ok, _ := store.Blocklisted(context.Background(), catalog.ReleaseID{InfoHash: "dddddddddddddddddddddddddddddddddddddddd", FileName: "a.mkv"}); ok {
+	if isBlocked(t, store, catalog.ReleaseID{InfoHash: "dddddddddddddddddddddddddddddddddddddddd", FileName: "a.mkv"}) {
 		t.Error("a release was blocklisted for a problem on marquee's side")
 	}
 }

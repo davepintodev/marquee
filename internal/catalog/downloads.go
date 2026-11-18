@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/davepintodev/marquee/internal/chooser"
 	"github.com/davepintodev/marquee/internal/config"
 )
 
@@ -19,9 +20,6 @@ const (
 	StateDone        = "done"
 	StateFailed      = "failed"
 )
-
-// BlocklistTTL is how long a failed release stays blocklisted.
-const BlocklistTTL = 30 * 24 * time.Hour
 
 // ErrActiveDownload means the title or episode already has a download
 // that has not finished.
@@ -225,29 +223,13 @@ func (s *Store) FailDownload(ctx context.Context, id, reason, message string, bl
 		return err
 	}
 	if blocklist {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO blocklist (info_hash, file_name, size, reason, created_at) VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT DO UPDATE SET reason = excluded.reason, created_at = excluded.created_at`, r.InfoHash, r.FileName, r.Size, reason, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO blocklist (identity, blocked_at, reason) VALUES (?, ?, ?)
+			ON CONFLICT (identity) DO UPDATE SET blocked_at = excluded.blocked_at, reason = excluded.reason`,
+			chooser.IdentityOf(r.InfoHash, r.FileName, r.Size), s.now().UTC().Format(time.RFC3339), reason); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
-}
-
-// Blocklisted reports whether a release failed within BlocklistTTL.
-func (s *Store) Blocklisted(ctx context.Context, r ReleaseID) (bool, error) {
-	var at string
-	err := s.r.QueryRowContext(ctx, `SELECT created_at FROM blocklist WHERE info_hash = ? AND file_name = ? AND size = ?`, r.InfoHash, r.FileName, r.Size).Scan(&at)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	t, err := time.Parse(time.RFC3339Nano, at)
-	if err != nil {
-		return true, nil
-	}
-	return s.now().Sub(t) < BlocklistTTL, nil
 }
 
 // ComponentStatus is the last known outcome of calling an outside service.

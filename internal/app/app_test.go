@@ -22,7 +22,7 @@ import (
 	"github.com/davepintodev/marquee/internal/app"
 )
 
-const manifestVal = "https://aio.example.test/stremio/SECRET123/manifest.json"
+const manifestVal = "https://aio.example.test/stremio/SECRET123/PASS789/manifest.json"
 
 func testEnv(t *testing.T) map[string]string {
 	t.Helper()
