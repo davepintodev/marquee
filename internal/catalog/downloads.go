@@ -198,6 +198,9 @@ func (s *Store) FinishDownload(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM schedule WHERE title_id = ? AND season = ? AND number = ?`, titleID, season, number); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

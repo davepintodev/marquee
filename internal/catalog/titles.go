@@ -195,6 +195,12 @@ func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
 				return Title{}, false, err
 			}
 		}
+		if n.Kind == "series" {
+			// The episodes were fetched a moment ago; the first refresh is a day away.
+			if _, err := tx.ExecContext(ctx, `INSERT INTO series_refresh (title_id, due_at) VALUES (?, ?)`, id, s.now().Add(RefreshEvery).UnixMilli()); err != nil {
+				return Title{}, false, err
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Title{}, false, err

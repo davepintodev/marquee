@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/metadata"
@@ -169,15 +168,8 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 		Kind: req.Kind, TMDBID: req.TMDBID, Title: d.Title, Year: d.Year, Overview: d.Overview,
 		IMDbID: d.IMDbID, TVDBID: d.TVDBID, PreferredQuality: req.PreferredQuality, Images: imageRefs(id, d.Summary),
 	}
-	for _, s := range d.Seasons {
-		for _, e := range s.Episodes {
-			// An episode TMDB lists without a date cannot be waited for yet;
-			// it is stored once a refresh brings its date.
-			if _, err := time.Parse(time.DateOnly, e.AirDate); err != nil {
-				continue
-			}
-			n.Episodes = append(n.Episodes, catalog.NewEpisode{Season: s.Number, Number: e.Number, Name: e.Name, AirDate: e.AirDate})
-		}
+	for _, e := range d.DatedEpisodes() {
+		n.Episodes = append(n.Episodes, catalog.NewEpisode(e))
 	}
 	t, created, err := a.Catalog.Add(r.Context(), n)
 	if err != nil {
@@ -282,4 +274,29 @@ func (a *api) removeTitle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// searchNow asks the scheduler to search a movie, a series' monitored
+// missing episodes or one episode at once; the search itself happens in the
+// scheduler, within its rate limit.
+func (a *api) searchNow(w http.ResponseWriter, r *http.Request) {
+	var ep *catalog.EpisodeRef
+	if raw := r.PathValue("episodeId"); raw != "" {
+		m := episodeIDRe.FindStringSubmatch(raw)
+		if m == nil {
+			fail(w, http.StatusNotFound, "no such episode")
+			return
+		}
+		ep = &catalog.EpisodeRef{Season: atoi(m[1]), Number: atoi(m[2])}
+	}
+	id := r.PathValue("id")
+	if err := a.Catalog.RequestSearch(r.Context(), id, ep); err != nil {
+		a.titleReply(w, r, catalog.Title{}, err)
+		return
+	}
+	if a.Wake != nil {
+		a.Wake()
+	}
+	t, err := a.Catalog.Get(r.Context(), id)
+	a.titleReply(w, r, t, err)
 }

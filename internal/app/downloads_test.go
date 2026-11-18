@@ -22,6 +22,7 @@ import (
 	"github.com/davepintodev/marquee/internal/download"
 	"github.com/davepintodev/marquee/internal/jellyfinfake"
 	"github.com/davepintodev/marquee/internal/pipeline"
+	"github.com/davepintodev/marquee/internal/scheduler"
 	"github.com/davepintodev/marquee/internal/tmdbfake"
 )
 
@@ -65,6 +66,7 @@ func (r *rig) startService() {
 			JellyfinTimeout: time.Second, Download: fastDownloads(),
 		},
 		OnPipeline: func(m *pipeline.Manager) { r.mgr = m },
+		Scheduler:  scheduler.Tuning{Tick: -1},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	addrc := make(chan net.Addr, 1)
@@ -150,12 +152,12 @@ func waitFor(t *testing.T, what string, within time.Duration, cond func() bool) 
 	}
 }
 
-func (r *rig) history() []any {
+func (r *realSvc) history() []any {
 	r.t.Helper()
 	return r.mustCall("GET", "/api/history", "", 200)["history"].([]any)
 }
 
-func (r *rig) downloads() []any {
+func (r *realSvc) downloads() []any {
 	r.t.Helper()
 	return r.mustCall("GET", "/api/downloads", "", 200)["downloads"].([]any)
 }

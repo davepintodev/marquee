@@ -121,6 +121,29 @@ type Details struct {
 	Seasons []Season
 }
 
+// DatedEpisode is an episode with the season it belongs to.
+type DatedEpisode struct {
+	Season, Number int
+	Name           string
+	AirDate        string
+}
+
+// DatedEpisodes lists the episodes of every season that TMDB gives an air
+// date. One without a date cannot be waited for yet; it is picked up by a
+// later refresh once TMDB dates it.
+func (d Details) DatedEpisodes() []DatedEpisode {
+	var out []DatedEpisode
+	for _, s := range d.Seasons {
+		for _, e := range s.Episodes {
+			if _, err := time.Parse(time.DateOnly, e.AirDate); err != nil {
+				continue
+			}
+			out = append(out, DatedEpisode{Season: s.Number, Number: e.Number, Name: e.Name, AirDate: e.AirDate})
+		}
+	}
+	return out
+}
+
 type rawTitle struct {
 	ID           int     `json:"id"`
 	MediaType    string  `json:"media_type"`
