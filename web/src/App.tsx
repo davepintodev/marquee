@@ -24,7 +24,7 @@ export function App({ api }: { api: Api }) {
   const [query, setQuery] = useState("");
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
-  const [results, setResults] = useState<Load<TitleSummary[]>>({ status: "loading" });
+  const [answer, setAnswer] = useState<{ query: string; load: Load<TitleSummary[]> }>({ query: "", load: { status: "loading" } });
   const bar = useRef<HTMLInputElement>(null);
 
   const q = query.trim();
@@ -39,16 +39,13 @@ export function App({ api }: { api: Api }) {
     return () => ctl.abort();
   }, [api, wallTry]);
 
-  // The cleanup aborts the previous request, so an answer to an old
-  // query can never land on top of a newer one.
   useEffect(() => {
     if (!q) return;
     const ctl = new AbortController();
     const timer = setTimeout(() => {
-      setResults({ status: "loading" });
       api.search(q, ctl.signal).then(
-        (found) => !ctl.signal.aborted && setResults({ status: "ok", data: found }),
-        (e) => !ctl.signal.aborted && !isAbort(e) && setResults({ status: "error", message: messageOf(e) }),
+        (found) => !ctl.signal.aborted && setAnswer({ query: q, load: { status: "ok", data: found } }),
+        (e) => !ctl.signal.aborted && !isAbort(e) && setAnswer({ query: q, load: { status: "error", message: messageOf(e) } }),
       );
     }, TYPING_PAUSE_MS);
     return () => {
@@ -59,7 +56,6 @@ export function App({ api }: { api: Api }) {
 
   const clear = useCallback(() => {
     setQuery("");
-    setResults({ status: "loading" });
     bar.current?.focus();
   }, []);
 
@@ -71,11 +67,13 @@ export function App({ api }: { api: Api }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [clear]);
 
+  const results: Load<TitleSummary[]> = answer.query === q ? answer.load : { status: "loading" };
+
   const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
 
   return (
     <div className="app" data-mode={searching ? "search" : "wall"}>
-      <Wall api={api} items={wall.status === "ok" ? wall.data : null} width={width} height={height} />
+      <Wall api={api} inert={searching} items={wall.status === "ok" ? wall.data : null} width={width} height={height} />
 
       {!searching && wall.status === "error" && (
         <div className="notice" role="alert">
@@ -111,7 +109,7 @@ export function App({ api }: { api: Api }) {
         />
       </div>
 
-      <div className="results" aria-hidden={!searching}>
+      <div className="results" aria-hidden={!searching} inert={!searching}>
         {searching && results.status === "error" && (
           <div className="notice inline" role="alert">
             <p>{results.message}</p>

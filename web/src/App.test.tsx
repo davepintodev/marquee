@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
+import { Wall as WallView } from "./Wall";
 import { createApi } from "./api/client";
 import type { Badge, TitleSummary, Wall } from "./api/types";
 
@@ -229,4 +230,49 @@ test("Try again reloads the wall after an error", async () => {
   expect((await screen.findAllByRole("button", { name: /house/i })).length).toBeGreaterThan(0);
   expect(screen.queryByRole("alert")).toBeNull();
   expect(calls.filter((u) => u.pathname === "/api/wall")).toHaveLength(2);
+});
+
+test("a new query never shows the old query's results while its own answer is pending", async () => {
+  setup((url) => {
+    if (url.pathname === "/api/wall") return json(wall);
+    if (url.searchParams.get("q") === "dune") return json({ results: [dune] });
+    return new Promise<Response>(() => {});
+  });
+  await screen.findAllByRole("button", { name: /house/i });
+  type("dune");
+  await screen.findByRole("list", { name: /results/i });
+
+  type("");
+  type("x");
+
+  expect(screen.queryByRole("list", { name: /results/i })).toBeNull();
+});
+
+test("a new query never shows the old query's error while its own answer is pending", async () => {
+  setup((url) => {
+    if (url.pathname === "/api/wall") return json(wall);
+    if (url.searchParams.get("q") === "dune") return json({ error: "TMDB did not answer" }, 502);
+    return new Promise<Response>(() => {});
+  });
+  await screen.findAllByRole("button", { name: /house/i });
+  type("dune");
+  await screen.findByRole("alert");
+
+  type("");
+  type("x");
+
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a tile whose image failed tries the new image when its slot shows another title", async () => {
+  const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
+  const { rerender } = render(<WallView api={api} items={[house, hail]} width={1200} height={800} />);
+  const [tile] = screen.getAllByRole("button");
+  fireEvent.error(tile.querySelector("img")!);
+  expect(tile.querySelector("img")).toBeNull();
+
+  rerender(<WallView api={api} items={[dune, hail]} width={1200} height={800} />);
+
+  const again = screen.getAllByRole("button")[0];
+  expect(again.querySelector("img")?.getAttribute("src")).toContain("movie-1");
 });

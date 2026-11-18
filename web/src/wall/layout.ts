@@ -50,10 +50,6 @@ function compose(total: number, next: () => number, needWide: boolean): Cell[] |
   return walk(total, false);
 }
 
-// layoutWall fills a width×height screen edge to edge with portrait and
-// wide tiles in reading order, library-first order being the caller's
-// job. Band height follows the screen's height, and each band's cells
-// are stretched a few percent so no band ends in a sliver.
 export function layoutWall(width: number, height: number): Tile[] {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return [];
 

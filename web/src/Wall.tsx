@@ -12,16 +12,16 @@ interface Props {
   items: TitleSummary[] | null;
   width: number;
   height: number;
+  inert?: boolean;
   onSelect?: (title: TitleSummary) => void;
 }
 
-// items arrive in display order (library first, then trending). When
-// there are fewer titles than tiles the list repeats so the screen is
-// never left with holes; null means still loading.
-export function Wall({ api, items, width, height, onSelect }: Props) {
+// When there are fewer titles than tiles the list repeats so the screen
+// is never left with holes.
+export function Wall({ api, items, width, height, inert, onSelect }: Props) {
   const slots = useMemo(() => layoutWall(width, height), [width, height]);
   return (
-    <div className="wall" aria-label="Wall" data-testid="wall">
+    <div className="wall" aria-label="Wall" data-testid="wall" inert={inert}>
       {slots.map((s, i) => {
         const style = { left: s.x, top: s.y, width: s.w, height: s.h, padding: GAP / 2 };
         if (!items || items.length === 0) return <div key={i} className="tile skeleton" style={style} />;

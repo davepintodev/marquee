@@ -27,8 +27,6 @@ function isAbort(e: unknown) {
   return e instanceof DOMException && e.name === "AbortError";
 }
 
-// Every call either resolves with the contract's shape or rejects with
-// an ApiError whose message is safe to show the owner as it is.
 async function call<T>(run: () => Promise<{ data?: T; error?: unknown; response: Response }>, valid: (d: T) => boolean): Promise<T> {
   let res;
   try {
