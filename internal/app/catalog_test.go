@@ -796,8 +796,6 @@ func TestRoutesOfLaterTicketsAnswer501InTheContractsErrorShape(t *testing.T) {
 		{"POST", "/api/titles/movie-438631/episodes/s01e01/search"},
 		{"GET", "/api/titles/movie-438631/releases"},
 		{"POST", "/api/titles/movie-438631/releases/r1/grab"},
-		{"GET", "/api/downloads"},
-		{"GET", "/api/history"},
 		{"POST", "/api/history/h1/retry"},
 		{"GET", "/api/events"},
 	} {

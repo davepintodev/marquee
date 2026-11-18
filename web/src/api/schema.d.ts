@@ -453,7 +453,7 @@ export interface components {
         /** @enum {string} */
         HistoryKind: "added" | "searched" | "would_grab" | "imported" | "failed";
         /** @enum {string} */
-        FailureReason: "stalled" | "not_video" | "wrong_episode" | "too_small" | "size_mismatch" | "source_down";
+        FailureReason: "stalled" | "not_video" | "wrong_episode" | "too_small" | "size_mismatch" | "source_down" | "local_error";
         HistoryEntry: {
             id: string;
             /** Format: date-time */
