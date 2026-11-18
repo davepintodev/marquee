@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Api } from "./api/client";
-import type { Download, HistoryEntry, LiveEvent, TitleSummary } from "./api/types";
+import type { Download, HistoryEntry, LiveEvent, Title, TitleSummary } from "./api/types";
 import { HistoryList } from "./HistoryList";
 import { Page } from "./Page";
 import { hrefOf } from "./route";
@@ -14,10 +14,17 @@ interface Props {
   onToast: (text: string) => void;
 }
 
+interface Waiting {
+  id: string;
+  name: string;
+  note: string;
+  label: string;
+}
+
 interface Data {
   downloads: Download[];
   history: HistoryEntry[];
-  searching: TitleSummary[];
+  waiting: Waiting[];
 }
 
 type Load = { status: "loading" } | { status: "ok"; data: Data } | { status: "error"; message: string };
@@ -32,17 +39,37 @@ const stateWords: Record<Download["state"], string> = {
   importing: "Importing",
 };
 
+function searchingEpisodes(t: Title) {
+  return t.seasons.flatMap((s) => s.episodes.filter((e) => e.monitored && e.state === "searching").map((e) => e.id.toUpperCase()));
+}
+
 export function Activity({ api, onClose, onChanged, onToast }: Props) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const working = useRef(false);
+  // A title's badge says nothing about one searching episode, so a title retried here is asked about directly until it stops searching.
+  const retried = useRef(new Set<string>());
 
   const fetchAll = useCallback(
     async (signal?: AbortSignal): Promise<Data> => {
-      const [downloads, history, library] = await Promise.all([api.downloads(signal), api.history(signal), api.library(signal)]);
-      return { downloads, history, searching: library.filter((t) => t.badge?.state === "searching") };
+      const asked = [...retried.current];
+      const [downloads, history, library, titles] = await Promise.all([
+        api.downloads(signal),
+        api.history(signal),
+        api.library(signal),
+        Promise.all(asked.map((id) => api.title(id, signal).catch(() => null))),
+      ]);
+      const waiting: Waiting[] = library
+        .filter((t) => t.badge?.state === "searching")
+        .map((t) => ({ id: t.id, name: t.title, note: "Waiting for a release to appear.", label: t.badge?.label ?? "Searching" }));
+      titles.forEach((t, i) => {
+        const episodes = t ? searchingEpisodes(t) : [];
+        if (episodes.length === 0) retried.current.delete(asked[i]);
+        else if (t && !waiting.some((w) => w.id === t.id)) waiting.push({ id: t.id, name: t.title, note: `Waiting for ${episodes.join(", ")} to appear.`, label: "Searching" });
+      });
+      return { downloads, history, waiting };
     },
     [api],
   );
@@ -84,6 +111,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
     setError(null);
     try {
       const title = await api.retry(h.id);
+      if (title.kind === "series") retried.current.add(title.id);
       onChanged(title);
       onToast(`Searching for “${h.titleName}” again.`);
       setLoad({ status: "ok", data: await fetchAll() });
@@ -111,9 +139,9 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
     );
   }
 
-  const { downloads, history, searching } = load.data;
+  const { downloads, history } = load.data;
   const busy = new Set(downloads.map((d) => d.titleId));
-  const waiting = searching.filter((t) => !busy.has(t.id));
+  const waiting = load.data.waiting.filter((w) => !busy.has(w.id));
   return (
     <Page heading="Activity" onClose={onClose} wide>
       {error && (
@@ -146,15 +174,15 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
                 <span className="percent">{`${d.percent}%`}</span>
               </li>
             ))}
-            {waiting.map((t) => (
-              <li key={t.id} className="row">
+            {waiting.map((w) => (
+              <li key={w.id} className="row">
                 <div className="row-main">
                   <p className="row-title">
-                    <a href={hrefOf({ name: "title", id: t.id })}>{t.title}</a>
+                    <a href={hrefOf({ name: "title", id: w.id })}>{w.name}</a>
                   </p>
-                  <p className="row-note">Waiting for a release to appear.</p>
+                  <p className="row-note">{w.note}</p>
                 </div>
-                <span className="percent mute">{t.badge?.label}</span>
+                <span className="percent mute">{w.label}</span>
               </li>
             ))}
           </ul>

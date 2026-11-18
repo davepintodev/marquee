@@ -140,6 +140,35 @@ test("Retry on a failed item pushes it back into the queue", async () => {
   expect((await screen.findByRole("status")).textContent).toMatch(/Arrival/);
 });
 
+test("retrying a series episode puts that episode in the queue, though the title badge says nothing about it", async () => {
+  const stalledEp: HistoryEntry = { ...failed, id: "h-ep", titleId: "series-4", titleName: "House", episode: "s04e02" };
+  const house = (state: "missing" | "searching") => ({
+    ...lib({ id: "series-4", title: "House", kind: "series", tmdbId: 4, badge: { state: "partial_season", label: "Season 4 · 1 missing", season: 4, missingCount: 1 } }),
+    seasons: [{ number: 4, episodes: [{ id: "s04e02", number: 2, name: "Big Baby", airDate: "2007-10-02", monitored: true, state }] }],
+    historySummary: "",
+  });
+  let state: "missing" | "searching" = "missing";
+  const world: World = { downloads: [], history: [stalledEp], titles: [house("missing")] };
+  setupApp(
+    serve(world, (url, init) => {
+      if (init.method === "POST" && url.pathname === "/api/history/h-ep/retry") {
+        state = "searching";
+        world.history = [{ ...stalledEp, retryable: false }];
+        return json(house("searching"));
+      }
+      if (url.pathname === "/api/titles/series-4") return json(house(state));
+    }),
+    "#/activity",
+  );
+  await screen.findByText("Nothing is downloading.");
+
+  fireEvent.click(screen.getByRole("button", { name: "Retry House" }));
+
+  const queue = await screen.findByRole("list", { name: "Queue" });
+  expect(within(queue).getByText("House")).toBeTruthy();
+  expect(within(queue).getByText(/S04E02/)).toBeTruthy();
+});
+
 test("a retry that is refused says why and keeps the button", async () => {
   setupApp(
     serve({ downloads: [], history: [failed], titles: [] }, (_url, init) =>

@@ -701,10 +701,10 @@ a.btn-secondary {
   backdrop-filter: blur(22px);
   border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
   box-shadow: 0 20px 80px rgba(0, 0, 0, 0.55);
-  animation: pop 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: page-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-@keyframes pop {
+@keyframes page-in {
   from {
     opacity: 0;
     transform: translateY(12px);

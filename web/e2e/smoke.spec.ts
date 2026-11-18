@@ -272,3 +272,28 @@ test("a library popup opens the title's detail", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+test("retrying a failed series episode puts it in the queue", async ({ page }) => {
+  await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
+  await page.goto("/#/activity");
+  const history = page.getByRole("list", { name: "History" });
+
+  await history.getByRole("button", { name: "Retry House" }).click();
+
+  const queue = page.getByRole("list", { name: "Queue" });
+  await expect(queue.getByRole("listitem").filter({ hasText: "House" }).getByText(/S04E02/)).toBeVisible();
+});
+
+test("detail and Activity read well in the light theme", async ({ browser }) => {
+  const ctx = await browser.newContext({ colorScheme: "light", viewport: { width: screens[1].width, height: screens[1].height } });
+  const page = await ctx.newPage();
+  await page.goto("/#/title/series-1408");
+  await expect(page.getByRole("heading", { name: "House", level: 1 })).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(shots, "detail-light.png") });
+  await page.goto("/#/activity");
+  await expect(page.getByRole("list", { name: "Queue" })).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(shots, "activity-light.png") });
+  await ctx.close();
+});
