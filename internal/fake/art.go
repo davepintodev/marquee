@@ -25,13 +25,10 @@ func Titles() []Title {
 	return out
 }
 
-// ArtFile is the file in an art folder that holds a title's image.
 func ArtFile(dir, kind, titleID string) string {
 	return filepath.Join(dir, kind+"-"+titleID+".jpg")
 }
 
-// serveArt answers with the title's file from the art folder and reports
-// whether there was one.
 func (f *Fake) serveArt(w http.ResponseWriter, r *http.Request, kind, titleID string) bool {
 	if f.opts.ArtDir == "" {
 		return false
