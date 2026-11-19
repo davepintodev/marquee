@@ -336,14 +336,17 @@ test("pressing a season button twice sends one call", async () => {
 });
 
 test("a season that is open stays open when the title is refreshed from under it", async () => {
-  setupApp(serve(house()), "#/title/series-2");
+  const { calls } = setupApp(serve(house()), "#/title/series-2");
   const s4 = await screen.findByRole("region", { name: "Season 4" });
   openSeason(s4);
   fireEvent.click(screen.getByRole("button", { name: "History" }));
   await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  const loads = () => calls.filter((u) => u.pathname === "/api/titles/series-2").length;
+  const before = loads();
 
   FakeEventSource.open()[0].emit("title", { titleId: "series-2" });
-  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  await waitFor(() => expect(loads()).toBe(before + 1));
+  await screen.findByRole("region", { name: "Season 4" });
 
   expect(isOpen(s4)).toBe(true);
   expect(screen.getByRole("list", { name: "History" })).toBeTruthy();
