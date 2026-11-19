@@ -13,6 +13,8 @@ const screens = [
 ];
 
 const GAP = 10;
+const EDGE = 16;
+const PHONE_EDGE = 12;
 
 async function tileBoxes(page: Page) {
   await expect(page.locator(".tile[data-shape] img").first()).toBeVisible();
@@ -59,11 +61,13 @@ for (const s of screens) {
     expect(top).toBeGreaterThan(40);
     expect(top).toBeLessThan(90);
     expect(tiles.length).toBeGreaterThan(4);
+    const wall = (await page.getByTestId("wall").boundingBox())!;
     const area = tiles.reduce((a, t) => a + t.w * t.h, 0);
-    expect(area / (s.width * (s.height - top))).toBeGreaterThan(0.99);
-    expect(Math.min(...tiles.map((t) => t.x))).toBeCloseTo(0, 0);
-    expect(Math.max(...tiles.map((t) => t.x + t.w))).toBeCloseTo(s.width, 0);
-    expect(Math.max(...tiles.map((t) => t.y + t.h))).toBeCloseTo(s.height, 0);
+    expect(area / (wall.width * wall.height)).toBeGreaterThan(0.99);
+    const edge = s.width <= 640 ? PHONE_EDGE : EDGE;
+    expect(Math.min(...tiles.map((t) => t.x)) + GAP / 2).toBeCloseTo(edge, 0);
+    expect(Math.max(...tiles.map((t) => t.x + t.w)) - GAP / 2).toBeCloseTo(s.width - edge, 0);
+    expect(Math.max(...tiles.map((t) => t.y + t.h)) - GAP / 2).toBeCloseTo(s.height - edge, 0);
     for (const t of tiles) {
       const want = t.shape === "portrait" ? 2 / 3 : 16 / 9;
       const got = (t.w - GAP) / (t.h - GAP);
