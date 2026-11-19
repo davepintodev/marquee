@@ -39,7 +39,6 @@ type schedRig struct {
 	cdn *debridfake.Server
 	jf  *jellyfinfake.Server
 	sch *scheduler.Scheduler
-	// adopted gets how each first-run adoption ended.
 	adopted chan error
 	root    string
 	stop    func()
@@ -50,8 +49,6 @@ func newSchedRig(t *testing.T, dryRun bool) *schedRig {
 	return newSchedRigWith(t, dryRun, newTMDB(t), nil)
 }
 
-// newSchedRigWith starts the rig on a TMDB of the test's choosing and, when
-// prep is given, on a library it lays out before the first start.
 func newSchedRigWith(t *testing.T, dryRun bool, tm *tmdbfake.Fake, prep func(env map[string]string)) *schedRig {
 	t.Helper()
 	r := &schedRig{aio: newAIO(t), cdn: debridfake.New(), jf: jellyfinfake.New(), adopted: make(chan error, 4)}

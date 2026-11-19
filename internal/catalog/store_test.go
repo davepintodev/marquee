@@ -2,6 +2,9 @@ package catalog_test
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -186,5 +189,62 @@ func TestActivityKeepsTheNewestEntriesAndTheLastDecisionOfEachTarget(t *testing.
 		if err != nil || !had || got != want {
 			t.Errorf("last would-grab of %s = %q %v %v, want %q", tmdb, got, had, err, want)
 		}
+	}
+}
+
+func TestTheRefreshBackfillGivesOnlyAdoptedSeriesARowAndKeepsTheOthers(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	s, err := catalog.Open(dir, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Add(ctx, catalog.NewTitle{Kind: "series", TMDBID: 1, Title: "Added"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Add(ctx, catalog.NewTitle{Kind: "movie", TMDBID: 2, Title: "Film"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Adopt(ctx, catalog.NewTitle{Kind: "series", TMDBID: 3, Title: "Adopted"}, catalog.Found{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", filepath.Join(dir, catalog.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM series_refresh WHERE title_id = 'series-3'; PRAGMA user_version = 7`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = catalog.Open(dir, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("the backfill must not fail on a library that already has refresh rows: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	due := func(at time.Time) []string {
+		targets, err := s.RefreshDue(ctx, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, tg := range targets {
+			ids = append(ids, tg.TitleID)
+		}
+		slices.Sort(ids)
+		return ids
+	}
+	if got := due(now); !slices.Equal(got, []string{"series-3"}) {
+		t.Errorf("due right after the upgrade = %v, want only the backfilled series-3 (the added series keeps its day, the movie has none)", got)
+	}
+	if got := due(now.Add(catalog.RefreshEvery)); !slices.Equal(got, []string{"series-1", "series-3"}) {
+		t.Errorf("due a day later = %v, want series-1 and series-3 and no movie", got)
 	}
 }
