@@ -390,6 +390,10 @@ paths:
     get:
       tags: [activity]
       operationId: streamEvents
+      security:
+        - {}
+        - bearerAuth: []
+        - cookieAuth: []
       summary: Live events as Server-Sent Events.
       description: >
         Each message has an `event:` name and a JSON `data:` line. `progress`
@@ -418,6 +422,10 @@ paths:
     get:
       tags: [discovery]
       operationId: getImage
+      security:
+        - {}
+        - bearerAuth: []
+        - cookieAuth: []
       summary: A poster (2:3) or backdrop (16:9). Fetched and cached by marquee, so the browser never contacts TMDB.
       responses:
         "200":
@@ -457,11 +465,33 @@ components:
       description: >
         Optional API token (MARQUEE_API_TOKEN). With no token configured the
         API is open and clients send no Authorization header; with one, every
-        operation answers 401 without `Authorization: Bearer <token>`.
-        Until a later change lets them carry it, `getImage` and `streamEvents`
-        are the exceptions: the browser loads them through `<img>` and
-        `EventSource`, which cannot send the header, so they answer without
-        the token.
+        operation answers 401 without `Authorization: Bearer <token>`, except
+        that `getImage` and `streamEvents` also accept the session cookie
+        (`cookieAuth`).
+
+
+        The token is handed over once, as the bearer header: the UI asks for
+        it on each device (the unlock) and sends it with every request. Any
+        request that carries a valid token and no valid session cookie gets a
+        `marquee_session` cookie in its response, so no call of its own is
+        needed. The UI opens the event stream only after a request has been
+        answered, which is when the browser holds the cookie.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: marquee_session
+      description: >
+        Set by marquee in answer to a valid bearer token, for the two
+        operations a browser loads without being able to send a header: an
+        `<img src>` and an `EventSource`. HttpOnly, `SameSite=Strict`, path
+        `/api/`, one year, not `Secure` (marquee serves plain HTTP on a LAN).
+        Its value is derived from the token, never the token itself, and a
+        changed token ends every session. It is accepted only on `GET` of
+        `getImage` and `streamEvents`; every other operation, and any other
+        method, still needs the bearer header, because `SameSite` ignores
+        ports and another web app on the same host could otherwise send the
+        cookie. A token in the URL was rejected: it lands in logs and in the
+        browser history.
   parameters:
     TitleId:
       name: id
