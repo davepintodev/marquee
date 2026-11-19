@@ -22,6 +22,7 @@ export interface Api {
   setMonitored(id: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
   removeTitle(id: string, signal?: AbortSignal): Promise<void>;
   setEpisodeMonitored(id: string, episodeId: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
+  setSeasonMonitored(id: string, season: number, monitored: boolean, signal?: AbortSignal): Promise<Title>;
   searchEpisodeNow(id: string, episodeId: string, signal?: AbortSignal): Promise<Title>;
   // A series needs the episode; a movie takes none.
   releases(id: string, episode?: string, signal?: AbortSignal): Promise<Releases>;
@@ -157,6 +158,9 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
     },
     setEpisodeMonitored(id, episodeId, monitored, signal) {
       return call(() => client.PATCH("/api/titles/{id}/episodes/{episodeId}", { params: { path: { id, episodeId } }, body: { monitored }, signal }), isTitle);
+    },
+    setSeasonMonitored(id, season, monitored, signal) {
+      return call(() => client.PUT("/api/titles/{id}/seasons/{number}", { params: { path: { id, number: season } }, body: { monitored }, signal }), isTitle);
     },
     searchEpisodeNow(id, episodeId, signal) {
       return call(() => client.POST("/api/titles/{id}/episodes/{episodeId}/search", { params: { path: { id, episodeId } }, signal }), isTitle);

@@ -968,7 +968,9 @@ button {
 .nav-link:focus-visible,
 .page a:focus-visible,
 .page button:focus-visible,
-.page summary:focus-visible {
+.page summary:focus-visible,
+.page .season-toggle:focus-visible,
+.page .collapse button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -1165,20 +1167,30 @@ a.btn-secondary {
   margin-top: 22px;
 }
 
-.season summary {
+.season-head {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.season-toggle,
+.collapse button {
+  all: unset;
+  box-sizing: border-box;
   cursor: pointer;
+}
+
+.season-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
   padding: 6px 0;
-  list-style: none;
 }
 
-.season summary::-webkit-details-marker {
-  display: none;
-}
-
-.season summary::before {
+.season-toggle::before {
   content: "";
   width: 7px;
   height: 7px;
@@ -1188,8 +1200,27 @@ a.btn-secondary {
   transition: transform 0.2s;
 }
 
-.season details[open] summary::before {
+.season-toggle[aria-expanded="true"]::before {
   transform: rotate(45deg);
+}
+
+.season-monitor {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .season-head {
+    flex-wrap: wrap;
+    gap: 0;
+  }
+
+  .season-toggle {
+    flex-basis: 100%;
+  }
+
+  .season-monitor {
+    margin: -4px 0 0 7px;
+  }
 }
 
 .season-name {
