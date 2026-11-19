@@ -93,6 +93,9 @@ type historyEntry struct {
 	Message   string `json:"message"`
 	Reason    string `json:"reason,omitempty"`
 	Retryable bool   `json:"retryable"`
+	// seq numbers the entries in the order they happened, so a cursor names
+	// "older than this one" and survives new entries at the head.
+	seq int
 }
 
 type event struct{ name, data string }
@@ -106,6 +109,7 @@ type Fake struct {
 	titles    []*entry
 	downloads []*download
 	history   []*historyEntry
+	lastSeq   int
 	releases  map[string][]release
 	health    json.RawMessage
 	nextID    int
@@ -155,7 +159,9 @@ func New(opts Options) *Fake {
 			}
 		}
 	}
-	for _, h := range f.history {
+	for i, h := range f.history {
+		h.seq = len(f.history) - i
+		f.lastSeq = max(f.lastSeq, h.seq)
 		if t := f.find(h.TitleID); t != nil && h.TitleName == "" {
 			h.TitleName = t.Title
 		}
@@ -230,8 +236,9 @@ func (f *Fake) activeDownload(titleID, ep string) *download {
 }
 
 func (f *Fake) addHistory(kind string, t *entry, ep, msg, reason string, retryable bool) {
+	f.lastSeq++
 	h := &historyEntry{
-		ID: f.newID("h"), At: time.Now().UTC().Format(time.RFC3339), Kind: kind,
+		seq: f.lastSeq, ID: f.newID("h"), At: time.Now().UTC().Format(time.RFC3339), Kind: kind,
 		TitleID: t.id(), TitleName: t.Title, Episode: ep, Message: msg, Reason: reason, Retryable: retryable,
 	}
 	f.history = append([]*historyEntry{h}, f.history...)

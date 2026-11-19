@@ -803,8 +803,8 @@ func TestHistoryPagesNewestFirstAndAnswersAllByDefault(t *testing.T) {
 	if len(all) != 4 {
 		t.Fatalf("history: %d entries, want 4", len(all))
 	}
-	if first := r.mustCall("GET", "/api/history", "", 200); first["nextOffset"] != nil {
-		t.Errorf("a history that fits the default page has no next page: %v", first["nextOffset"])
+	if first := r.mustCall("GET", "/api/history", "", 200); first["nextCursor"] != nil {
+		t.Errorf("a history that fits the default page has no next page: %v", first["nextCursor"])
 	}
 
 	ids := func(es any) (out []string) {
@@ -814,16 +814,16 @@ func TestHistoryPagesNewestFirstAndAnswersAllByDefault(t *testing.T) {
 		return out
 	}
 	var got []string
-	offset, pages := 0, 0
+	query, pages := "limit=3", 0
 	for {
-		page := r.mustCall("GET", fmt.Sprintf("/api/history?limit=3&offset=%d", offset), "", 200)
+		page := r.mustCall("GET", "/api/history?"+query, "", 200)
 		got = append(got, ids(page["history"])...)
 		pages++
-		next, more := page["nextOffset"].(float64)
+		next, more := page["nextCursor"].(string)
 		if !more {
 			break
 		}
-		offset = int(next)
+		query = "limit=3&cursor=" + next
 		if pages > 4 {
 			t.Fatal("paging does not end")
 		}
@@ -831,12 +831,12 @@ func TestHistoryPagesNewestFirstAndAnswersAllByDefault(t *testing.T) {
 	if pages != 2 || fmt.Sprint(got) != fmt.Sprint(ids(all)) {
 		t.Errorf("%d pages gave %v, want 2 pages of %v", pages, got, ids(all))
 	}
-	for _, q := range []string{"limit=0", "limit=-1", "limit=x", "offset=-1", "offset=x", "limit=1000000"} {
+	for _, q := range []string{"limit=0", "limit=-1", "limit=x", "cursor=x", "cursor=1.1.1.1", "limit=1000000"} {
 		if got := r.bad("GET", "/api/history?"+q, "").status; got != 400 {
 			t.Errorf("history?%s: %d, want 400", q, got)
 		}
 	}
-	if past := r.mustCall("GET", "/api/history?offset=50", "", 200); len(past["history"].([]any)) != 0 || past["nextOffset"] != nil {
+	if past := r.mustCall("GET", "/api/history?cursor=1.1.1", "", 200); len(past["history"].([]any)) != 0 || past["nextCursor"] != nil {
 		t.Errorf("past the end is an empty page: %v", past)
 	}
 }
@@ -911,7 +911,9 @@ func TestAnAdoptedSeriesFromBeforeTheFixIsRefreshedAfterARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	// What the database looked like when adoption left no refresh row behind.
-	if _, err := db.Exec(`DELETE FROM series_refresh; PRAGMA user_version = 7`); err != nil {
+	if _, err := db.Exec(`DROP INDEX downloads_finished; DROP INDEX downloads_finished_by_target; DROP INDEX activity_by_at;
+		ALTER TABLE downloads DROP COLUMN at_ms; ALTER TABLE activity DROP COLUMN at_ms;
+		DELETE FROM series_refresh; PRAGMA user_version = 7`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

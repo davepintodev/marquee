@@ -328,9 +328,10 @@ func (s *Store) AddActivity(ctx context.Context, a Activity) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `INSERT INTO activity (id, title_id, season, number, kind, reason, message, release_id, at)
-		SELECT ?, id, ?, ?, ?, ?, ?, ?, ? FROM titles WHERE id = ?`,
-		newActivityID(), a.Season, a.Number, a.Kind, a.Reason, a.Message, a.ReleaseID, s.stamp(), a.TitleID)
+	now := s.now()
+	res, err := tx.ExecContext(ctx, `INSERT INTO activity (id, title_id, season, number, kind, reason, message, release_id, at, at_ms)
+		SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ? FROM titles WHERE id = ?`,
+		newActivityID(), a.Season, a.Number, a.Kind, a.Reason, a.Message, a.ReleaseID, now.UTC().Format(time.RFC3339Nano), now.UnixMilli(), a.TitleID)
 	if err := affected(res, err); err != nil {
 		return err
 	}

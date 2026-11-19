@@ -29,7 +29,8 @@ export interface Api {
   // Picking by hand overrides the blocklist. A title that is not in the library is added first.
   grab(id: string, releaseId: string, episode?: string, signal?: AbortSignal): Promise<Download>;
   downloads(signal?: AbortSignal): Promise<Download[]>;
-  history(signal?: AbortSignal): Promise<HistoryEntry[]>;
+  // One page of the feed, newest first. `next` is the cursor to pass for the page after it, absent on the last.
+  history(page: { limit?: number; cursor?: string }, signal?: AbortSignal): Promise<{ entries: HistoryEntry[]; next?: string }>;
   retry(historyId: string, signal?: AbortSignal): Promise<Title>;
   // Returns the function that closes the stream. Without EventSource (a test, an old browser) nothing is delivered.
   events(on: (e: LiveEvent) => void): () => void;
@@ -198,9 +199,10 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       const data = await call(() => client.GET("/api/downloads", { signal }), (d) => Array.isArray(d.downloads));
       return data.downloads;
     },
-    async history(signal) {
-      const data = await call(() => client.GET("/api/history", { signal }), (d) => Array.isArray(d.history));
-      return data.history;
+    async history({ limit, cursor }, signal) {
+      const query = { ...(limit ? { limit } : {}), ...(cursor ? { cursor } : {}) };
+      const data = await call(() => client.GET("/api/history", { params: { query }, signal }), (d) => Array.isArray(d.history));
+      return { entries: data.history, next: data.nextCursor };
     },
     retry(historyId, signal) {
       return call(() => client.POST("/api/history/{historyId}/retry", { params: { path: { historyId } }, signal }), isTitle);

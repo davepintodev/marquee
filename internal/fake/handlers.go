@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"html"
-	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -629,17 +628,18 @@ func (f *Fake) listHistory(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "limit must be a number from 1 to 1000")
 		return
 	}
-	offset, ok := pageParam(r, "offset", 0, 0, math.MaxInt32)
-	if !ok {
-		fail(w, http.StatusBadRequest, "offset must be a number from 0")
-		return
+	if c := r.URL.Query().Get("cursor"); c != "" {
+		seq, err := strconv.Atoi(c)
+		if err != nil || seq < 1 || strconv.Itoa(seq) != c {
+			fail(w, http.StatusBadRequest, "cursor is not one this server gave")
+			return
+		}
+		out = slices.DeleteFunc(slices.Clone(out), func(h *historyEntry) bool { return h.seq >= seq })
 	}
-	offset = min(offset, len(out))
 	body := map[string]any{}
-	out = out[offset:]
 	if len(out) > limit {
 		out = out[:limit]
-		body["nextOffset"] = offset + limit
+		body["nextCursor"] = strconv.Itoa(out[limit-1].seq)
 	}
 	body["history"] = append([]*historyEntry{}, out...)
 	write(w, http.StatusOK, body)

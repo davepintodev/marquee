@@ -81,12 +81,13 @@ const downloadColumns = `d.id, d.title_id, t.title, d.season, d.number, d.state,
 	d.release_name, d.resolution, d.quality, d.url, d.bytes_done, d.bytes_total, d.reason, d.message,
 	d.library_path, d.created_at, d.updated_at`
 
-func scanDownload(sc interface{ Scan(...any) error }) (Download, error) {
+func scanDownload(sc interface{ Scan(...any) error }, extra ...any) (Download, error) {
 	var d Download
 	var url, created, updated string
-	if err := sc.Scan(&d.ID, &d.TitleID, &d.TitleName, &d.Season, &d.Number, &d.State, &d.Release.InfoHash,
+	dest := append([]any{&d.ID, &d.TitleID, &d.TitleName, &d.Season, &d.Number, &d.State, &d.Release.InfoHash,
 		&d.Release.FileName, &d.Release.Size, &d.ReleaseName, &d.Resolution, &d.Quality, &url, &d.BytesDone,
-		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated); err != nil {
+		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated}, extra...)
+	if err := sc.Scan(dest...); err != nil {
 		return Download{}, err
 	}
 	d.URL = config.Secret(url)
@@ -162,9 +163,28 @@ func (s *Store) ActiveDownloads(ctx context.Context) ([]Download, error) {
 // non-empty titleID narrows them to one title.
 func (s *Store) FinishedDownloads(ctx context.Context, titleID string) ([]Download, error) {
 	if titleID != "" {
-		return s.queryDownloads(ctx, `WHERE d.state IN ('done', 'failed') AND d.title_id = ? ORDER BY d.updated_at DESC, d.rowid DESC`, titleID)
+		return s.queryDownloads(ctx, `WHERE d.state IN ('done', 'failed') AND d.title_id = ? ORDER BY d.at_ms DESC, d.rowid DESC`, titleID)
 	}
-	return s.queryDownloads(ctx, `WHERE d.state IN ('done', 'failed') ORDER BY d.updated_at DESC, d.rowid DESC`)
+	return s.queryDownloads(ctx, `WHERE d.state IN ('done', 'failed') ORDER BY d.at_ms DESC, d.rowid DESC`)
+}
+
+// DownloadsKeep is how many of the newest finished downloads are kept.
+const DownloadsKeep = 5000
+
+// pruneDownloads drops the finished downloads older than the newest
+// downloadsKeep, except the latest of each movie and episode: the
+// scheduler reads how a target last ended and a retry needs the failure.
+// Running downloads are never touched, and the blocklist and the files
+// the library has live elsewhere.
+func (s *Store) pruneDownloads(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM downloads
+		WHERE state IN ('done', 'failed')
+		AND (at_ms, rowid) < (SELECT at_ms, rowid FROM downloads WHERE state IN ('done', 'failed')
+			ORDER BY at_ms DESC, rowid DESC LIMIT 1 OFFSET ?)
+		AND rowid != (SELECT l.rowid FROM downloads l
+			WHERE l.title_id = downloads.title_id AND l.season = downloads.season AND l.number = downloads.number
+			AND l.state IN ('done', 'failed') ORDER BY l.at_ms DESC, l.rowid DESC LIMIT 1)`, s.downloadsKeep-1)
+	return err
 }
 
 // SetDownloadState moves an unfinished download to state. A download that
@@ -206,7 +226,9 @@ func (s *Store) FinishDownload(ctx context.Context, id string) error {
 		}
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE downloads SET state = 'done', url = '', bytes_done = bytes_total, updated_at = ? WHERE id = ?`, s.stamp(), id); err != nil {
+	now := s.now()
+	if _, err := tx.ExecContext(ctx, `UPDATE downloads SET state = 'done', url = '', bytes_done = bytes_total, updated_at = ?, at_ms = ? WHERE id = ?`,
+		now.UTC().Format(time.RFC3339Nano), now.UnixMilli(), id); err != nil {
 		return err
 	}
 	if season == 0 && number == 0 {
@@ -218,6 +240,9 @@ func (s *Store) FinishDownload(ctx context.Context, id string) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM schedule WHERE title_id = ? AND season = ? AND number = ?`, titleID, season, number); err != nil {
+		return err
+	}
+	if err := s.pruneDownloads(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -240,16 +265,20 @@ func (s *Store) FailDownload(ctx context.Context, id, reason, message string, bl
 		}
 		return err
 	}
-	now := s.stamp()
-	if _, err := tx.ExecContext(ctx, `UPDATE downloads SET state = 'failed', url = '', reason = ?, message = ?, updated_at = ? WHERE id = ?`, reason, message, now, id); err != nil {
+	now := s.now()
+	if _, err := tx.ExecContext(ctx, `UPDATE downloads SET state = 'failed', url = '', reason = ?, message = ?, updated_at = ?, at_ms = ? WHERE id = ?`,
+		reason, message, now.UTC().Format(time.RFC3339Nano), now.UnixMilli(), id); err != nil {
 		return err
 	}
 	if blocklist {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO blocklist (identity, blocked_at, reason) VALUES (?, ?, ?)
 			ON CONFLICT (identity) DO UPDATE SET blocked_at = excluded.blocked_at, reason = excluded.reason`,
-			chooser.IdentityOf(r.InfoHash, r.FileName, r.Size), s.now().UTC().Format(time.RFC3339), reason); err != nil {
+			chooser.IdentityOf(r.InfoHash, r.FileName, r.Size), now.UTC().Format(time.RFC3339), reason); err != nil {
 			return err
 		}
+	}
+	if err := s.pruneDownloads(ctx, tx); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

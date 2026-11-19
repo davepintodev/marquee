@@ -24,9 +24,10 @@ var (
 // Writes share one connection so they never contend; WAL lets the read
 // pool run during a write.
 type Store struct {
-	w, r         *sql.DB
-	now          func() time.Time
-	activityKeep int
+	w, r          *sql.DB
+	now           func() time.Time
+	activityKeep  int
+	downloadsKeep int
 }
 
 // FileName is the database file inside the data directory.
@@ -49,7 +50,7 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 		"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)", "synchronous(NORMAL)",
 	}}.Encode()}).String()
 
-	s := &Store{now: now, activityKeep: ActivityKeep}
+	s := &Store{now: now, activityKeep: ActivityKeep, downloadsKeep: DownloadsKeep}
 	if s.w, err = sql.Open("sqlite", dsn); err != nil {
 		return nil, err
 	}
@@ -193,6 +194,15 @@ ALTER TABLE titles ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX activity_by_target ON activity (title_id, season, number, kind);
 `, `
 INSERT OR IGNORE INTO series_refresh (title_id, due_at) SELECT id, 0 FROM titles WHERE kind = 'series';
+`, `
+ALTER TABLE downloads ADD COLUMN at_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE activity ADD COLUMN at_ms INTEGER NOT NULL DEFAULT 0;
+UPDATE downloads SET at_ms = CAST(ROUND((julianday(updated_at) - 2440587.5) * 86400000) AS INTEGER)
+  WHERE state IN ('done', 'failed');
+UPDATE activity SET at_ms = CAST(ROUND((julianday(at) - 2440587.5) * 86400000) AS INTEGER);
+CREATE INDEX downloads_finished ON downloads (at_ms) WHERE state IN ('done', 'failed');
+CREATE INDEX downloads_finished_by_target ON downloads (title_id, season, number, at_ms) WHERE state IN ('done', 'failed');
+CREATE INDEX activity_by_at ON activity (at_ms);
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

@@ -3,10 +3,8 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"math"
 	"net/http"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"time"
 
@@ -58,34 +56,6 @@ type historyJSON struct {
 	Retryable bool   `json:"retryable"`
 }
 
-// retryable picks, from the finished downloads newest first, the failures
-// worth a retry: the latest outcome of a title or episode that has no
-// download running. An older failure was superseded by a later try, and a
-// retry is already under way when a download is running.
-func retryable(finished, active []catalog.Download) map[string]bool {
-	type target struct {
-		title          string
-		season, number int
-	}
-	running := map[target]bool{}
-	for _, d := range active {
-		running[target{d.TitleID, d.Season, d.Number}] = true
-	}
-	seen := map[target]bool{}
-	out := map[string]bool{}
-	for _, d := range finished {
-		k := target{d.TitleID, d.Season, d.Number}
-		if seen[k] {
-			continue
-		}
-		seen[k] = true
-		if d.State == catalog.StateFailed && !running[k] {
-			out[d.ID] = true
-		}
-	}
-	return out
-}
-
 // retry sends a failed item back to the scheduler, which searches for it
 // at once whatever its backoff.
 func (a *api) retry(w http.ResponseWriter, r *http.Request) {
@@ -115,17 +85,16 @@ func (a *api) retry(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, "only a failed item can be retried")
 		return
 	}
-	finished, err := a.Catalog.FinishedDownloads(ctx, d.TitleID)
+	again, err := a.Catalog.Retryable(ctx, d.ID)
+	if errors.Is(err, catalog.ErrNotFound) {
+		fail(w, http.StatusNotFound, "no such history entry")
+		return
+	}
 	if err != nil {
 		a.internal(w, r, err)
 		return
 	}
-	active, err := a.Catalog.ActiveDownloads(ctx)
-	if err != nil {
-		a.internal(w, r, err)
-		return
-	}
-	if !retryable(finished, active)[d.ID] {
+	if !again {
 		fail(w, http.StatusConflict, "this failure was already retried or a download is running")
 		return
 	}
@@ -149,50 +118,40 @@ func (a *api) retry(w http.ResponseWriter, r *http.Request) {
 	a.titleReply(w, r, t, err)
 }
 
-// history is what happened, newest first, to one title or, with an empty
-// titleID, to all of them: finished downloads and the scheduler's notes.
-func (a *api) history(ctx context.Context, titleID string) ([]historyJSON, error) {
-	ds, err := a.Catalog.FinishedDownloads(ctx, titleID)
+// historyPage is what happened, newest first, to one title or, with an
+// empty titleID, to all of them: finished downloads and the scheduler's
+// notes. A limit of zero or less asks for every entry.
+func (a *api) historyPage(ctx context.Context, titleID, cursor string, limit int) ([]historyJSON, string, error) {
+	page, err := a.Catalog.History(ctx, titleID, cursor, limit)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	events, err := a.Catalog.Activities(ctx, titleID)
-	if err != nil {
-		return nil, err
-	}
-	active, err := a.Catalog.ActiveDownloads(ctx)
-	if err != nil {
-		return nil, err
-	}
-	again := retryable(ds, active)
-	type entry struct {
-		at   time.Time
-		item historyJSON
-	}
-	entries := make([]entry, 0, len(ds)+len(events))
-	for _, d := range ds {
-		item := historyJSON{ID: d.ID, At: d.UpdatedAt.UTC().Format(time.RFC3339), TitleID: d.TitleID, TitleName: d.TitleName, Episode: episodeRef(d)}
-		if d.State == catalog.StateDone {
-			item.Kind, item.Message = "imported", "Imported "+filepath.Base(d.LibraryPath)
-		} else {
-			item.Kind, item.Message, item.Reason, item.Retryable = "failed", d.Message, d.Reason, again[d.ID]
+	out := make([]historyJSON, 0, len(page.Items))
+	for _, it := range page.Items {
+		if d := it.Download; d != nil {
+			item := historyJSON{ID: d.ID, At: d.UpdatedAt.UTC().Format(time.RFC3339), TitleID: d.TitleID, TitleName: d.TitleName, Episode: episodeRef(*d)}
+			if d.State == catalog.StateDone {
+				item.Kind, item.Message = "imported", "Imported "+filepath.Base(d.LibraryPath)
+			} else {
+				item.Kind, item.Message, item.Reason, item.Retryable = "failed", d.Message, d.Reason, it.Retryable
+			}
+			out = append(out, item)
+			continue
 		}
-		entries = append(entries, entry{d.UpdatedAt, item})
-	}
-	for _, e := range events {
+		e := it.Activity
 		item := historyJSON{ID: e.ID, At: e.At.UTC().Format(time.RFC3339), TitleID: e.TitleID, TitleName: e.TitleName, Kind: e.Kind, Message: e.Message, Reason: e.Reason}
 		if e.Season != 0 || e.Number != 0 {
 			item.Episode = catalog.EpisodeID(e.Season, e.Number)
 		}
-		entries = append(entries, entry{e.At, item})
+		out = append(out, item)
 	}
-	// Stable, so that entries of the same instant keep downloads before the scheduler's notes.
-	sort.SliceStable(entries, func(i, j int) bool { return entries[i].at.After(entries[j].at) })
-	out := make([]historyJSON, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, e.item)
-	}
-	return out, nil
+	return out, page.Next, nil
+}
+
+// history is every entry of one title, for its detail.
+func (a *api) history(ctx context.Context, titleID string) ([]historyJSON, error) {
+	out, _, err := a.historyPage(ctx, titleID, "", 0)
+	return out, err
 }
 
 // historyMaxLimit is the page size of GET /api/history when none is asked,
@@ -222,25 +181,18 @@ func (a *api) listHistory(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "limit must be a number from 1 to "+strconv.Itoa(historyMaxLimit))
 		return
 	}
-	offset, ok := pageParam(r, "offset", 0, 0, math.MaxInt32)
-	if !ok {
-		fail(w, http.StatusBadRequest, "offset must be a number from 0")
+	out, next, err := a.historyPage(r.Context(), titleID, r.URL.Query().Get("cursor"), limit)
+	if errors.Is(err, catalog.ErrInvalid) {
+		fail(w, http.StatusBadRequest, "cursor is not one this server gave")
 		return
 	}
-	out, err := a.history(r.Context(), titleID)
 	if err != nil {
 		a.internal(w, r, err)
 		return
 	}
-	body := map[string]any{}
-	if offset > len(out) {
-		offset = len(out)
+	body := map[string]any{"history": out}
+	if next != "" {
+		body["nextCursor"] = next
 	}
-	out = out[offset:]
-	if len(out) > limit {
-		out = out[:limit]
-		body["nextOffset"] = offset + limit
-	}
-	body["history"] = out
 	writeJSON(w, http.StatusOK, body)
 }
