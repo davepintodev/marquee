@@ -59,11 +59,16 @@ for (const s of screens) {
     expect(top).toBeGreaterThan(40);
     expect(top).toBeLessThan(90);
     expect(tiles.length).toBeGreaterThan(4);
+    const wall = (await page.getByTestId("wall").boundingBox())!;
     const area = tiles.reduce((a, t) => a + t.w * t.h, 0);
-    expect(area / (s.width * (s.height - top))).toBeGreaterThan(0.99);
-    expect(Math.min(...tiles.map((t) => t.x))).toBeCloseTo(0, 0);
-    expect(Math.max(...tiles.map((t) => t.x + t.w))).toBeCloseTo(s.width, 0);
-    expect(Math.max(...tiles.map((t) => t.y + t.h))).toBeCloseTo(s.height, 0);
+    expect(area / (wall.width * wall.height)).toBeGreaterThan(0.99);
+    const edge = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--edge")));
+    const art = await page.locator(".tile[data-shape] .tile-frame").evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect()).map((r) => ({ left: r.left, right: r.right, bottom: r.bottom })),
+    );
+    expect(Math.min(...art.map((a) => a.left))).toBeCloseTo(edge, 0);
+    expect(Math.max(...art.map((a) => a.right))).toBeCloseTo(s.width - edge, 0);
+    expect(Math.max(...art.map((a) => a.bottom))).toBeCloseTo(s.height - edge, 0);
     for (const t of tiles) {
       const want = t.shape === "portrait" ? 2 / 3 : 16 / 9;
       const got = (t.w - GAP) / (t.h - GAP);
