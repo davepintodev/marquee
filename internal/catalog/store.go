@@ -189,6 +189,8 @@ CREATE TABLE adoption (
 );
 `, `
 ALTER TABLE titles ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;
+`, `
+CREATE INDEX activity_by_target ON activity (title_id, season, number, kind);
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

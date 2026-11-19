@@ -144,7 +144,7 @@ func (s *Store) RequestSearch(ctx context.Context, titleID string, ep *EpisodeRe
 		const missing = `title_id = ?1 AND have_file = 0 AND season > 0 AND air_date <= ?2`
 		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule (title_id, season, number, forced)
 			SELECT title_id, season, number, 1 FROM episodes
-			WHERE `+missing+` AND (monitored = 1 OR NOT EXISTS (SELECT 1 FROM episodes WHERE `+missing+` AND monitored = 1)) `+force,
+			WHERE `+missing+` AND (monitored = 1 OR NOT EXISTS (SELECT 1 FROM episodes WHERE title_id = ?1 AND season > 0 AND monitored = 1)) `+force,
 			titleID, s.now().UTC().Format(time.DateOnly)); err != nil {
 			return err
 		}

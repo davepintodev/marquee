@@ -316,4 +316,14 @@ func TestHistoryPagesLikeTheRealService(t *testing.T) {
 	if want := len(all["history"].([]any)) - 2; len(rest["history"].([]any)) != want || rest["nextOffset"] != nil {
 		t.Errorf("the rest: %v, want %d entries", rest, want)
 	}
+	for _, q := range []string{"limit=0", "limit=1001", "limit=x", "offset=-1", "offset=x"} {
+		resp, err := srv.Client().Get(srv.URL + "/api/history?" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("?%s: status %d, want 400", q, resp.StatusCode)
+		}
+	}
 }
