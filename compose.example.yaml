@@ -1,0 +1,28 @@
+# Copy to compose.yaml, fill in every <placeholder> and run:
+#   docker compose up -d --build
+services:
+  marquee:
+    build: .
+    restart: unless-stopped
+    # A user that may write to your media folder (find yours with `id`).
+    user: "<uid>:<gid>"
+    ports:
+      - "8080:8080"
+    volumes:
+      # The library and the temp folder share this one mount, so an
+      # import is an atomic rename.
+      - <media-dir>:/media
+      - <data-dir>:/data
+    environment:
+      MARQUEE_AIOSTREAMS_MANIFEST_URL: "<aiostreams-manifest-url>"
+      MARQUEE_TMDB_KEY: "<tmdb-api-key>"
+      MARQUEE_MOVIES_PATH: /media/movies
+      MARQUEE_SERIES_PATH: /media/tv
+      MARQUEE_TEMP_PATH: /media/.marquee-tmp
+      MARQUEE_DATA_DIR: /data
+      # Search and choose, but never download or write to the library.
+      MARQUEE_DRY_RUN: "true"
+      # Optional:
+      # MARQUEE_JELLYFIN_URL: "<jellyfin-url>"
+      # MARQUEE_JELLYFIN_KEY: "<jellyfin-api-key>"
+      # MARQUEE_API_TOKEN: "<a-long-random-token>"
