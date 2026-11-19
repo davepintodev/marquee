@@ -292,10 +292,10 @@ func (f *Fake) libraryTitle(w http.ResponseWriter, r *http.Request) *entry {
 
 func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Kind             string `json:"kind"`
-		TmdbID           int    `json:"tmdbId"`
-		PreferredQuality string  `json:"preferredQuality"`
-		Monitor          *string `json:"monitor"`
+		Kind             string          `json:"kind"`
+		TmdbID           int             `json:"tmdbId"`
+		PreferredQuality string          `json:"preferredQuality"`
+		Monitor          json.RawMessage `json:"monitor"`
 	}
 	if !decode(r, &req) || (req.Kind != "movie" && req.Kind != "series") || req.TmdbID <= 0 {
 		fail(w, http.StatusBadRequest, "kind must be movie or series and tmdbId a positive number")
@@ -303,7 +303,8 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	}
 	monitor := "all"
 	if req.Monitor != nil {
-		if monitor = *req.Monitor; !slices.Contains([]string{"all", "future", "first_season", "latest_season", "none"}, monitor) {
+		monitor = ""
+		if err := json.Unmarshal(req.Monitor, &monitor); err != nil || !slices.Contains([]string{"all", "future", "first_season", "latest_season", "none"}, monitor) {
 			fail(w, http.StatusBadRequest, "monitor must be all, future, first_season, latest_season or none")
 			return
 		}
@@ -321,7 +322,6 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusCreated, f.title(t))
 }
 
-// addToLibrary adds t; monitor is what a series monitors, as in the contract.
 func (f *Fake) addToLibrary(t *entry, quality, monitor string) {
 	if t.Kind == "movie" {
 		monitor = "all"

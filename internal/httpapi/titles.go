@@ -141,10 +141,10 @@ func (a *api) writeTitle(w http.ResponseWriter, r *http.Request, status int, t c
 
 func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Kind             string `json:"kind"`
-		TMDBID           int    `json:"tmdbId"`
-		PreferredQuality string  `json:"preferredQuality"`
-		Monitor          *string `json:"monitor"`
+		Kind             string          `json:"kind"`
+		TMDBID           int             `json:"tmdbId"`
+		PreferredQuality string          `json:"preferredQuality"`
+		Monitor          json.RawMessage `json:"monitor"`
 	}
 	if err := decode(r, &req); err != nil {
 		fail(w, http.StatusBadRequest, "send kind (movie or series), tmdbId and optionally preferredQuality and monitor")
@@ -160,8 +160,8 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	}
 	monitor := ""
 	if req.Monitor != nil {
-		// An empty string is not a choice: only leaving the field out means all.
-		if monitor = *req.Monitor; monitor == "" || !catalog.ValidMonitor(monitor) {
+		// null and "" are not choices: only leaving the field out means all.
+		if err := json.Unmarshal(req.Monitor, &monitor); err != nil || monitor == "" || !catalog.ValidMonitor(monitor) {
 			fail(w, http.StatusBadRequest, "monitor must be all, future, first_season, latest_season or none")
 			return
 		}

@@ -39,7 +39,6 @@ func multiSeasonBody(monitor string) string {
 
 const multiSeasonPath = "/api/titles/series-5000"
 
-// monitoredIDs lists the monitored episodes of a title, sorted.
 func monitoredIDs(t *testing.T, title map[string]any) []string {
 	t.Helper()
 	out := []string{}
@@ -97,7 +96,6 @@ func TestAddingASeriesMonitorsExactlyWhatTheChoiceNames(t *testing.T) {
 			if got := r.searchedEpisodes(); !slices.Equal(got, c.searched) {
 				t.Errorf("searched %v, want %v", got, c.searched)
 			}
-			// What the add answered is what the library holds.
 			if got := monitoredIDs(t, r.mustCall("GET", multiSeasonPath, "", 200)); !slices.Equal(got, c.monitored) {
 				t.Errorf("after reading it back: %v, want %v", got, c.monitored)
 			}
@@ -147,6 +145,7 @@ func TestAnUnknownMonitorValueIsRefusedAndAddsNothing(t *testing.T) {
 		fmt.Sprintf(`{"kind":"series","tmdbId":%d,"monitor":"everything"}`, multiSeasonID),
 		fmt.Sprintf(`{"kind":"series","tmdbId":%d,"monitor":""}`, multiSeasonID),
 		fmt.Sprintf(`{"kind":"series","tmdbId":%d,"monitor":3}`, multiSeasonID),
+		fmt.Sprintf(`{"kind":"series","tmdbId":%d,"monitor":null}`, multiSeasonID),
 		`{"kind":"movie","tmdbId":438631,"monitor":"everything"}`,
 	} {
 		if resp := r.bad("POST", "/api/titles", body); resp.status != 400 {

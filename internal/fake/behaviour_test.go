@@ -328,7 +328,6 @@ func TestHistoryPagesLikeTheRealService(t *testing.T) {
 	}
 }
 
-// monitoredOf lists a title's monitored episodes and how many it has.
 func monitoredOf(title map[string]any) (monitored []string, total int) {
 	for _, se := range title["seasons"].([]any) {
 		for _, e := range se.(map[string]any)["episodes"].([]any) {
@@ -379,6 +378,23 @@ func TestAddHonoursTheMonitorChoice(t *testing.T) {
 	}
 }
 
+func TestAddPicksTheSeasonForFirstAndLatest(t *testing.T) {
+	_, router := loadSpec(t)
+	for monitor, want := range map[string]string{
+		"first_season":  "s01e01,s01e02",
+		"latest_season": "s04e01,s04e02,s04e03,s04e04",
+	} {
+		t.Run(monitor, func(t *testing.T) {
+			srv := startFakeTick(t, time.Hour)
+			exchange(t, srv, router, "DELETE", "/api/titles/series-1408", "", 204)
+			title := exchange(t, srv, router, "POST", "/api/titles", `{"kind":"series","tmdbId":1408,"monitor":"`+monitor+`"}`, 201)
+			if got, _ := monitoredOf(title); strings.Join(got, ",") != want {
+				t.Errorf("monitored %v, want %s", got, want)
+			}
+		})
+	}
+}
+
 // refuse sends a request the contract does not describe, so only the
 // status is checked.
 func refuse(t *testing.T, srv *httptest.Server, method, path, body string, status int) {
@@ -395,6 +411,7 @@ func TestAddRefusesAnUnknownMonitorChoiceAndIgnoresItForAMovie(t *testing.T) {
 	srv := startFakeTick(t, time.Hour)
 	for _, body := range []string{
 		`{"kind":"series","tmdbId":95396,"monitor":"some"}`, `{"kind":"series","tmdbId":95396,"monitor":""}`,
+		`{"kind":"series","tmdbId":95396,"monitor":null}`,
 		`{"kind":"movie","tmdbId":438631,"monitor":"some"}`,
 	} {
 		refuse(t, srv, "POST", "/api/titles", body, 400)
