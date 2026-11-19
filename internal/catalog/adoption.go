@@ -57,6 +57,11 @@ func (s *Store) Adopt(ctx context.Context, n NewTitle, f Found) (Title, bool, er
 				return Title{}, false, err
 			}
 		}
+		if n.Kind == "series" {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO series_refresh (title_id, due_at) VALUES (?, ?)`, id, s.now().Add(RefreshEvery).UnixMilli()); err != nil {
+				return Title{}, false, err
+			}
+		}
 	} else {
 		if f.Movie {
 			if _, err := tx.ExecContext(ctx, `UPDATE titles SET have_file = 1 WHERE id = ?`, id); err != nil {
