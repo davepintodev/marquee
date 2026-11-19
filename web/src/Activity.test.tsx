@@ -203,3 +203,59 @@ test("the wall links to Activity and a library popup links to the title's detail
   const dialog = await screen.findByRole("dialog");
   expect(within(dialog).getByRole("link", { name: "Details" }).getAttribute("href")).toBe("#/title/series-4");
 });
+
+const newest: HistoryEntry = { id: "h-new", at: "2026-11-18T11:59:00Z", kind: "searched", titleId: "movie-2", titleName: "Arrival", message: "Search now: skipping the backoff.", retryable: false };
+
+// A server that holds `all` newest first and pages it by cursor, as the real one does.
+function paged(world: World, all: () => HistoryEntry[], size: number) {
+  const asked: string[] = [];
+  const handler = serve(world, (url) => {
+    if (url.pathname !== "/api/history") return undefined;
+    asked.push(url.search);
+    const rows = all();
+    const cursor = url.searchParams.get("cursor");
+    const from = cursor ? rows.findIndex((h) => h.id === cursor) + 1 : 0;
+    const page = rows.slice(from, from + size);
+    const more = from + size < rows.length;
+    return json(more ? { history: page, nextCursor: page[page.length - 1].id } : { history: page });
+  });
+  return { handler, asked };
+}
+
+test("Activity asks for the next page of history with the cursor, and offers it only while there is one", async () => {
+  const world: World = { downloads: [], history: [], titles: [] };
+  const { handler, asked } = paged(world, () => [failed, fake, imported], 2);
+  setupApp(handler, "#/activity");
+
+  await screen.findByText(/no data for 1 minute/);
+  expect(asked).toEqual(["?limit=100"]);
+  expect(within(screen.getByRole("list", { name: "History" })).getAllByRole("listitem")).toHaveLength(2);
+
+  fireEvent.click(screen.getByRole("button", { name: /older/i }));
+
+  expect(await screen.findByText(/Imported House - S04E01/)).toBeTruthy();
+  expect(asked).toEqual(["?limit=100", "?limit=100&cursor=h-fake"]);
+  expect(within(screen.getByRole("list", { name: "History" })).getAllByRole("listitem")).toHaveLength(3);
+  expect(screen.queryByRole("button", { name: /older/i })).toBeNull();
+});
+
+test("a live refetch keeps the older pages already loaded, without repeating an entry", async () => {
+  const world: World = { downloads: [], history: [], titles: [] };
+  let rows = [failed, fake, imported];
+  const { handler, asked } = paged(world, () => rows, 2);
+  setupApp(handler, "#/activity");
+  await screen.findByText(/no data for 1 minute/);
+  fireEvent.click(screen.getByRole("button", { name: /older/i }));
+  await screen.findByText(/Imported House - S04E01/);
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+
+  rows = [newest, failed, fake, imported];
+  FakeEventSource.open()[0].emit("title", { titleId: "movie-2", badge: { state: "searching", label: "Searching" } });
+
+  expect(await screen.findByText(/Search now: skipping the backoff/)).toBeTruthy();
+  const items = within(screen.getByRole("list", { name: "History" })).getAllByRole("listitem");
+  expect(items).toHaveLength(4);
+  expect(screen.getByText(/Imported House - S04E01/)).toBeTruthy();
+  expect(asked.at(-1)).toBe("?limit=100");
+  expect(screen.queryByRole("button", { name: /older/i })).toBeNull();
+});

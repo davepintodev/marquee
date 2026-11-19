@@ -235,7 +235,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** What happened, newest first, failures in plain language. */
+        /**
+         * What happened, newest first, failures in plain language.
+         * @description The feed merges finished downloads and the scheduler's notes. Its order is total and never changes for an entry that exists: newest `at` first (kept to the millisecond on the server, though `at` is shown to the second), then downloads before notes, then the newer row first. A page is cut by a keyset cursor, not by a count, so entries that arrive or disappear between two requests never repeat or skip an entry of a page already read: pass the `nextCursor` of a page as `cursor` to get the entries older than the page's last one. A cursor is opaque; do not build or read one, and expect a 400 for one that was not given by the server. The server keeps the newest 5000 notes and the newest 5000 finished downloads, plus the latest finished download of every movie and episode so that a retry stays possible; older entries drop out of the feed.
+         */
         get: operations["listHistory"];
         put?: never;
         post?: never;
@@ -1035,8 +1038,8 @@ export interface operations {
                 titleId?: components["schemas"]["TitleId"];
                 /** @description The most entries one page holds. Without it, a page holds 1000. */
                 limit?: number;
-                /** @description How many of the newest entries to skip; the `nextOffset` of the previous page. */
-                offset?: number;
+                /** @description The `nextCursor` of the previous page; without it, the newest entries. */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -1052,8 +1055,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         history: components["schemas"]["HistoryEntry"][];
-                        /** @description The `offset` of the next page; absent on the last page. */
-                        nextOffset?: number;
+                        /** @description The `cursor` of the next page; absent on the last page. */
+                        nextCursor?: string;
                     };
                 };
             };

@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/fs"
 	"net"
 	"os"
@@ -811,4 +812,55 @@ func TestATempFolderThatCannotBeUsedFailsTheDownloadAsALocalErrorAndKeepsTheServ
 		t.Errorf("the fake saw %d requests although there was nowhere to write", n)
 	}
 	r.mustCall("GET", "/api/health", "", 200)
+}
+
+func TestHistoryPagesWithACursorWhileNewEntriesArrive(t *testing.T) {
+	r, _ := setup(t)
+	notVideo := append([]byte("MZ\x90\x00"), make([]byte, 100<<10)...)
+	fail := func(i int) {
+		t.Helper()
+		name := fmt.Sprintf("bad%d.mkv", i)
+		job := movieJob(r.cdn.Add(name, debridfake.File{Data: notVideo}), name)
+		job.Release.FileName = name
+		r.enqueue(job)
+		r.waitHistory(i + 1)
+	}
+	// The clock stands still, so every entry shares one instant and only the tie-break orders them.
+	for i := range 4 {
+		fail(i)
+	}
+	h := r.history()
+	r.mustCall("POST", "/api/history/"+h[0].(map[string]any)["id"].(string)+"/retry", "", 200)
+	all := r.history()
+	if len(all) != 5 {
+		t.Fatalf("history has %d entries, want the 4 failures and the retry's note", len(all))
+	}
+	ids := func(es []any) []string {
+		var out []string
+		for _, e := range es {
+			out = append(out, e.(map[string]any)["id"].(string))
+		}
+		return out
+	}
+
+	first := r.mustCall("GET", "/api/history?limit=2", "", 200)
+	cursor, _ := first["nextCursor"].(string)
+	if cursor == "" {
+		t.Fatalf("a page of 2 out of %d entries names no next page: %v", len(all), first)
+	}
+	fail(5)
+	fail(6)
+
+	got := ids(first["history"].([]any))
+	for cursor != "" {
+		page := r.mustCall("GET", "/api/history?limit=2&cursor="+cursor, "", 200)
+		got = append(got, ids(page["history"].([]any))...)
+		cursor, _ = page["nextCursor"].(string)
+	}
+	if want := ids(all); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("paging gave %v, want the %d entries read before the new ones, in order: %v", got, len(want), want)
+	}
+	if r := r.bad("GET", "/api/history?cursor=nonsense", ""); r.status != 400 {
+		t.Errorf("a cursor the server did not give answered %d, want 400", r.status)
+	}
 }

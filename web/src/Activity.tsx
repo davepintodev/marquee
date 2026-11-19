@@ -24,7 +24,20 @@ interface Waiting {
 interface Data {
   downloads: Download[];
   history: HistoryEntry[];
+  // The cursor of the page after the loaded history; absent when it is all loaded.
+  next?: string;
+  // Older pages are loaded, so a refetch of the newest page must keep them.
+  older: boolean;
   waiting: Waiting[];
+}
+
+const PAGE = 100;
+
+// A refetch brings the newest page; entries of the older pages already loaded stay below it, once each.
+function merged(prev: Data | undefined, fresh: Data): Data {
+  if (!prev?.older) return fresh;
+  const seen = new Set(fresh.history.map((h) => h.id));
+  return { ...fresh, history: [...fresh.history, ...prev.history.filter((h) => !seen.has(h.id))], next: prev.next, older: true };
 }
 
 type Load = { status: "loading" } | { status: "ok"; data: Data } | { status: "error"; message: string };
@@ -55,9 +68,9 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
   const fetchAll = useCallback(
     async (signal?: AbortSignal): Promise<Data> => {
       const asked = [...retried.current];
-      const [downloads, history, library, titles] = await Promise.all([
+      const [downloads, page, library, titles] = await Promise.all([
         api.downloads(signal),
-        api.history(signal),
+        api.history({ limit: PAGE }, signal),
         api.library(signal),
         Promise.all(asked.map((id) => api.title(id, signal).catch(() => null))),
       ]);
@@ -69,7 +82,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
         if (episodes.length === 0) retried.current.delete(asked[i]);
         else if (t && !waiting.some((w) => w.id === t.id)) waiting.push({ id: t.id, name: t.title, note: `Waiting for ${episodes.join(", ")} to appear.`, label: "Searching" });
       });
-      return { downloads, history, waiting };
+      return { downloads, history: page.entries, next: page.next, older: false, waiting };
     },
     [api],
   );
@@ -84,7 +97,10 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
   }, [fetchAll, attempt]);
 
   const refetch = useCallback(() => {
-    fetchAll().then((data) => setLoad({ status: "ok", data }), () => {});
+    fetchAll().then(
+      (data) => setLoad((l) => ({ status: "ok", data: merged(l.status === "ok" ? l.data : undefined, data) })),
+      () => {},
+    );
   }, [fetchAll]);
 
   useLive(api, (e: LiveEvent) => {
@@ -114,12 +130,32 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
       if (title.kind === "series") retried.current.add(title.id);
       onChanged(title);
       onToast(`Searching for “${h.titleName}” again.`);
-      setLoad({ status: "ok", data: await fetchAll() });
+      const data = await fetchAll();
+      setLoad((l) => ({ status: "ok", data: merged(l.status === "ok" ? l.data : undefined, data) }));
     } catch (e) {
       setError(messageOf(e));
     } finally {
       working.current = false;
       setRetrying(null);
+    }
+  };
+
+  const loadOlder = async (cursor: string) => {
+    if (working.current) return;
+    working.current = true;
+    setError(null);
+    try {
+      const page = await api.history({ limit: PAGE, cursor });
+      // A refetch that landed meanwhile moved the cursor; the click asks again.
+      setLoad((l) => {
+        if (l.status !== "ok" || l.data.next !== cursor) return l;
+        const seen = new Set(l.data.history.map((h) => h.id));
+        return { status: "ok", data: { ...l.data, history: [...l.data.history, ...page.entries.filter((h) => !seen.has(h.id))], next: page.next, older: true } };
+      });
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      working.current = false;
     }
   };
 
@@ -191,6 +227,11 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
       <section className="section">
         <h2>History</h2>
         <HistoryList entries={history} showTitle retrying={retrying} onRetry={retry} empty="Nothing has happened yet." />
+        {load.data.next && (
+          <button type="button" className="btn-small" onClick={() => loadOlder(load.data.next as string)}>
+            Show older
+          </button>
+        )}
       </section>
     </Page>
   );
