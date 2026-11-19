@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Download, Health, HistoryEntry, LiveEvent, ProgressEvent, Releases, Title, TitleEvent, TitleSummary, Wall } from "./types";
+import type { Download, Health, HistoryEntry, LiveEvent, MonitorChoice, ProgressEvent, Releases, Title, TitleEvent, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -15,7 +15,7 @@ export interface Api {
   wall(signal?: AbortSignal): Promise<Wall["items"]>;
   search(q: string, signal?: AbortSignal): Promise<TitleSummary[]>;
   // Adding a title that is already in the library changes nothing and still answers with it.
-  addTitle(kind: TitleSummary["kind"], tmdbId: number, signal?: AbortSignal): Promise<Title>;
+  addTitle(kind: TitleSummary["kind"], tmdbId: number, monitor?: MonitorChoice, signal?: AbortSignal): Promise<Title>;
   searchNow(id: string, signal?: AbortSignal): Promise<Title>;
   title(id: string, signal?: AbortSignal): Promise<Title>;
   library(signal?: AbortSignal): Promise<TitleSummary[]>;
@@ -136,8 +136,8 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       const data = await call(() => client.GET("/api/search", { params: { query: { q } }, signal }), (d) => Array.isArray(d.results));
       return data.results;
     },
-    addTitle(kind, tmdbId, signal) {
-      return call(() => client.POST("/api/titles", { body: { kind, tmdbId }, signal }), (d) => typeof d.id === "string");
+    addTitle(kind, tmdbId, monitor, signal) {
+      return call(() => client.POST("/api/titles", { body: { kind, tmdbId, monitor }, signal }), (d) => typeof d.id === "string");
     },
     searchNow(id, signal) {
       return call(() => client.POST("/api/titles/{id}/search", { params: { path: { id } }, signal }), (d) => typeof d.id === "string");

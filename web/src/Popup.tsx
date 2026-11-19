@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
+import { AddMenu, addChoices, type AddChoice } from "./AddMenu";
 import { Art } from "./Art";
 import { BadgePill } from "./BadgePill";
 import { InteractiveSearch } from "./InteractiveSearch";
-import { hrefOf } from "./route";
+import { goTo, hrefOf } from "./route";
 
 interface Props {
   api: Api;
@@ -32,7 +33,9 @@ export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Pr
     };
   }, []);
 
-  const press = async () => {
+  const isSeries = title.kind === "series";
+
+  const press = async (choice: AddChoice = "all") => {
     if (working.current) return;
     working.current = true;
     setBusy(true);
@@ -42,8 +45,20 @@ export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Pr
         onChanged(await api.searchNow(title.id));
         onToast(`Searching for “${title.title}” now.`);
       } else {
-        onChanged(await api.addTitle(title.kind, title.tmdbId));
-        onToast(`Added “${title.title}”. marquee will keep looking until it has it.`);
+        // The menu's button unmounts when it closes; focus has to be somewhere that survives the add.
+        primary.current?.focus();
+        const added = await api.addTitle(title.kind, title.tmdbId, isSeries ? (choice === "select" ? "none" : choice) : undefined);
+        onChanged(added);
+        if (isSeries) {
+          const said = addChoices.find((c) => c.value === choice)?.said;
+          onToast(choice === "select" ? `Added “${title.title}”, nothing monitored yet. Tick what you want here.` : `Added “${title.title}”, ${said}.`);
+          if (choice === "select") {
+            onDetails();
+            goTo({ name: "title", id: added.id });
+          }
+        } else {
+          onToast(`Added “${title.title}”. marquee will keep looking until it has it.`);
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -90,9 +105,12 @@ export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Pr
                   {error}
                 </p>
               )}
-              <button ref={primary} type="button" className="btn-primary" aria-disabled={busy} onClick={press}>
-                {title.inLibrary ? "Search now" : "Add & monitor"}
-              </button>
+              <div className="add-split">
+                <button ref={primary} type="button" className="btn-primary" aria-disabled={busy} onClick={() => press()}>
+                  {title.inLibrary ? "Search now" : "Add & monitor"}
+                </button>
+                {isSeries && !title.inLibrary && <AddMenu busy={busy} onChoose={press} />}
+              </div>
               {title.inLibrary && (
                 <a className="btn-secondary" href={hrefOf({ name: "title", id: title.id })} onClick={onDetails}>
                   Details
