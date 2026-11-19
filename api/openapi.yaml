@@ -75,7 +75,7 @@ paths:
     post:
       tags: [titles]
       operationId: addTitle
-      summary: Add and monitor a title. Adding a title already in the library changes nothing.
+      summary: Add a title and, by default, monitor it all. Adding a title already in the library changes nothing.
       requestBody:
         required: true
         content:
@@ -88,7 +88,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Title" }
         "201":
-          description: The title was added and is monitored.
+          description: The title was added.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Title" }
@@ -169,6 +169,42 @@ paths:
         searches for an episode while reporting itself unmonitored; its other
         episodes keep their state. Unmonitoring an episode, even the last
         monitored one, leaves the title monitored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [monitored]
+              additionalProperties: false
+              properties:
+                monitored: { type: boolean }
+      responses:
+        "200":
+          description: The updated title.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/seasons/{number}:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+      - name: number
+        in: path
+        required: true
+        description: The season number; 0 is the Specials.
+        schema: { type: integer, minimum: 0 }
+    put:
+      tags: [titles]
+      operationId: updateSeason
+      summary: Monitor or unmonitor a whole season.
+      description: >
+        Monitoring a season monitors every episode in it and, like
+        updateEpisode, its title; the other seasons keep their state.
+        Unmonitoring a season unmonitors its episodes and leaves the title
+        monitored. An episode that is not in the season is not created.
       requestBody:
         required: true
         content:
@@ -574,6 +610,18 @@ components:
         kind: { $ref: "#/components/schemas/Kind" }
         tmdbId: { type: integer }
         preferredQuality: { $ref: "#/components/schemas/Quality" }
+        monitor: { $ref: "#/components/schemas/MonitorChoice" }
+    MonitorChoice:
+      type: string
+      default: all
+      enum: [all, future, first_season, latest_season, none]
+      description: >
+        What to monitor when a series is added, and so what is searched for.
+        `all` monitors every episode; `future` the episodes not yet aired;
+        `first_season` and `latest_season` the first and the highest regular
+        season (Specials, season 0, are never chosen); `none` adds the series
+        unmonitored, with no episode monitored, so nothing is searched until
+        the owner monitors something. Ignored for a movie.
     UpdateTitleRequest:
       type: object
       additionalProperties: false

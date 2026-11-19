@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/metadata"
@@ -140,12 +141,13 @@ func (a *api) writeTitle(w http.ResponseWriter, r *http.Request, status int, t c
 
 func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Kind             string `json:"kind"`
-		TMDBID           int    `json:"tmdbId"`
-		PreferredQuality string `json:"preferredQuality"`
+		Kind             string          `json:"kind"`
+		TMDBID           int             `json:"tmdbId"`
+		PreferredQuality string          `json:"preferredQuality"`
+		Monitor          json.RawMessage `json:"monitor"`
 	}
 	if err := decode(r, &req); err != nil {
-		fail(w, http.StatusBadRequest, "send kind (movie or series), tmdbId and optionally preferredQuality")
+		fail(w, http.StatusBadRequest, "send kind (movie or series), tmdbId and optionally preferredQuality and monitor")
 		return
 	}
 	if (req.Kind != "movie" && req.Kind != "series") || req.TMDBID < 1 {
@@ -155,6 +157,14 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	if req.PreferredQuality != "" && !isQuality(req.PreferredQuality) {
 		fail(w, http.StatusBadRequest, "preferredQuality must be 2160p, 1080p or 720p")
 		return
+	}
+	monitor := ""
+	if req.Monitor != nil {
+		// null and "" are not choices: only leaving the field out means all.
+		if err := json.Unmarshal(req.Monitor, &monitor); err != nil || monitor == "" || !catalog.ValidMonitor(monitor) {
+			fail(w, http.StatusBadRequest, "monitor must be all, future, first_season, latest_season or none")
+			return
+		}
 	}
 	id := catalog.TitleID(req.Kind, req.TMDBID)
 
@@ -175,7 +185,7 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := catalog.NewTitleFromTMDB(d)
-	n.PreferredQuality = req.PreferredQuality
+	n.PreferredQuality, n.Monitor = req.PreferredQuality, monitor
 	t, created, err := a.Catalog.Add(r.Context(), n)
 	if err != nil {
 		a.internal(w, r, err)
@@ -264,6 +274,23 @@ func (a *api) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := a.Catalog.SetEpisodeMonitored(r.Context(), r.PathValue("id"), season, number, *req.Monitored)
+	a.titleReply(w, r, t, err)
+}
+
+func (a *api) updateSeason(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Monitored *bool `json:"monitored"`
+	}
+	if err := decode(r, &req); err != nil || req.Monitored == nil {
+		fail(w, http.StatusBadRequest, "send monitored")
+		return
+	}
+	season, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil || season < 0 {
+		fail(w, http.StatusNotFound, "no such season")
+		return
+	}
+	t, err := a.Catalog.SetSeasonMonitored(r.Context(), r.PathValue("id"), season, *req.Monitored)
 	a.titleReply(w, r, t, err)
 }
 

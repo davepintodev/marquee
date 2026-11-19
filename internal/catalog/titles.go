@@ -27,8 +27,52 @@ type NewTitle struct {
 	IMDbID           string
 	TVDBID           int
 	PreferredQuality string
-	Episodes         []NewEpisode
-	Images           []ImageRef
+	// Monitor is what a series monitors when added; empty means MonitorAll.
+	// A movie is always monitored.
+	Monitor  string
+	Episodes []NewEpisode
+	Images   []ImageRef
+}
+
+// What a series monitors when it is added.
+const (
+	MonitorAll          = "all"
+	MonitorFuture       = "future"
+	MonitorFirstSeason  = "first_season"
+	MonitorLatestSeason = "latest_season"
+	MonitorNone         = "none"
+)
+
+// ValidMonitor reports whether m is a choice Add accepts; empty is the default.
+func ValidMonitor(m string) bool {
+	switch m {
+	case "", MonitorAll, MonitorFuture, MonitorFirstSeason, MonitorLatestSeason, MonitorNone:
+		return true
+	}
+	return false
+}
+
+// monitorRule returns which of the episodes a series added with choice
+// monitors. Specials (season 0) are never picked by a season choice.
+func monitorRule(choice, today string, eps []NewEpisode) func(NewEpisode) bool {
+	first, latest := 0, 0
+	for _, e := range eps {
+		if e.Season > 0 && (first == 0 || e.Season < first) {
+			first = e.Season
+		}
+		latest = max(latest, e.Season)
+	}
+	switch choice {
+	case MonitorFuture:
+		return func(e NewEpisode) bool { return e.AirDate > today }
+	case MonitorFirstSeason:
+		return func(e NewEpisode) bool { return e.Season > 0 && e.Season == first }
+	case MonitorLatestSeason:
+		return func(e NewEpisode) bool { return e.Season > 0 && e.Season == latest }
+	case MonitorNone:
+		return func(NewEpisode) bool { return false }
+	}
+	return func(NewEpisode) bool { return true }
 }
 
 type ImageRef struct {
@@ -194,11 +238,19 @@ func (s *Store) List(ctx context.Context) ([]Title, error) {
 }
 
 // Add stores a title with its episodes in one transaction, monitored, and
-// reports whether it was new. A title already in the library is returned
-// untouched.
+// reports whether it was new. A series monitors the episodes n.Monitor
+// names; with MonitorNone the title itself is stored unmonitored, which
+// keeps the scheduler and the daily refresh, both of which skip an
+// unmonitored title, from monitoring anything of it. A title already in the
+// library is returned untouched.
 func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
-	if n.PreferredQuality != "" && !validQuality(n.PreferredQuality) {
+	if (n.PreferredQuality != "" && !validQuality(n.PreferredQuality)) || !ValidMonitor(n.Monitor) {
 		return Title{}, false, ErrInvalid
+	}
+	monitored := n.Kind != "series" || n.Monitor != MonitorNone
+	picked := monitorRule(MonitorAll, "", nil)
+	if n.Kind == "series" {
+		picked = monitorRule(n.Monitor, s.now().UTC().Format(time.DateOnly), n.Episodes)
 	}
 	id := TitleID(n.Kind, n.TMDBID)
 	tx, err := s.w.BeginTx(ctx, nil)
@@ -212,8 +264,8 @@ func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
 		quality = n.PreferredQuality
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO titles (id, kind, tmdb_id, title, year, overview, imdb_id, tvdb_id, monitored, preferred_quality, added_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(id) DO NOTHING`,
-		id, n.Kind, n.TMDBID, n.Title, n.Year, n.Overview, n.IMDbID, n.TVDBID, quality, s.now().UTC().Format(time.RFC3339Nano))
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+		id, n.Kind, n.TMDBID, n.Title, n.Year, n.Overview, n.IMDbID, n.TVDBID, b2i(monitored), quality, s.now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return Title{}, false, err
 	}
@@ -221,8 +273,8 @@ func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
 	if rows, _ := res.RowsAffected(); rows == 1 {
 		created = true
 		for _, e := range n.Episodes {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO episodes (title_id, season, number, name, air_date, monitored) VALUES (?, ?, ?, ?, ?, 1)
-				ON CONFLICT DO NOTHING`, id, e.Season, e.Number, e.Name, e.AirDate); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO episodes (title_id, season, number, name, air_date, monitored) VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT DO NOTHING`, id, e.Season, e.Number, e.Name, e.AirDate, b2i(picked(e))); err != nil {
 				return Title{}, false, err
 			}
 		}
@@ -303,6 +355,34 @@ func (s *Store) SetEpisodeMonitored(ctx context.Context, id string, season, numb
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE title_id = ? AND season = ? AND number = ?`, b2i(monitored), id, season, number)
+	if err != nil {
+		return Title{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Title{}, ErrNotFound
+	}
+	if monitored {
+		if _, err := tx.ExecContext(ctx, `UPDATE titles SET monitored = 1 WHERE id = ?`, id); err != nil {
+			return Title{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Title{}, err
+	}
+	return s.Get(ctx, id)
+}
+
+// SetSeasonMonitored monitors or unmonitors every episode of a season.
+// Like SetEpisodeMonitored, monitoring also monitors the title and
+// unmonitoring leaves it as it was. A title or a season that is not there
+// answers ErrNotFound.
+func (s *Store) SetSeasonMonitored(ctx context.Context, id string, season int, monitored bool) (Title, error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return Title{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE title_id = ? AND season = ?`, b2i(monitored), id, season)
 	if err != nil {
 		return Title{}, err
 	}

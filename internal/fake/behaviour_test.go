@@ -327,3 +327,139 @@ func TestHistoryPagesLikeTheRealService(t *testing.T) {
 		}
 	}
 }
+
+func monitoredOf(title map[string]any) (monitored []string, total int) {
+	for _, se := range title["seasons"].([]any) {
+		for _, e := range se.(map[string]any)["episodes"].([]any) {
+			m := e.(map[string]any)
+			total++
+			if m["monitored"] == true {
+				monitored = append(monitored, m["id"].(string))
+			}
+		}
+	}
+	return monitored, total
+}
+
+func TestAddHonoursTheMonitorChoice(t *testing.T) {
+	_, router := loadSpec(t)
+	cases := []struct {
+		monitor   string
+		monitored []string
+		title     bool
+		badge     string
+	}{
+		{"", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
+		{"all", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
+		{"future", []string{"s01e03"}, true, "missing"},
+		{"first_season", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
+		{"latest_season", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
+		{"none", nil, false, "missing"},
+	}
+	for _, c := range cases {
+		t.Run("monitor="+c.monitor, func(t *testing.T) {
+			srv := startFakeTick(t, time.Hour)
+			body := `{"kind":"series","tmdbId":95396}`
+			if c.monitor != "" {
+				body = `{"kind":"series","tmdbId":95396,"monitor":"` + c.monitor + `"}`
+			}
+			title := exchange(t, srv, router, "POST", "/api/titles", body, 201)
+			got, total := monitoredOf(title)
+			if strings.Join(got, ",") != strings.Join(c.monitored, ",") || total != 3 {
+				t.Errorf("monitored %v of %d, want %v", got, total, c.monitored)
+			}
+			if title["monitored"] != c.title {
+				t.Errorf("title monitored %v", title["monitored"])
+			}
+			if b := title["badge"].(map[string]any); b["state"] != c.badge {
+				t.Errorf("badge %v, want %s", b, c.badge)
+			}
+		})
+	}
+}
+
+func TestAddPicksTheSeasonForFirstAndLatest(t *testing.T) {
+	_, router := loadSpec(t)
+	for monitor, want := range map[string]string{
+		"first_season":  "s01e01,s01e02",
+		"latest_season": "s04e01,s04e02,s04e03,s04e04",
+	} {
+		t.Run(monitor, func(t *testing.T) {
+			srv := startFakeTick(t, time.Hour)
+			exchange(t, srv, router, "DELETE", "/api/titles/series-1408", "", 204)
+			title := exchange(t, srv, router, "POST", "/api/titles", `{"kind":"series","tmdbId":1408,"monitor":"`+monitor+`"}`, 201)
+			if got, _ := monitoredOf(title); strings.Join(got, ",") != want {
+				t.Errorf("monitored %v, want %s", got, want)
+			}
+		})
+	}
+}
+
+// refuse sends a request the contract does not describe, so only the
+// status is checked.
+func refuse(t *testing.T, srv *httptest.Server, method, path, body string, status int) {
+	t.Helper()
+	resp := do(t, srv, call{method, path, body, status}, path)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != status {
+		t.Errorf("%s %s %q: status %d, want %d", method, path, body, resp.StatusCode, status)
+	}
+}
+
+func TestAddRefusesAnUnknownMonitorChoiceAndIgnoresItForAMovie(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	for _, body := range []string{
+		`{"kind":"series","tmdbId":95396,"monitor":"some"}`, `{"kind":"series","tmdbId":95396,"monitor":""}`,
+		`{"kind":"series","tmdbId":95396,"monitor":null}`,
+		`{"kind":"movie","tmdbId":438631,"monitor":"some"}`,
+	} {
+		refuse(t, srv, "POST", "/api/titles", body, 400)
+	}
+	if got := exchange(t, srv, router, "GET", "/api/titles/movie-438631", "", 200); got["inLibrary"] != false {
+		t.Error("a refused add added the title")
+	}
+	movie := exchange(t, srv, router, "POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"monitor":"none"}`, 201)
+	if movie["monitored"] != true {
+		t.Errorf("a movie is always monitored: %v", movie["monitored"])
+	}
+}
+
+func TestUpdateSeasonMonitorsItsEpisodesAndTheTitle(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	exchange(t, srv, router, "POST", "/api/titles", `{"kind":"series","tmdbId":95396,"monitor":"none"}`, 201)
+
+	title := exchange(t, srv, router, "PUT", "/api/titles/series-95396/seasons/1", `{"monitored":true}`, 200)
+	if got, total := monitoredOf(title); len(got) != 3 || total != 3 || title["monitored"] != true {
+		t.Errorf("monitored %v, title %v", got, title["monitored"])
+	}
+	season := title["seasons"].([]any)[0].(map[string]any)
+	if season["badge"] == nil {
+		t.Error("the season's badge follows")
+	}
+
+	title = exchange(t, srv, router, "PUT", "/api/titles/series-95396/seasons/1", `{"monitored":false}`, 200)
+	if got, _ := monitoredOf(title); len(got) != 0 || title["monitored"] != true {
+		t.Errorf("monitored %v, title %v", got, title["monitored"])
+	}
+	if b := title["badge"].(map[string]any); b["state"] != "missing" {
+		t.Errorf("an unmonitored season reads as missing: %v", b)
+	}
+}
+
+func TestUpdateSeasonRefusesWhatIsNotThere(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	for _, p := range []string{
+		"/api/titles/series-1408/seasons/9", "/api/titles/movie-693134/seasons/1", "/api/titles/series-95396/seasons/1",
+	} {
+		exchange(t, srv, router, "PUT", p, `{"monitored":true}`, 404)
+	}
+	for _, p := range []string{"/api/titles/series-1408/seasons/x", "/api/titles/series-1408/seasons/-1"} {
+		refuse(t, srv, "PUT", p, `{"monitored":true}`, 404)
+	}
+	for _, body := range []string{``, `{}`, `{"monitored":"yes"}`} {
+		refuse(t, srv, "PUT", "/api/titles/series-1408/seasons/4", body, 400)
+	}
+}
