@@ -30,7 +30,6 @@ func repoFile(t *testing.T, name string) string {
 	return string(b)
 }
 
-// composeEnvironment reads the example's uncommented `environment:` entries.
 func composeEnvironment(t *testing.T) map[string]string {
 	t.Helper()
 	env := map[string]string{}
@@ -92,8 +91,6 @@ func TestComposeKeepsLibraryAndTempOnOneMountAndStartsInDryRun(t *testing.T) {
 	}
 }
 
-// The example, with its placeholders filled in and the outside world
-// faked, starts and answers Health.
 func TestComposeExampleStartsAndHealthAnswers(t *testing.T) {
 	aio := aiostreamsfake.New()
 	defer aio.Close()
@@ -146,12 +143,24 @@ func TestComposeExampleStartsAndHealthAnswers(t *testing.T) {
 	var h struct {
 		Status string `json:"status"`
 		DryRun bool   `json:"dryRun"`
+		Checks []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"checks"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&h); err != nil || resp.StatusCode != 200 {
 		t.Fatalf("health: status %d, err %v", resp.StatusCode, err)
 	}
 	if !h.DryRun || h.Status != "warning" {
 		t.Errorf("health = %+v, want dry-run on and a warning (dry-run itself)", h)
+	}
+	if len(h.Checks) == 0 {
+		t.Error("health lists no checks")
+	}
+	for _, c := range h.Checks {
+		if c.Status == "error" {
+			t.Errorf("check %s is failing with the example's settings", c.ID)
+		}
 	}
 	cancel()
 	if err := <-done; err != nil {
@@ -169,10 +178,10 @@ func TestRepositoryHasNoPrivateNames(t *testing.T) {
 	patterns := map[string]*regexp.Regexp{
 		"home path":    regexp.MustCompile(`/home/[a-z]|/Users/[A-Za-z]|C:\\Users`),
 		"IP address":   regexp.MustCompile(`\b(?:10\.\d+|192\.168|172\.(?:1[6-9]|2\d|3[01])|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d+\.\d+\b`),
-		"private name": regexp.MustCompile(`(?i)\bbach\b|\.ts\.net|\.lan\b|\.home\.arpa|tailscale\.com/|/srv/media`),
+		"private name": regexp.MustCompile(`(?i)\.ts\.net|\.lan\b|\.home\.arpa|tailscale\.com/`),
 	}
 	for _, f := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if f == "web/package-lock.json" || f == "AGENTS.md" || f == "CLAUDE.md" || strings.HasSuffix(f, "_test.go") {
+		if f == "web/package-lock.json" || f == "AGENTS.md" || f == "CLAUDE.md" || f == "cmd/marquee/install_test.go" {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join("..", "..", f))

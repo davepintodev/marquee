@@ -68,7 +68,7 @@ Settings come from environment variables, or from a JSON file named by `MARQUEE_
 
 Secrets are redacted in logs, errors and the API.
 
-The temp folder must be on the same filesystem as both library folders, so the final move into the library is an atomic rename. The example mounts one folder as `/media` and keeps the library and the temp folder inside it for that reason; marquee warns on Health, and refuses to start, if they are on different filesystems.
+The temp folder must be on the same filesystem as both library folders, so the final move into the library is an atomic rename. The example mounts one folder as `/media` and keeps the library and the temp folder inside it for that reason; marquee refuses to start if they are on different filesystems, and Health shows an error if it later finds them split.
 
 ## Trying it next to Sonarr and Radarr
 
