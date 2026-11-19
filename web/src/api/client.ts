@@ -134,8 +134,14 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
         if (listeners.size > 0) shared ??= open();
       }
       if (response.status === 401) {
-        unlocked = false;
-        onUnauthorized?.(request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null);
+        const sent = request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null;
+        // An answer to a token no longer held says nothing about the session of the new one.
+        if (sent === (getToken?.() ?? null)) {
+          unlocked = false;
+          shared?.close();
+          shared = undefined;
+        }
+        onUnauthorized?.(sent);
       }
     },
   });

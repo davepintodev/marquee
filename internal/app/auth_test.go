@@ -153,7 +153,6 @@ func TestABearerRequestHandsOutASessionThatOnlyReadsImagesAndEvents(t *testing.T
 		t.Errorf("the cookie must not carry the token: %q", c.Value)
 	}
 
-	// A browser holding the cookie loads posters and the stream without a header.
 	for _, path := range []string{"/api/images/poster/movie-438631", "/api/events"} {
 		if code, _ := status(t, http.MethodGet, base+path, nil, c); code == 401 {
 			t.Errorf("%s with the session: 401", path)
@@ -171,7 +170,6 @@ func TestABearerRequestHandsOutASessionThatOnlyReadsImagesAndEvents(t *testing.T
 			t.Errorf("%s %s with the session: %d, want 401", tc.method, tc.path, code)
 		}
 	}
-	// A valid session is not handed out twice; a stale one is replaced.
 	if _, h := status(t, http.MethodGet, base+"/api/downloads", bearer, c); sessionCookie(t, h) != nil {
 		t.Error("a request that already holds the session got another cookie")
 	}
@@ -182,7 +180,6 @@ func TestABearerRequestHandsOutASessionThatOnlyReadsImagesAndEvents(t *testing.T
 	if _, h := status(t, http.MethodGet, base+"/api/downloads", bearer, stale); sessionCookie(t, h) == nil {
 		t.Error("a stale session was not replaced")
 	}
-	// A refused request hands out nothing.
 	if _, h := status(t, http.MethodGet, base+"/api/downloads", map[string]string{"Authorization": "Bearer wrong"}, nil); sessionCookie(t, h) != nil {
 		t.Error("a refused request got a cookie")
 	}

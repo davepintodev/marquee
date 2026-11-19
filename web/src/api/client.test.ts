@@ -238,6 +238,53 @@ test("a refused token makes the next stream wait for a request that is answered"
   expect(streams).toHaveLength(1);
 });
 
+test("a refused token closes the stream it opened, and the next answer opens a new one", async () => {
+  const streams: Stream[] = [];
+  let status = 200;
+  const api = createApi({
+    baseUrl: "http://host.test",
+    fetch: (async () => (status === 200 ? ok({ items: [] }) : new Response(JSON.stringify({ error: "no" }), { status, headers: { "Content-Type": "application/json" } }))) as unknown as typeof fetch,
+    getToken: () => "t0ken",
+    eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource),
+  });
+  api.events(() => {});
+
+  await api.wall();
+  status = 401;
+  await expect(api.wall()).rejects.toMatchObject({ status: 401 });
+  expect(streams[0].closed).toBe(true);
+
+  status = 200;
+  await api.wall();
+  expect(streams).toHaveLength(2);
+});
+
+test("a late refusal of a token that is no longer held leaves the stream alone", async () => {
+  const streams: Stream[] = [];
+  let token = "old";
+  let refuseOld: () => void = () => {};
+  const api = createApi({
+    baseUrl: "http://host.test",
+    fetch: (async (r: Request) =>
+      r.headers.get("Authorization") === "Bearer old"
+        ? new Promise<Response>((resolve) => {
+            refuseOld = () => resolve(new Response(JSON.stringify({ error: "no" }), { status: 401, headers: { "Content-Type": "application/json" } }));
+          })
+        : ok({ items: [] })) as unknown as typeof fetch,
+    getToken: () => token,
+    eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource),
+  });
+
+  const late = api.wall().catch(() => {});
+  token = "new";
+  await api.wall();
+  refuseOld();
+  await late;
+
+  api.events(() => {});
+  expect(streams).toHaveLength(1);
+});
+
 test("with no token held the stream opens at once", () => {
   const streams: Stream[] = [];
   const api = createApi({ baseUrl: "http://host.test", eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource) });
