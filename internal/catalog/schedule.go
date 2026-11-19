@@ -113,7 +113,8 @@ type EpisodeRef struct{ Season, Number int }
 // RequestSearch marks what Search now asks for, so that the scheduler
 // searches it at once whatever its backoff and budget: a movie, one
 // episode, or, for a series without an episode, its monitored aired
-// episodes that have no file. The title or the episode not being there
+// episodes that have no file, or all of its aired episodes that have no
+// file when none is monitored. The title or the episode not being there
 // answers ErrNotFound.
 func (s *Store) RequestSearch(ctx context.Context, titleID string, ep *EpisodeRef) error {
 	tx, err := s.w.BeginTx(ctx, nil)
@@ -140,9 +141,10 @@ func (s *Store) RequestSearch(ctx context.Context, titleID string, ep *EpisodeRe
 			return err
 		}
 	default:
+		const missing = `title_id = ?1 AND have_file = 0 AND season > 0 AND air_date <= ?2`
 		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule (title_id, season, number, forced)
 			SELECT title_id, season, number, 1 FROM episodes
-			WHERE title_id = ? AND monitored = 1 AND have_file = 0 AND season > 0 AND air_date <= ? `+force,
+			WHERE `+missing+` AND (monitored = 1 OR NOT EXISTS (SELECT 1 FROM episodes WHERE `+missing+` AND monitored = 1)) `+force,
 			titleID, s.now().UTC().Format(time.DateOnly)); err != nil {
 			return err
 		}
@@ -287,12 +289,33 @@ func newActivityID() string {
 	return hex.EncodeToString(b)
 }
 
-// AddActivity records an entry. A title that was removed meanwhile answers ErrNotFound.
+// ActivityKeep is how many of the newest Activity entries are kept.
+const ActivityKeep = 5000
+
+// AddActivity records an entry and prunes the oldest beyond ActivityKeep,
+// except the last would-grab of each target, which tells the scheduler
+// whether it has already said so. A title that was removed meanwhile
+// answers ErrNotFound.
 func (s *Store) AddActivity(ctx context.Context, a Activity) error {
-	res, err := s.w.ExecContext(ctx, `INSERT INTO activity (id, title_id, season, number, kind, reason, message, release_id, at)
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `INSERT INTO activity (id, title_id, season, number, kind, reason, message, release_id, at)
 		SELECT ?, id, ?, ?, ?, ?, ?, ?, ? FROM titles WHERE id = ?`,
 		newActivityID(), a.Season, a.Number, a.Kind, a.Reason, a.Message, a.ReleaseID, s.stamp(), a.TitleID)
-	return affected(res, err)
+	if err := affected(res, err); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM activity
+		WHERE rowid <= (SELECT rowid FROM activity ORDER BY rowid DESC LIMIT 1 OFFSET ?)
+		AND NOT (kind = ? AND rowid = (SELECT MAX(b.rowid) FROM activity b
+			WHERE b.title_id = activity.title_id AND b.season = activity.season AND b.number = activity.number AND b.kind = ?))`,
+		s.activityKeep, ActivityWouldGrab, ActivityWouldGrab); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Activities lists the entries, newest first; a non-empty titleID narrows them to one title.

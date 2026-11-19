@@ -8,6 +8,7 @@ import (
 	"html"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -551,7 +552,21 @@ func (f *Fake) listHistory(w http.ResponseWriter, r *http.Request) {
 	if id := r.URL.Query().Get("titleId"); id != "" {
 		out = f.historyFor(id)
 	}
-	write(w, http.StatusOK, map[string]any{"history": append([]*historyEntry{}, out...)})
+	limit, offset := 1000, 0
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	if v, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && v > 0 {
+		offset = min(v, len(out))
+	}
+	body := map[string]any{}
+	out = out[offset:]
+	if len(out) > limit {
+		out = out[:limit]
+		body["nextOffset"] = offset + limit
+	}
+	body["history"] = append([]*historyEntry{}, out...)
+	write(w, http.StatusOK, body)
 }
 
 func (f *Fake) retry(w http.ResponseWriter, r *http.Request) {

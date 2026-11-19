@@ -969,6 +969,10 @@ export interface operations {
         parameters: {
             query?: {
                 titleId?: components["schemas"]["TitleId"];
+                /** @description The most entries one page holds. Without it, a page holds 1000. */
+                limit?: number;
+                /** @description How many of the newest entries to skip; the `nextOffset` of the previous page. */
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -984,9 +988,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         history: components["schemas"]["HistoryEntry"][];
+                        /** @description The `offset` of the next page; absent on the last page. */
+                        nextOffset?: number;
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };

@@ -736,3 +736,91 @@ func TestWhenEveryReleaseIsDroppedActivitySaysWhy(t *testing.T) {
 		t.Errorf("history: %v", r.history())
 	}
 }
+
+func TestSearchNowOnAnUnmonitoredSeriesSearchesItsAiredMissingEpisodes(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.mustCall("PATCH", "/api/titles/series-1408", `{"monitored":false}`, 200)
+	drain := func() {
+		for range 4 {
+			r.step()
+			r.advance(5 * time.Second)
+		}
+	}
+	drain()
+	r.wantSearches(0, "an unmonitored series is not searched on its own")
+
+	r.mustCall("POST", "/api/titles/series-1408/search", "", 200)
+	drain()
+	if r.searchedID("tvdb:403000:1:1") != 1 || r.searchedID("tvdb:403000:1:2") != 1 {
+		t.Errorf("Search now searches the aired missing episodes: %v", r.aio.Searches())
+	}
+	r.wantSearches(2, "an unaired episode and a special stay out")
+	drain()
+	r.wantSearches(2, "and the series stays unmonitored, searched on request only")
+}
+
+func TestSearchNowOnASeriesLeavesItsUnmonitoredEpisodesAloneWhileOthersAreMonitored(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	for range 2 {
+		r.step()
+		r.advance(5 * time.Second)
+	}
+	r.wantSearches(2, "both aired episodes have been searched")
+	r.mustCall("PATCH", "/api/titles/series-1408/episodes/s01e01", `{"monitored":false}`, 200)
+	r.mustCall("POST", "/api/titles/series-1408/search", "", 200)
+	r.step()
+	if r.searchedID("tvdb:403000:1:1") != 1 || r.searchedID("tvdb:403000:1:2") != 2 {
+		t.Errorf("only the monitored episode is searched again: %v", r.aio.Searches())
+	}
+}
+
+func TestHistoryPagesNewestFirstAndAnswersAllByDefault(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.addMovie()
+	for range 4 {
+		r.step()
+		r.advance(25 * time.Hour)
+	}
+	all := r.history()
+	if len(all) != 4 {
+		t.Fatalf("history: %d entries, want 4", len(all))
+	}
+	if first := r.mustCall("GET", "/api/history", "", 200); first["nextOffset"] != nil {
+		t.Errorf("a history that fits the default page has no next page: %v", first["nextOffset"])
+	}
+
+	ids := func(es any) (out []string) {
+		for _, e := range es.([]any) {
+			out = append(out, e.(map[string]any)["id"].(string))
+		}
+		return out
+	}
+	var got []string
+	offset, pages := 0, 0
+	for {
+		page := r.mustCall("GET", fmt.Sprintf("/api/history?limit=3&offset=%d", offset), "", 200)
+		got = append(got, ids(page["history"])...)
+		pages++
+		next, more := page["nextOffset"].(float64)
+		if !more {
+			break
+		}
+		offset = int(next)
+		if pages > 4 {
+			t.Fatal("paging does not end")
+		}
+	}
+	if pages != 2 || fmt.Sprint(got) != fmt.Sprint(ids(all)) {
+		t.Errorf("%d pages gave %v, want 2 pages of %v", pages, got, ids(all))
+	}
+	for _, q := range []string{"limit=0", "limit=-1", "limit=x", "offset=-1", "offset=x", "limit=1000000"} {
+		if got := r.bad("GET", "/api/history?"+q, "").status; got != 400 {
+			t.Errorf("history?%s: %d, want 400", q, got)
+		}
+	}
+	if past := r.mustCall("GET", "/api/history?offset=50", "", 200); len(past["history"].([]any)) != 0 || past["nextOffset"] != nil {
+		t.Errorf("past the end is an empty page: %v", past)
+	}
+}

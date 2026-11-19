@@ -3,9 +3,11 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/davepintodev/marquee/internal/catalog"
@@ -193,6 +195,20 @@ func (a *api) history(ctx context.Context, titleID string) ([]historyJSON, error
 	return out, nil
 }
 
+// historyMaxLimit is the page size of GET /api/history when none is asked,
+// and the most one page may hold.
+const historyMaxLimit = 1000
+
+// pageParam reads an integer query parameter within min and max, def when absent.
+func pageParam(r *http.Request, name string, def, min, max int) (int, bool) {
+	v := r.URL.Query().Get(name)
+	if v == "" {
+		return def, true
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil && n >= min && n <= max
+}
+
 func (a *api) listHistory(w http.ResponseWriter, r *http.Request) {
 	titleID := r.URL.Query().Get("titleId")
 	if titleID != "" {
@@ -201,10 +217,30 @@ func (a *api) listHistory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	limit, ok := pageParam(r, "limit", historyMaxLimit, 1, historyMaxLimit)
+	if !ok {
+		fail(w, http.StatusBadRequest, "limit must be a number from 1 to "+strconv.Itoa(historyMaxLimit))
+		return
+	}
+	offset, ok := pageParam(r, "offset", 0, 0, math.MaxInt32)
+	if !ok {
+		fail(w, http.StatusBadRequest, "offset must be a number from 0")
+		return
+	}
 	out, err := a.history(r.Context(), titleID)
 	if err != nil {
 		a.internal(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"history": out})
+	body := map[string]any{}
+	if offset > len(out) {
+		offset = len(out)
+	}
+	out = out[offset:]
+	if len(out) > limit {
+		out = out[:limit]
+		body["nextOffset"] = offset + limit
+	}
+	body["history"] = out
+	writeJSON(w, http.StatusOK, body)
 }
