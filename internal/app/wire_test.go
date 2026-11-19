@@ -40,6 +40,7 @@ func tileOf(items []any, id string) map[string]any {
 
 func TestAMoviesBadgeFollowsItsDownloadOnTheWallSearchAndDetail(t *testing.T) {
 	r, _ := setup(t)
+	r.noStall()
 	r.slowMovie()
 
 	var detail map[string]any
@@ -63,7 +64,7 @@ func TestAMoviesBadgeFollowsItsDownloadOnTheWallSearchAndDetail(t *testing.T) {
 		}
 	}
 
-	r.waitHistory(1)
+	r.waitHistoryKind("imported", 1)
 	if got := badgeOf(r.getTitle("movie-438631")); got["state"] != "downloaded" || got["label"] != "Downloaded" {
 		t.Errorf("once imported the badge = %v", got)
 	}
@@ -71,6 +72,7 @@ func TestAMoviesBadgeFollowsItsDownloadOnTheWallSearchAndDetail(t *testing.T) {
 
 func TestASeriesBadgesFollowAnEpisodeDownload(t *testing.T) {
 	r, _ := setup(t)
+	r.noStall()
 	r.enqueue(episodeJob(r.cdn.Add("ep.mkv", debridfake.File{Data: debridfake.MKV(1 << 20), Pace: 100 * time.Millisecond}), "ep.mkv"))
 
 	var detail map[string]any
@@ -93,7 +95,7 @@ func TestASeriesBadgesFollowAnEpisodeDownload(t *testing.T) {
 		t.Errorf("the other aired episode keeps its state: %v", other)
 	}
 
-	r.waitHistory(1)
+	r.waitHistoryKind("imported", 1)
 	if got := badgeOf(r.getTitle("series-1408")); got["state"] != "partial_season" {
 		t.Errorf("one episode in, one aired episode still wanted: %v", got)
 	}
@@ -143,7 +145,7 @@ func TestATitleCarriesItsHistoryAndASummaryOfIt(t *testing.T) {
 	}
 
 	r.enqueue(movieJob(r.cdn.Add("good.mkv", debridfake.File{Data: debridfake.MKV(100 << 10)}), "good.mkv"))
-	r.waitHistory(2)
+	r.waitHistoryKind("imported", 1)
 	got = r.getTitle("movie-438631")
 	if got["historySummary"] != "Tried 2 releases, 1 fake." || len(got["history"].([]any)) != 2 {
 		t.Errorf("after an import: %v %v", got["historySummary"], got["history"])
@@ -236,6 +238,7 @@ func isTitle(id string, state string) func(sseEvent) bool {
 
 func TestTheEventStreamReportsProgressAndEveryBadgeChangeOfATitle(t *testing.T) {
 	r, _ := setup(t)
+	r.noStall()
 	s := r.openStream()
 	r.slowMovie()
 

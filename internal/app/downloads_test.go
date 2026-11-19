@@ -191,6 +191,33 @@ func (r *rig) waitHistory(n int) []any {
 	return h
 }
 
+// waitHistoryKind waits for n history entries of one kind, so a test that
+// reads the state an import leaves behind is not released by a failure's entry.
+func (r *rig) waitHistoryKind(kind string, n int) []any {
+	r.t.Helper()
+	var h []any
+	waitFor(r.t, "history entries of kind "+kind, 10*time.Second, func() bool {
+		h = r.history()
+		got := 0
+		for _, e := range h {
+			if e.(map[string]any)["kind"] == kind {
+				got++
+			}
+		}
+		return got >= n
+	})
+	return h
+}
+
+// noStall restarts the service on the same directories with a stall timeout
+// no scheduling hiccup can reach, for tests whose paced download must finish.
+func (r *rig) noStall() {
+	r.t.Helper()
+	r.stop()
+	r.stallTimeout = time.Minute
+	r.startService()
+}
+
 func tree(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
@@ -260,7 +287,7 @@ func TestADownloadedMovieLandsUnderRadarrsNameAndJellyfinIsToldOnce(t *testing.T
 func TestADownloadedEpisodeLandsInItsSeasonFolderUnderSonarrsName(t *testing.T) {
 	r, root := setup(t)
 	r.enqueue(episodeJob(r.cdn.Add("ep.mkv", debridfake.File{Data: debridfake.MKV(200 << 10)}), "ep.mkv"))
-	r.waitHistory(1)
+	r.waitHistoryKind("imported", 1)
 	want := "Dune - Prophecy/Season 01/Dune - Prophecy - S01E01 - Aired One [WEBDL-1080p].mkv"
 	if got := tree(t, filepath.Join(root, "series")); len(got) != 1 || got[0] != want {
 		t.Fatalf("series folder holds %v, want [%s]", got, want)
@@ -288,7 +315,7 @@ func TestRemuxQualityNamesDifferBetweenMoviesAndSeries(t *testing.T) {
 	e.Resolution, e.Quality = "1080p", "BluRay REMUX"
 	r.enqueue(m)
 	r.enqueue(e)
-	r.waitHistory(2)
+	r.waitHistoryKind("imported", 2)
 	if got := tree(t, filepath.Join(root, "movies")); len(got) != 1 || !strings.HasSuffix(got[0], "[Remux-2160p].mkv") {
 		t.Errorf("movie: %v", got)
 	}
@@ -513,7 +540,7 @@ func TestJellyfinBeingDownLeavesTheImportSuccessfulAndShowsOnHealth(t *testing.T
 	// Jellyfin comes back; the next import clears the warning.
 	r.jf.FailWith(0)
 	r.enqueue(episodeJob(r.cdn.Add("b.mkv", debridfake.File{Data: debridfake.MKV(100 << 10)}), "b.mkv"))
-	r.waitHistory(2)
+	r.waitHistoryKind("imported", 2)
 	waitFor(t, "the Health warning to clear", 5*time.Second, func() bool {
 		return r.mustCall("GET", "/api/health", "", 200)["status"] == "ok"
 	})
@@ -529,7 +556,7 @@ func TestWithoutAJellyfinURLNothingIsRefreshedAndNothingIsReported(t *testing.T)
 	r := newRig(t, env, cdn, nil, newTMDB(t))
 	r.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
 	r.enqueue(movieJob(cdn.Add("a.mkv", debridfake.File{Data: debridfake.MKV(100 << 10)}), "a.mkv"))
-	r.waitHistory(1)
+	r.waitHistoryKind("imported", 1)
 	if got := r.mustCall("GET", "/api/health", "", 200); got["status"] != "ok" {
 		t.Errorf("health = %v", got)
 	}
@@ -546,7 +573,7 @@ func TestAtMostTwoDownloadsRunAtOnce(t *testing.T) {
 	r.enqueue(movieJob(file("a.mkv"), "a.mkv"))
 	r.enqueue(second)
 	r.enqueue(third)
-	r.waitHistory(3)
+	r.waitHistoryKind("imported", 3)
 	if n := r.cdn.MaxFiles(); n != 2 {
 		t.Errorf("the fake saw %d files streaming at once, want exactly 2", n)
 	}
@@ -563,7 +590,7 @@ func TestQueueingATitleThatIsAlreadyDownloadingChangesNothing(t *testing.T) {
 	if got := len(r.downloads()); got != 1 {
 		t.Errorf("queue holds %d downloads, want 1", got)
 	}
-	r.waitHistory(1)
+	r.waitHistoryKind("imported", 1)
 	if len(r.history()) != 1 {
 		t.Error("the duplicate produced a second history entry")
 	}
@@ -671,14 +698,14 @@ func TestTheDownloadQueueShowsProgressAndStateUntilTheImportCompletes(t *testing
 	if _, has := seen["episode"]; has {
 		t.Errorf("a movie's download names an episode: %v", seen)
 	}
-	r.waitHistory(1)
+	r.waitHistoryKind("imported", 1)
 }
 
 func TestHistoryCanBeNarrowedToATitleAndNamesTheEpisode(t *testing.T) {
 	r, _ := setup(t)
 	r.enqueue(movieJob(r.cdn.Add("a.mkv", debridfake.File{Data: debridfake.MKV(50 << 10)}), "a.mkv"))
 	r.enqueue(episodeJob(r.cdn.Add("b.mkv", debridfake.File{Data: debridfake.MKV(50 << 10)}), "b.mkv"))
-	r.waitHistory(2)
+	r.waitHistoryKind("imported", 2)
 	h := r.mustCall("GET", "/api/history?titleId=series-1408", "", 200)["history"].([]any)
 	if len(h) != 1 || h[0].(map[string]any)["episode"] != "s01e01" {
 		t.Errorf("history for the series = %v", h)
@@ -724,7 +751,7 @@ func TestADownloadThatCrashedWhileVerifyingIsVerifiedAndImportedNotFetchedAgain(
 		t.Fatal(err)
 	}
 	r.startService()
-	r.waitHistory(1)
+	r.waitHistoryKind("imported", 1)
 	if got, _ := os.ReadFile(filepath.Join(root, "movies", "Dune (2021)", "Dune (2021) [WEBDL-1080p].mkv")); !bytes.Equal(got, data) {
 		t.Error("the finished file was not imported as it was")
 	}
