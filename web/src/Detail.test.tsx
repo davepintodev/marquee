@@ -60,6 +60,14 @@ afterEach(() => {
   window.location.hash = "";
 });
 
+const toggleOf = (region: HTMLElement) => within(region).getByRole("button", { expanded: false }) as HTMLElement;
+const openSeason = (region: HTMLElement) => fireEvent.click(toggleOf(region));
+const isOpen = (region: HTMLElement) => within(region).queryAllByRole("listitem").length > 0;
+
+function seasonOf(t: Title, number: number, monitored: boolean): Title {
+  return { ...t, seasons: t.seasons.map((s) => (s.number === number ? { ...s, episodes: s.episodes.map((e) => ({ ...e, monitored })) } : s)) };
+}
+
 function serve(title: Title, extra?: (url: URL, init: Request) => Response | undefined) {
   return (url: URL, init: Request) => {
     const special = extra?.(url, init);
@@ -78,6 +86,7 @@ test("a series opens with its seasons and episodes, each with its state, and its
 
   const s4 = screen.getByRole("region", { name: "Season 4" });
   expect(within(s4).getByText("2 missing")).toBeTruthy();
+  openSeason(s4);
   expect(within(s4).queryByText(/Season 4 ·/)).toBeNull();
   expect(screen.getAllByText("Season 4 · 2 missing")).toHaveLength(1);
   const rows = within(s4).getAllByRole("listitem");
@@ -90,6 +99,7 @@ test("a series opens with its seasons and episodes, each with its state, and its
   expect(within(rows[3]).getByText("Unmonitored")).toBeTruthy();
   expect(screen.getByRole("region", { name: "Season 3" })).toBeTruthy();
 
+  fireEvent.click(screen.getByRole("button", { name: "History" }));
   const history = screen.getByRole("list", { name: "History" });
   expect(within(history).getByText(/stalled: no data for 1 minute/)).toBeTruthy();
   expect(within(history).getByText("Stalled")).toBeTruthy();
@@ -103,6 +113,7 @@ test("Search now on an episode and on the title skip the backoff", async () => {
     "#/title/series-2",
   );
   const s4 = await screen.findByRole("region", { name: "Season 4" });
+  openSeason(s4);
 
   fireEvent.click(within(s4).getByRole("button", { name: "Search now for Big Baby" }));
   await screen.findByText("Searching now.");
@@ -128,6 +139,7 @@ test("an episode and the title can be unmonitored, and the page shows the answer
     "#/title/series-2",
   );
   const s4 = await screen.findByRole("region", { name: "Season 4" });
+  openSeason(s4);
 
   fireEvent.click(within(s4).getByRole("button", { name: "Unmonitor Big Baby" }));
   await within(s4).findByRole("button", { name: "Monitor Big Baby" });
@@ -204,6 +216,7 @@ test("an unknown title says so and offers to try again", async () => {
 test("download progress for this title moves the episode without a reload", async () => {
   const { calls } = setupApp(serve(house()), "#/title/series-2");
   const s4 = await screen.findByRole("region", { name: "Season 4" });
+  openSeason(s4);
   await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
   const before = calls.length;
 
@@ -219,4 +232,145 @@ test("Esc and the close button go back to the wall", async () => {
   fireEvent.keyDown(window, { key: "Escape" });
   await waitFor(() => expect(window.location.hash).toBe("#/"));
   expect(screen.queryByRole("heading", { name: "House", level: 1 })).toBeNull();
+});
+
+test("every season and History start closed, even one with episodes missing", async () => {
+  setupApp(serve(house()), "#/title/series-2");
+  const s4 = await screen.findByRole("region", { name: "Season 4" });
+  const s3 = screen.getByRole("region", { name: "Season 3" });
+
+  for (const region of [s3, s4]) {
+    expect(within(region).getByRole("button", { expanded: false })).toBeTruthy();
+    expect(isOpen(region)).toBe(false);
+  }
+  expect(screen.getByRole("button", { name: "History" }).getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("list", { name: "History" })).toBeNull();
+});
+
+test("a season opens and closes from its own toggle, and the other seasons stay as they are", async () => {
+  setupApp(serve(house()), "#/title/series-2");
+  const s4 = await screen.findByRole("region", { name: "Season 4" });
+  const s3 = screen.getByRole("region", { name: "Season 3" });
+
+  openSeason(s4);
+  expect(isOpen(s4)).toBe(true);
+  expect(isOpen(s3)).toBe(false);
+  fireEvent.click(within(s4).getByRole("button", { expanded: true }));
+  expect(isOpen(s4)).toBe(false);
+});
+
+test("Monitor season monitors every episode, leaves the season closed and says so; Unmonitor season does the reverse", async () => {
+  const { writes } = setupApp(
+    serve(house(), (url, init) => {
+      if (init.method !== "PUT") return undefined;
+      if (url.pathname === "/api/titles/series-2/seasons/4") return json(seasonOf(house(), 4, true));
+      if (url.pathname === "/api/titles/series-2/seasons/3") return json(seasonOf(house(), 3, false));
+    }),
+    "#/title/series-2",
+  );
+  const s4 = await screen.findByRole("region", { name: "Season 4" });
+  const s3 = screen.getByRole("region", { name: "Season 3" });
+  expect(within(s3).getByRole("button", { name: "Unmonitor season 3" }).textContent).toBe("Unmonitor season");
+
+  fireEvent.click(within(s4).getByRole("button", { name: "Monitor season 4" }));
+  expect((await screen.findByRole("status")).textContent).toBe("Season 4 monitored.");
+  expect(within(s4).getByRole("button", { name: "Unmonitor season 4" })).toBeTruthy();
+  expect(isOpen(s4)).toBe(false);
+  expect(within(s4).getByRole("button", { expanded: false })).toBeTruthy();
+  openSeason(s4);
+  expect(within(s4).queryByText("Unmonitored")).toBeNull();
+
+  fireEvent.click(within(s3).getByRole("button", { name: "Unmonitor season 3" }));
+  await within(s3).findByRole("button", { name: "Monitor season 3" });
+  expect((await screen.findByRole("status")).textContent).toBe("Season 3 unmonitored.");
+  expect(isOpen(s3)).toBe(false);
+  expect(isOpen(s4)).toBe(true);
+
+  expect(writes).toEqual([
+    { method: "PUT", path: "/api/titles/series-2/seasons/4", body: { monitored: true } },
+    { method: "PUT", path: "/api/titles/series-2/seasons/3", body: { monitored: false } },
+  ]);
+});
+
+test("the season button is not part of the toggle: its label follows the episodes, not the season being open", async () => {
+  setupApp(serve(house()), "#/title/series-2");
+  const s4 = await screen.findByRole("region", { name: "Season 4" });
+  const button = within(s4).getByRole("button", { name: "Monitor season 4" });
+
+  expect(button.closest("button[aria-expanded]")).toBeNull();
+  expect(toggleOf(s4).contains(button)).toBe(false);
+});
+
+test("a failed season call says why, keeps the season's state and its open or closed state", async () => {
+  setupApp(
+    serve(house(), (_url, init) => (init.method === "PUT" ? json({ error: "no such season" }, 404) : undefined)),
+    "#/title/series-2",
+  );
+  const s4 = await screen.findByRole("region", { name: "Season 4" });
+  openSeason(s4);
+
+  fireEvent.click(within(s4).getByRole("button", { name: "Monitor season 4" }));
+
+  expect((await screen.findByRole("alert")).textContent).toContain("no such season");
+  expect(within(s4).getByRole("button", { name: "Monitor season 4" })).toBeTruthy();
+  expect(isOpen(s4)).toBe(true);
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+test("pressing a season button twice sends one call", async () => {
+  let release: (r: Response) => void = () => {};
+  const { writes } = setupApp(
+    serve(house(), (_url, init) => (init.method === "PUT" ? (new Promise<Response>((resolve) => (release = resolve)) as unknown as Response) : undefined)),
+    "#/title/series-2",
+  );
+  const s4 = await screen.findByRole("region", { name: "Season 4" });
+  const button = within(s4).getByRole("button", { name: "Monitor season 4" });
+
+  fireEvent.click(button);
+  await waitFor(() => expect(button.getAttribute("aria-disabled")).toBe("true"));
+  fireEvent.click(button);
+  release(json(seasonOf(house(), 4, true)));
+  await within(s4).findByRole("button", { name: "Unmonitor season 4" });
+
+  expect(writes).toHaveLength(1);
+});
+
+test("a season that is open stays open when the title is refreshed from under it", async () => {
+  const { calls } = setupApp(serve(house()), "#/title/series-2");
+  const s4 = await screen.findByRole("region", { name: "Season 4" });
+  openSeason(s4);
+  fireEvent.click(screen.getByRole("button", { name: "History" }));
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  const loads = () => calls.filter((u) => u.pathname === "/api/titles/series-2").length;
+  const before = loads();
+
+  FakeEventSource.open()[0].emit("title", { titleId: "series-2" });
+  await waitFor(() => expect(loads()).toBe(before + 1));
+  await screen.findByRole("region", { name: "Season 4" });
+
+  expect(isOpen(s4)).toBe(true);
+  expect(screen.getByRole("list", { name: "History" })).toBeTruthy();
+});
+
+test("the History heading is a button that opens and closes it, and it is a real button for the keyboard", async () => {
+  setupApp(serve(house()), "#/title/series-2");
+  const toggle = await screen.findByRole("button", { name: "History" });
+
+  expect(screen.getByRole("heading", { name: "History", level: 2 }).contains(toggle)).toBe(true);
+  expect(toggle.tagName).toBe("BUTTON");
+  expect(toggle.getAttribute("type")).toBe("button");
+  expect(screen.queryByRole("list", { name: "History" })).toBeNull();
+
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByRole("list", { name: "History" })).toBeTruthy();
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("list", { name: "History" })).toBeNull();
+});
+
+test("an empty History says so once it is opened", async () => {
+  setupApp(serve(house({ history: [] })), "#/title/series-2");
+  fireEvent.click(await screen.findByRole("button", { name: "History" }));
+  expect(screen.getByText("Nothing has happened yet.")).toBeTruthy();
 });

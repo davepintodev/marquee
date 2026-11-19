@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Episode, HistoryEntry, LiveEvent, Season, Title } from "./api/types";
 import { Art } from "./Art";
@@ -155,17 +155,22 @@ export function TitleDetail({ api, id, onClose, onChanged, onRemoved, onToast }:
 
       {t.seasons.map((s) => (
         <SeasonView
-          key={s.number}
+          key={`${t.id}-${s.number}`}
           season={s}
           busy={busy}
+          onMonitorSeason={(monitored) => {
+            const name = seasonName(s);
+            return run(seasonKey(s), () => api.setSeasonMonitored(t.id, s.number, monitored), `${name} ${monitored ? "monitored" : "unmonitored"}.`);
+          }}
           onSearch={(e) => run(e.id, () => api.searchEpisodeNow(t.id, e.id), `Searching for ${e.name} now.`)}
           onMonitor={(e) => run(e.id, () => api.setEpisodeMonitored(t.id, e.id, !e.monitored))}
         />
       ))}
 
-      <section className="section">
-        <h2>History</h2>
-        <HistoryList entries={t.history ?? []} retrying={busy} onRetry={retry} empty="Nothing has happened yet." />
+      <section className="section" key={t.id}>
+        <HistorySection>
+          <HistoryList entries={t.history ?? []} retrying={busy} onRetry={retry} empty="Nothing has happened yet." />
+        </HistorySection>
       </section>
     </Page>
   );
@@ -182,43 +187,83 @@ function withProgress(t: Title, episode: string | undefined, percent: number): T
   };
 }
 
-function SeasonView({ season, busy, onSearch, onMonitor }: { season: Season; busy: string | null; onSearch: (e: Episode) => void; onMonitor: (e: Episode) => void }) {
-  // Seasons that are complete fold away so a long series opens on what is missing.
-  const open = season.episodes.some((e) => e.state !== "downloaded" && e.state !== "unaired");
-  const label = `Season ${season.number}`;
+const seasonName = (s: Season) => (s.number === 0 ? "Specials" : `Season ${s.number}`);
+const seasonKey = (s: Season) => `season-${s.number}`;
+
+function HistorySection({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
-    <section className="season" aria-label={season.number === 0 ? "Specials" : label}>
-      <details open={open}>
-        <summary>
-          <span className="season-name">{season.number === 0 ? "Specials" : label}</span>
+    <>
+      <h2 className="collapse">
+        <button type="button" aria-expanded={open} aria-controls="detail-history" onClick={() => setOpen(!open)}>
+          History
+        </button>
+      </h2>
+      <div id="detail-history" hidden={!open}>
+        {children}
+      </div>
+    </>
+  );
+}
+
+interface SeasonProps {
+  season: Season;
+  busy: string | null;
+  onSearch: (e: Episode) => void;
+  onMonitor: (e: Episode) => void;
+  onMonitorSeason: (monitored: boolean) => void;
+}
+
+function SeasonView({ season, busy, onSearch, onMonitor, onMonitorSeason }: SeasonProps) {
+  const [open, setOpen] = useState(false);
+  const name = seasonName(season);
+  const allMonitored = season.episodes.every((e) => e.monitored);
+  const verb = allMonitored ? "Unmonitor" : "Monitor";
+  const listId = `season-${season.number}-episodes`;
+  return (
+    <section className="season" aria-label={name}>
+      <div className="season-head">
+        <button type="button" className="season-toggle" aria-expanded={open} aria-controls={listId} onClick={() => setOpen(!open)}>
+          <span className="season-name">{name}</span>
           {season.badge && <StatePill state={season.badge.state} label={seasonBadgeLabel(season.badge)} />}
-        </summary>
-        <ul className="rows">
-          {season.episodes.map((e) => (
-            <li key={e.id} className={e.monitored ? "row" : "row unmonitored"}>
-              <div className="row-main">
-                <p className="row-title">
-                  <span className="ep">{`E${String(e.number).padStart(2, "0")}`}</span> {e.name}
-                </p>
-                <p className="row-note">
-                  <span>{e.airDate}</span>
-                  {!e.monitored && <span className="tag">Unmonitored</span>}
-                  {e.nextSearchAt && <span>{`Next search in ${inHours(e.nextSearchAt)}`}</span>}
-                </p>
-              </div>
-              <StatePill state={e.state} label={stateLabel(e)} />
-              {e.state !== "unaired" && e.state !== "downloaded" && e.state !== "downloading" && (
-                <button type="button" className="btn-small" aria-label={`Search now for ${e.name}`} aria-disabled={busy === e.id} onClick={() => onSearch(e)}>
-                  Search now
-                </button>
-              )}
-              <button type="button" className="btn-small ghost" aria-label={`${e.monitored ? "Unmonitor" : "Monitor"} ${e.name}`} aria-disabled={busy === e.id} onClick={() => onMonitor(e)}>
-                {e.monitored ? "Unmonitor" : "Monitor"}
+        </button>
+        {season.episodes.length > 0 && (
+          <button
+            type="button"
+            className="btn-small ghost season-monitor"
+            aria-label={`${verb} season ${season.number === 0 ? "Specials" : season.number}`}
+            aria-disabled={busy === seasonKey(season)}
+            onClick={() => onMonitorSeason(!allMonitored)}
+          >
+            {`${verb} season`}
+          </button>
+        )}
+      </div>
+      <ul className="rows" id={listId} hidden={!open}>
+        {season.episodes.map((e) => (
+          <li key={e.id} className={e.monitored ? "row" : "row unmonitored"}>
+            <div className="row-main">
+              <p className="row-title">
+                <span className="ep">{`E${String(e.number).padStart(2, "0")}`}</span> {e.name}
+              </p>
+              <p className="row-note">
+                <span>{e.airDate}</span>
+                {!e.monitored && <span className="tag">Unmonitored</span>}
+                {e.nextSearchAt && <span>{`Next search in ${inHours(e.nextSearchAt)}`}</span>}
+              </p>
+            </div>
+            <StatePill state={e.state} label={stateLabel(e)} />
+            {e.state !== "unaired" && e.state !== "downloaded" && e.state !== "downloading" && (
+              <button type="button" className="btn-small" aria-label={`Search now for ${e.name}`} aria-disabled={busy === e.id} onClick={() => onSearch(e)}>
+                Search now
               </button>
-            </li>
-          ))}
-        </ul>
-      </details>
+            )}
+            <button type="button" className="btn-small ghost" aria-label={`${e.monitored ? "Unmonitor" : "Monitor"} ${e.name}`} aria-disabled={busy === e.id} onClick={() => onMonitor(e)}>
+              {e.monitored ? "Unmonitor" : "Monitor"}
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
