@@ -34,9 +34,12 @@ interface Data {
 const PAGE = 100;
 
 // A refetch brings the newest page; entries of the older pages already loaded stay below it, once each.
+// When the newest page does not reach them (more than a page arrived meanwhile), keeping them would hide
+// the entries in between, so the list starts over from the newest page.
 function merged(prev: Data | undefined, fresh: Data): Data {
-  if (!prev?.older) return fresh;
+  if (!prev?.older || !fresh.next) return fresh;
   const seen = new Set(fresh.history.map((h) => h.id));
+  if (!prev.history.some((h) => seen.has(h.id))) return fresh;
   return { ...fresh, history: [...fresh.history, ...prev.history.filter((h) => !seen.has(h.id))], next: prev.next, older: true };
 }
 

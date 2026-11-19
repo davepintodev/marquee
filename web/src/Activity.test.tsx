@@ -259,3 +259,26 @@ test("a live refetch keeps the older pages already loaded, without repeating an 
   expect(asked.at(-1)).toBe("?limit=100");
   expect(screen.queryByRole("button", { name: /older/i })).toBeNull();
 });
+
+test("a live refetch that does not reach the older pages starts over instead of hiding what lies between", async () => {
+  const world: World = { downloads: [], history: [], titles: [] };
+  const more = ["a", "b", "c"].map((id): HistoryEntry => ({ ...newest, id: `h-${id}`, message: `Searched ${id}.` }));
+  let rows = [failed, fake, imported];
+  const { handler, asked } = paged(world, () => rows, 2);
+  setupApp(handler, "#/activity");
+  await screen.findByText(/no data for 1 minute/);
+  fireEvent.click(screen.getByRole("button", { name: /older/i }));
+  await screen.findByText(/Imported House - S04E01/);
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+
+  rows = [...more, failed, fake, imported];
+  FakeEventSource.open()[0].emit("title", { titleId: "movie-2", badge: { state: "searching", label: "Searching" } });
+
+  expect(await screen.findByText(/Searched a\./)).toBeTruthy();
+  expect(within(screen.getByRole("list", { name: "History" })).getAllByRole("listitem")).toHaveLength(2);
+  expect(screen.queryByText(/Imported House - S04E01/)).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: /older/i }));
+  expect(await screen.findByText(/Searched c\./)).toBeTruthy();
+  expect(asked.at(-1)).toBe("?limit=100&cursor=h-b");
+});
