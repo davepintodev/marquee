@@ -60,22 +60,25 @@ export function AddMenu({ busy, onChoose }: Props) {
       case "End":
         move(addChoices.length - 1);
         break;
-      case "Escape":
-        // The popup's own Esc handler listens on window and must not see this one.
-        e.stopPropagation();
-        setOpen(false);
-        toggle.current?.focus();
-        return;
       default:
         return;
     }
     e.preventDefault();
   };
 
+  const onRootKey = (e: KeyboardEvent) => {
+    if (e.key !== "Escape" || !open) return;
+    // The popup's own Esc handler listens on window and must not see this one.
+    e.stopPropagation();
+    setOpen(false);
+    toggle.current?.focus();
+  };
+
   return (
     <span
       ref={root}
       className="add-menu-root"
+      onKeyDown={onRootKey}
       onBlur={(e) => {
         // A click on a button Safari does not focus blurs to null; only focus landing elsewhere closes.
         if (open && e.relatedTarget instanceof Node && !root.current?.contains(e.relatedTarget)) setOpen(false);

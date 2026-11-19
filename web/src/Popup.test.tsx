@@ -169,6 +169,17 @@ test("Esc closes only the menu, returns focus to its button and leaves the popup
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
+test("Esc with focus back on the toggle while the menu is open still closes only the menu", async () => {
+  await open(/^Severance \(2022\)/);
+  fireEvent.click(toggle());
+  toggle().focus();
+
+  fireEvent.keyDown(toggle(), { key: "Escape" });
+
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.getByRole("dialog")).toBeTruthy();
+});
+
 test("pressing the toggle again, moving focus away or clicking elsewhere closes the menu", async () => {
   await open(/^Severance \(2022\)/);
 
