@@ -80,7 +80,10 @@ type HistoryPage struct {
 // download and no running download of the same target has replaced.
 const retryableSQL = `(d.state = 'failed' AND NOT EXISTS (SELECT 1 FROM downloads n
 	WHERE n.title_id = d.title_id AND n.season = d.season AND n.number = d.number AND n.id != d.id
-	AND (n.state NOT IN ('done', 'failed') OR (n.at_ms, n.rowid) > (d.at_ms, d.rowid))))`
+	AND n.state NOT IN ('done', 'failed'))
+	AND NOT EXISTS (SELECT 1 FROM downloads n
+	WHERE n.title_id = d.title_id AND n.season = d.season AND n.number = d.number AND n.id != d.id
+	AND n.state IN ('done', 'failed') AND (n.at_ms, n.rowid) > (d.at_ms, d.rowid)))`
 
 // Retryable reports whether the download is a failure worth retrying. A
 // download that is gone answers ErrNotFound.
@@ -128,8 +131,6 @@ func (s *Store) History(ctx context.Context, titleID, cursor string, limit int) 
 	return page, nil
 }
 
-// olderThan is the SQL condition for the rows of source src that rank
-// below the cursor, on the columns at_ms and rowid of alias.
 func olderThan(alias string, src int, from *historyKey) (string, []any) {
 	if from == nil {
 		return "", nil

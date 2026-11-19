@@ -81,8 +81,6 @@ const downloadColumns = `d.id, d.title_id, t.title, d.season, d.number, d.state,
 	d.release_name, d.resolution, d.quality, d.url, d.bytes_done, d.bytes_total, d.reason, d.message,
 	d.library_path, d.created_at, d.updated_at`
 
-// scanDownload reads a row of downloadColumns followed by the columns of
-// extra.
 func scanDownload(sc interface{ Scan(...any) error }, extra ...any) (Download, error) {
 	var d Download
 	var url, created, updated string
