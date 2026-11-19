@@ -228,29 +228,55 @@ type Refresh struct {
 }
 
 // ApplyRefresh adds the episodes the series has gained, updates the name and
-// air date of those it had, and fills in an id the series lacked. It never
-// changes whether an episode is monitored or has a file, and never removes
-// one. The title having gone answers ErrNotFound.
+// air date of those it had, and fills in an id the series lacked. A new
+// episode is monitored like the title's own, except in an adopted series,
+// where it follows the adoption rule: monitored when it is still to air or
+// its season has a file. It never changes whether an existing episode is
+// monitored or has a file, and never removes one. The title having gone
+// answers ErrNotFound.
 func (s *Store) ApplyRefresh(ctx context.Context, titleID string, r Refresh) error {
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var monitored int
-	if err := tx.QueryRowContext(ctx, `SELECT monitored FROM titles WHERE id = ?`, titleID).Scan(&monitored); errors.Is(err, sql.ErrNoRows) {
+	var monitored, adopted int
+	if err := tx.QueryRowContext(ctx, `SELECT monitored, adopted FROM titles WHERE id = ?`, titleID).Scan(&monitored, &adopted); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
 	}
+	ownedSeasons := map[int]bool{}
+	if adopted == 1 {
+		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT season FROM episodes WHERE title_id = ? AND have_file = 1`, titleID)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var n int
+			if err := rows.Scan(&n); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			ownedSeasons[n] = true
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+	}
+	today := s.now().UTC().Format(time.DateOnly)
 	if _, err := tx.ExecContext(ctx, `UPDATE titles SET imdb_id = CASE WHEN imdb_id = '' THEN ? ELSE imdb_id END,
 		tvdb_id = CASE WHEN tvdb_id = 0 THEN ? ELSE tvdb_id END WHERE id = ?`, r.IMDbID, r.TVDBID, titleID); err != nil {
 		return err
 	}
 	for _, e := range r.Episodes {
+		mon := monitored
+		if adopted == 1 && !ownedSeasons[e.Season] && e.AirDate <= today {
+			mon = 0
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO episodes (title_id, season, number, name, air_date, monitored) VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT (title_id, season, number) DO UPDATE SET name = excluded.name, air_date = excluded.air_date`,
-			titleID, e.Season, e.Number, e.Name, e.AirDate, monitored); err != nil {
+			titleID, e.Season, e.Number, e.Name, e.AirDate, mon); err != nil {
 			return err
 		}
 	}
