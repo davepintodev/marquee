@@ -15,7 +15,9 @@ import (
 	"github.com/getkin/kin-openapi/routers"
 
 	"github.com/davepintodev/marquee/internal/apitest"
+	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/fake"
+	"github.com/davepintodev/marquee/internal/httpapi"
 )
 
 func loadSpec(t *testing.T) (*openapi3.T, routers.Router) {
@@ -120,6 +122,85 @@ func TestEveryOperationIsCoveredAndMatchesItsSchema(t *testing.T) {
 			}
 			validate(t, router, c, c.path, resp, c.status)
 		})
+	}
+}
+
+// A token-protected fake, as `marquee --fake` serves it with MARQUEE_API_TOKEN set.
+func TestEveryOperationAnswers401WithoutTheTokenAndNormallyWithIt(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, Step: 10})
+	srv := httptest.NewServer(httpapi.RequireToken(config.Secret("fake-token"), f))
+	t.Cleanup(func() { f.Close(); srv.Close() })
+
+	send := func(c call, header map[string]string, cookie *http.Cookie) *http.Response {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		t.Cleanup(cancel)
+		req, err := http.NewRequestWithContext(ctx, c.method, srv.URL+c.path, strings.NewReader(c.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	bearer := map[string]string{"Authorization": "Bearer fake-token"}
+
+	for id, c := range calls {
+		t.Run(id, func(t *testing.T) {
+			resp := send(c, nil, nil)
+			if resp.StatusCode != 401 {
+				_ = resp.Body.Close()
+				t.Fatalf("without the token: %d, want 401", resp.StatusCode)
+			}
+			validate(t, router, c, c.path, resp, 401)
+			_ = resp.Body.Close()
+
+			resp = send(c, bearer, nil)
+			if resp.StatusCode != c.status {
+				_ = resp.Body.Close()
+				t.Fatalf("with the token: %d, want %d", resp.StatusCode, c.status)
+			}
+			if id == "streamEvents" {
+				_ = resp.Body.Close() // an endless stream; only its status is checked
+				return
+			}
+			validate(t, router, c, c.path, resp, c.status)
+			_ = resp.Body.Close()
+		})
+	}
+
+	// The two operations a browser loads without a header take the session instead.
+	resp := send(calls["listDownloads"], bearer, nil)
+	_ = resp.Body.Close()
+	var session *http.Cookie
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "marquee_session" {
+			session = ck
+		}
+	}
+	if session == nil {
+		t.Fatal("a bearer request got no session cookie")
+	}
+	for _, id := range []string{"getImage", "streamEvents"} {
+		c := calls[id]
+		resp := send(c, nil, session)
+		if resp.StatusCode != c.status {
+			t.Errorf("%s with the session: %d, want %d", id, resp.StatusCode, c.status)
+		} else if id == "getImage" {
+			validate(t, router, c, c.path, resp, c.status)
+		}
+		_ = resp.Body.Close()
 	}
 }
 

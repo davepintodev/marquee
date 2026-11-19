@@ -176,3 +176,118 @@ test("health reads the contract's shape", async () => {
 
   await expect(api.health()).resolves.toEqual(health);
 });
+
+// The browser holds the session cookie only once marquee has answered a request that carried the token; a stream opened sooner is refused and never retries.
+test("while a token is held, the stream opens only after a request with it has been answered", async () => {
+  const streams: Stream[] = [];
+  const answer = vi.fn(async () => ok({ items: [] }));
+  const api = createApi({
+    baseUrl: "http://host.test",
+    fetch: answer as unknown as typeof fetch,
+    getToken: () => "t0ken",
+    eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource),
+  });
+  const got: unknown[] = [];
+
+  const stop = api.events((e) => got.push(e));
+  expect(streams).toHaveLength(0);
+
+  await api.wall();
+  expect(streams).toHaveLength(1);
+  streams[0].send("title", JSON.stringify({ titleId: "movie-1", badge: null }));
+  expect(got).toHaveLength(1);
+
+  await api.wall();
+  expect(streams).toHaveLength(1);
+  stop();
+  expect(streams[0].closed).toBe(true);
+});
+
+test("a stream nobody listens to any more is not opened when the answer comes", async () => {
+  const streams: Stream[] = [];
+  const api = createApi({
+    baseUrl: "http://host.test",
+    fetch: (async () => ok({ items: [] })) as unknown as typeof fetch,
+    getToken: () => "t0ken",
+    eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource),
+  });
+
+  api.events(() => {})();
+  await api.wall();
+  expect(streams).toHaveLength(0);
+});
+
+test("a refused token makes the next stream wait for a request that is answered", async () => {
+  const streams: Stream[] = [];
+  let status = 200;
+  const api = createApi({
+    baseUrl: "http://host.test",
+    fetch: (async () => (status === 200 ? ok({ items: [] }) : new Response(JSON.stringify({ error: "no" }), { status, headers: { "Content-Type": "application/json" } }))) as unknown as typeof fetch,
+    getToken: () => "t0ken",
+    eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource),
+  });
+
+  await api.wall();
+  status = 401;
+  await expect(api.wall()).rejects.toMatchObject({ status: 401 });
+  api.events(() => {});
+  expect(streams).toHaveLength(0);
+
+  status = 200;
+  await api.wall();
+  expect(streams).toHaveLength(1);
+});
+
+test("a refused token closes the stream it opened, and the next answer opens a new one", async () => {
+  const streams: Stream[] = [];
+  let status = 200;
+  const api = createApi({
+    baseUrl: "http://host.test",
+    fetch: (async () => (status === 200 ? ok({ items: [] }) : new Response(JSON.stringify({ error: "no" }), { status, headers: { "Content-Type": "application/json" } }))) as unknown as typeof fetch,
+    getToken: () => "t0ken",
+    eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource),
+  });
+  api.events(() => {});
+
+  await api.wall();
+  status = 401;
+  await expect(api.wall()).rejects.toMatchObject({ status: 401 });
+  expect(streams[0].closed).toBe(true);
+
+  status = 200;
+  await api.wall();
+  expect(streams).toHaveLength(2);
+});
+
+test("a late refusal of a token that is no longer held leaves the stream alone", async () => {
+  const streams: Stream[] = [];
+  let token = "old";
+  let refuseOld: () => void = () => {};
+  const api = createApi({
+    baseUrl: "http://host.test",
+    fetch: (async (r: Request) =>
+      r.headers.get("Authorization") === "Bearer old"
+        ? new Promise<Response>((resolve) => {
+            refuseOld = () => resolve(new Response(JSON.stringify({ error: "no" }), { status: 401, headers: { "Content-Type": "application/json" } }));
+          })
+        : ok({ items: [] })) as unknown as typeof fetch,
+    getToken: () => token,
+    eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource),
+  });
+
+  const late = api.wall().catch(() => {});
+  token = "new";
+  await api.wall();
+  refuseOld();
+  await late;
+
+  api.events(() => {});
+  expect(streams).toHaveLength(1);
+});
+
+test("with no token held the stream opens at once", () => {
+  const streams: Stream[] = [];
+  const api = createApi({ baseUrl: "http://host.test", eventSource: () => (streams.push(new Stream()), streams.at(-1) as unknown as EventSource) });
+  api.events(() => {});
+  expect(streams).toHaveLength(1);
+});

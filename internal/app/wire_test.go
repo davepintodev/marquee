@@ -171,6 +171,7 @@ func (r *realSvc) openStream() *stream {
 	r.t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, "GET", r.base+"/api/events", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		cancel()

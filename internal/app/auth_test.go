@@ -88,19 +88,115 @@ func TestWithAnAPITokenTheAPIAnswers401WithoutIt(t *testing.T) {
 	}
 }
 
-func TestImagesAndTheEventStreamStayOpenUntilTheyCanCarryTheToken(t *testing.T) {
-	base := start(t, testEnv(t), io.Discard)
-	if code, body, _ := authGet(t, base+"/api/images/poster/movie-438631", nil); code == 401 {
-		t.Errorf("an image answered 401 without a token: %s", body)
+// status reads only the status of a request: an event stream never ends.
+func status(t *testing.T, method, url string, header map[string]string, cookie *http.Cookie) (int, http.Header) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// The event stream never ends, so only its status is read.
-	resp, err := http.Get(base + "/api/events")
+	for k, v := range header {
+		req.Header.Set(k, v)
+	}
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
-	if resp.StatusCode == 401 {
-		t.Error("the event stream answered 401 without a token")
+	return resp.StatusCode, resp.Header
+}
+
+func sessionCookie(t *testing.T, h http.Header) *http.Cookie {
+	t.Helper()
+	resp := http.Response{Header: h}
+	for _, c := range resp.Cookies() {
+		if c.Name == "marquee_session" {
+			return c
+		}
+	}
+	return nil
+}
+
+func TestImagesAndTheEventStreamNeedTheTokenOrItsSession(t *testing.T) {
+	base := start(t, testEnv(t), io.Discard)
+	for _, path := range []string{"/api/images/poster/movie-438631", "/api/events"} {
+		if code, _ := status(t, http.MethodGet, base+path, nil, nil); code != 401 {
+			t.Errorf("%s without a credential: %d, want 401", path, code)
+		}
+		if code, _ := status(t, http.MethodGet, base+path, map[string]string{"Authorization": "Bearer " + testToken}, nil); code == 401 {
+			t.Errorf("%s with the bearer token: 401", path)
+		}
+	}
+}
+
+func TestABearerRequestHandsOutASessionThatOnlyReadsImagesAndEvents(t *testing.T) {
+	base := start(t, testEnv(t), io.Discard)
+	bearer := map[string]string{"Authorization": "Bearer " + testToken}
+
+	code, h := status(t, http.MethodGet, base+"/api/downloads", bearer, nil)
+	if code != 200 {
+		t.Fatalf("downloads with the token: %d", code)
+	}
+	c := sessionCookie(t, h)
+	if c == nil {
+		t.Fatalf("no session cookie after a bearer request: %v", h)
+	}
+	if !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Path != "/api/" || c.MaxAge <= 0 || c.Secure {
+		t.Errorf("cookie attributes: %+v", c)
+	}
+	if strings.Contains(c.Value, "SECRET") || strings.Contains(c.Value, testToken) || c.Value == "" {
+		t.Errorf("the cookie must not carry the token: %q", c.Value)
+	}
+
+	for _, path := range []string{"/api/images/poster/movie-438631", "/api/events"} {
+		if code, _ := status(t, http.MethodGet, base+path, nil, c); code == 401 {
+			t.Errorf("%s with the session: 401", path)
+		}
+	}
+	// It opens nothing else: another app on the same host shares the cookie.
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/downloads"},
+		{http.MethodGet, "/api/wall"},
+		{http.MethodPost, "/api/titles"},
+		{http.MethodDelete, "/api/titles/movie-1"},
+		{http.MethodPost, "/api/events"},
+	} {
+		if code, _ := status(t, tc.method, base+tc.path, nil, c); code != 401 {
+			t.Errorf("%s %s with the session: %d, want 401", tc.method, tc.path, code)
+		}
+	}
+	if _, h := status(t, http.MethodGet, base+"/api/downloads", bearer, c); sessionCookie(t, h) != nil {
+		t.Error("a request that already holds the session got another cookie")
+	}
+	stale := &http.Cookie{Name: "marquee_session", Value: "stale"}
+	if code, _ := status(t, http.MethodGet, base+"/api/events", nil, stale); code != 401 {
+		t.Errorf("a stale session: %d, want 401", code)
+	}
+	if _, h := status(t, http.MethodGet, base+"/api/downloads", bearer, stale); sessionCookie(t, h) == nil {
+		t.Error("a stale session was not replaced")
+	}
+	if _, h := status(t, http.MethodGet, base+"/api/downloads", map[string]string{"Authorization": "Bearer wrong"}, nil); sessionCookie(t, h) != nil {
+		t.Error("a refused request got a cookie")
+	}
+}
+
+func TestWithoutAnAPITokenImagesAndEventsAnswerWithoutACookie(t *testing.T) {
+	env := testEnv(t)
+	delete(env, "MARQUEE_API_TOKEN")
+	base := start(t, env, io.Discard)
+	for _, path := range []string{"/api/images/poster/movie-438631", "/api/events", "/api/downloads"} {
+		code, h := status(t, http.MethodGet, base+path, nil, nil)
+		if code == 401 {
+			t.Errorf("%s: 401 with no token configured", path)
+		}
+		if sessionCookie(t, h) != nil {
+			t.Errorf("%s: a cookie with no token configured", path)
+		}
 	}
 }
 

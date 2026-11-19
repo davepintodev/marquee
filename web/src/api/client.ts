@@ -101,6 +101,10 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
   const make = eventSource ?? (typeof EventSource === "undefined" ? undefined : (url: string) => new EventSource(url));
   const listeners = new Set<(e: LiveEvent) => void>();
   let shared: EventSource | undefined;
+  // With a token the stream waits until a request carrying it has been answered: that answer sets the
+  // session cookie, and an EventSource refused with a 401 never retries.
+  let unlocked = false;
+  const mayOpen = () => unlocked || !getToken?.();
   const tell = (e: LiveEvent) => [...listeners].forEach((fn) => fn(e));
   function open(): EventSource {
     const es = make!(base + "/api/events");
@@ -126,7 +130,20 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       return request;
     },
     onResponse({ request, response }) {
-      if (response.status === 401) onUnauthorized?.(request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null);
+      if (response.ok && request.headers.has("Authorization")) {
+        unlocked = true;
+        if (listeners.size > 0) shared ??= open();
+      }
+      if (response.status === 401) {
+        const sent = request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null;
+        // An answer to a token no longer held says nothing about the session of the new one.
+        if (sent === (getToken?.() ?? null)) {
+          unlocked = false;
+          shared?.close();
+          shared = undefined;
+        }
+        onUnauthorized?.(sent);
+      }
     },
   });
   return {
@@ -193,7 +210,7 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
     events(on) {
       if (!make) return () => {};
       listeners.add(on);
-      shared ??= open();
+      if (mayOpen()) shared ??= open();
       return () => {
         if (!listeners.delete(on) || listeners.size > 0) return;
         shared?.close();
