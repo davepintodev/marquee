@@ -80,6 +80,7 @@ func (f *Fake) routes() http.Handler {
 	h("PATCH /api/titles/{id}", f.update)
 	h("DELETE /api/titles/{id}", f.remove)
 	h("POST /api/titles/{id}/search", f.searchNow)
+	h("PUT /api/titles/{id}/seasons/{number}", f.updateSeason)
 	h("PATCH /api/titles/{id}/episodes/{episodeId}", f.updateEpisode)
 	h("POST /api/titles/{id}/episodes/{episodeId}/search", f.searchNow)
 	h("GET /api/titles/{id}/releases", f.listReleases)
@@ -293,11 +294,19 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Kind             string `json:"kind"`
 		TmdbID           int    `json:"tmdbId"`
-		PreferredQuality string `json:"preferredQuality"`
+		PreferredQuality string  `json:"preferredQuality"`
+		Monitor          *string `json:"monitor"`
 	}
 	if !decode(r, &req) || (req.Kind != "movie" && req.Kind != "series") || req.TmdbID <= 0 {
 		fail(w, http.StatusBadRequest, "kind must be movie or series and tmdbId a positive number")
 		return
+	}
+	monitor := "all"
+	if req.Monitor != nil {
+		if monitor = *req.Monitor; !slices.Contains([]string{"all", "future", "first_season", "latest_season", "none"}, monitor) {
+			fail(w, http.StatusBadRequest, "monitor must be all, future, first_season, latest_season or none")
+			return
+		}
 	}
 	t := f.find(fmt.Sprintf("%s-%d", req.Kind, req.TmdbID))
 	if t == nil {
@@ -308,25 +317,54 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusOK, f.title(t))
 		return
 	}
-	f.addToLibrary(t, req.PreferredQuality)
+	f.addToLibrary(t, req.PreferredQuality, monitor)
 	write(w, http.StatusCreated, f.title(t))
 }
 
-func (f *Fake) addToLibrary(t *entry, quality string) {
-	t.InLibrary, t.monitored, t.quality = true, true, quality
+// addToLibrary adds t; monitor is what a series monitors, as in the contract.
+func (f *Fake) addToLibrary(t *entry, quality, monitor string) {
+	if t.Kind == "movie" {
+		monitor = "all"
+	}
+	t.InLibrary, t.monitored, t.quality = true, monitor != "none", quality
 	t.nextSearch = time.Now().Add(defaultNextSearch)
 	if t.Kind == "movie" {
 		t.State = "searching"
 	}
+	first, latest := 0, 0
+	for _, s := range t.Seasons {
+		if s.Number > 0 && (first == 0 || s.Number < first) {
+			first = s.Number
+		}
+		latest = max(latest, s.Number)
+	}
 	for _, s := range t.Seasons {
 		for _, e := range s.Episodes {
-			e.monitored = true
-			if e.State != "unaired" {
-				e.State = "searching"
-			}
+			setMonitored(e, monitor == "all" ||
+				(monitor == "future" && e.State == "unaired") ||
+				(monitor == "first_season" && s.Number > 0 && s.Number == first) ||
+				(monitor == "latest_season" && s.Number > 0 && s.Number == latest))
 		}
 	}
-	f.addHistory("added", t, "", "Added and monitored.", "", false)
+	if t.monitored {
+		f.addHistory("added", t, "", "Added and monitored.", "", false)
+	} else {
+		f.addHistory("added", t, "", "Added, nothing monitored.", "", false)
+	}
+}
+
+// setMonitored sets an episode's monitoring and, as the real service does,
+// reads an episode with no file as searching while it is monitored and
+// missing while it is not; an unaired or downloaded one keeps its state.
+func setMonitored(e *episode, monitored bool) {
+	e.monitored = monitored
+	switch e.State {
+	case "searching", "missing":
+		e.State = "missing"
+		if monitored {
+			e.State = "searching"
+		}
+	}
 }
 
 func (f *Fake) get(w http.ResponseWriter, r *http.Request) {
@@ -414,6 +452,39 @@ func (f *Fake) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e.monitored = *req.Monitored
+	write(w, http.StatusOK, f.title(t))
+}
+
+func (f *Fake) updateSeason(w http.ResponseWriter, r *http.Request) {
+	t := f.libraryTitle(w, r)
+	if t == nil {
+		return
+	}
+	var season *season
+	if n, err := strconv.Atoi(r.PathValue("number")); err == nil {
+		for _, s := range t.Seasons {
+			if s.Number == n {
+				season = s
+			}
+		}
+	}
+	if season == nil {
+		fail(w, http.StatusNotFound, "no such season")
+		return
+	}
+	var req struct {
+		Monitored *bool `json:"monitored"`
+	}
+	if !decode(r, &req) || req.Monitored == nil {
+		fail(w, http.StatusBadRequest, "send monitored")
+		return
+	}
+	for _, e := range season.Episodes {
+		setMonitored(e, *req.Monitored)
+	}
+	if *req.Monitored {
+		t.monitored = true
+	}
 	write(w, http.StatusOK, f.title(t))
 }
 
@@ -522,7 +593,7 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !t.InLibrary {
-		f.addToLibrary(t, "")
+		f.addToLibrary(t, "", "all")
 	}
 	d := f.activeDownload(t.id(), req.Episode)
 	if d == nil {

@@ -90,6 +90,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/titles/{id}", a.updateTitle)
 	mux.HandleFunc("DELETE /api/titles/{id}", a.removeTitle)
 	mux.HandleFunc("PATCH /api/titles/{id}/episodes/{episodeId}", a.updateEpisode)
+	mux.HandleFunc("PUT /api/titles/{id}/seasons/{number}", a.updateSeason)
 	mux.HandleFunc("POST /api/titles/{id}/search", a.searchNow)
 	mux.HandleFunc("POST /api/titles/{id}/episodes/{episodeId}/search", a.searchNow)
 	mux.HandleFunc("GET /api/titles/{id}/releases", a.listReleases)

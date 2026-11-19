@@ -48,7 +48,7 @@ export interface paths {
         /** Titles in the library. */
         get: operations["listTitles"];
         put?: never;
-        /** Add and monitor a title. Adding a title already in the library changes nothing. */
+        /** Add a title and, by default, monitor it all. Adding a title already in the library changes nothing. */
         post: operations["addTitle"];
         delete?: never;
         options?: never;
@@ -120,6 +120,30 @@ export interface paths {
          * @description Monitoring an episode also monitors its title, so a title never searches for an episode while reporting itself unmonitored; its other episodes keep their state. Unmonitoring an episode, even the last monitored one, leaves the title monitored.
          */
         patch: operations["updateEpisode"];
+        trace?: never;
+    };
+    "/api/titles/{id}/seasons/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+                /** @description The season number; 0 is the Specials. */
+                number: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Monitor or unmonitor a whole season.
+         * @description Monitoring a season monitors every episode in it and, like updateEpisode, its title; the other seasons keep their state. Unmonitoring a season unmonitors its episodes and leaves the title monitored. An episode that is not in the season is not created.
+         */
+        put: operations["updateSeason"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/titles/{id}/episodes/{episodeId}/search": {
@@ -372,7 +396,14 @@ export interface components {
             kind: components["schemas"]["Kind"];
             tmdbId: number;
             preferredQuality?: components["schemas"]["Quality"];
+            monitor?: components["schemas"]["MonitorChoice"];
         };
+        /**
+         * @description What to monitor when a series is added, and so what is searched for. `all` monitors every episode; `future` the episodes not yet aired; `first_season` and `latest_season` the first and the highest regular season (Specials, season 0, are never chosen); `none` adds the series unmonitored, with no episode monitored, so nothing is searched until the owner monitors something. Ignored for a movie.
+         * @default all
+         * @enum {string}
+         */
+        MonitorChoice: "all" | "future" | "first_season" | "latest_season" | "none";
         UpdateTitleRequest: {
             monitored?: boolean;
             /** @description Send null to clear the preference. */
@@ -695,7 +726,7 @@ export interface operations {
                     "application/json": components["schemas"]["Title"];
                 };
             };
-            /** @description The title was added and is monitored. */
+            /** @description The title was added. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -817,6 +848,39 @@ export interface operations {
             path: {
                 id: components["parameters"]["TitleId"];
                 episodeId: components["parameters"]["EpisodeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    monitored: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The updated title. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Title"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateSeason: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+                /** @description The season number; 0 is the Specials. */
+                number: number;
             };
             cookie?: never;
         };

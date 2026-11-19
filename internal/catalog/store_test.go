@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -246,5 +247,73 @@ func TestTheRefreshBackfillGivesOnlyAdoptedSeriesARowAndKeepsTheOthers(t *testin
 	}
 	if got := due(now.Add(catalog.RefreshEvery)); !slices.Equal(got, []string{"series-1", "series-3"}) {
 		t.Errorf("due a day later = %v, want series-1 and series-3 and no movie", got)
+	}
+}
+
+func TestAddChoosesEpisodesToMonitorAtTheEdges(t *testing.T) {
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	special := catalog.NewEpisode{Season: 0, Number: 1, Name: "Special", AirDate: "2020-01-01"}
+	s3 := catalog.NewEpisode{Season: 3, Number: 1, Name: "Three", AirDate: "2026-11-18"}
+	cases := []struct {
+		name      string
+		monitor   string
+		episodes  []catalog.NewEpisode
+		monitored []string
+		title     bool
+	}{
+		{"specials only never match a season choice", catalog.MonitorFirstSeason, []catalog.NewEpisode{special}, nil, true},
+		{"nothing to air leaves a finished series with no episode monitored", catalog.MonitorFuture, []catalog.NewEpisode{s3}, nil, true},
+		{"an episode airing today has aired", catalog.MonitorFuture, []catalog.NewEpisode{s3, {Season: 3, Number: 2, Name: "Next", AirDate: "2026-11-19"}}, []string{"s03e02"}, true},
+		{"seasons need not start at one", catalog.MonitorFirstSeason, []catalog.NewEpisode{s3, {Season: 5, Number: 1, Name: "Five", AirDate: "2026-01-01"}}, []string{"s03e01"}, true},
+		{"the latest season skips specials", catalog.MonitorLatestSeason, []catalog.NewEpisode{special, s3}, []string{"s03e01"}, true},
+		{"a series with no episodes yet", catalog.MonitorLatestSeason, nil, nil, true},
+		{"none", catalog.MonitorNone, []catalog.NewEpisode{s3}, nil, false},
+	}
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := openAt(t, now)
+			title, _, err := s.Add(context.Background(), catalog.NewTitle{Kind: "series", TMDBID: i + 1, Title: "Show", Monitor: c.monitor, Episodes: c.episodes})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for id, m := range monitoredEpisodes(t, s, title.ID) {
+				if m {
+					got = append(got, id)
+				}
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, c.monitored) || title.Monitored != c.title {
+				t.Errorf("monitored %v title %v, want %v %v", got, title.Monitored, c.monitored, c.title)
+			}
+		})
+	}
+}
+
+func TestAddRefusesAnUnknownMonitorChoiceAndStoresNothing(t *testing.T) {
+	s := openAt(t, time.Now())
+	if _, _, err := s.Add(context.Background(), catalog.NewTitle{Kind: "series", TMDBID: 1, Title: "Show", Monitor: "some"}); !errors.Is(err, catalog.ErrInvalid) {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := s.Get(context.Background(), "series-1"); !errors.Is(err, catalog.ErrNotFound) {
+		t.Errorf("got %v", err)
+	}
+}
+
+func TestSetSeasonMonitoredRollsBackOnAnUnknownSeason(t *testing.T) {
+	s := openAt(t, time.Now())
+	ctx := context.Background()
+	if _, _, err := s.Add(ctx, catalog.NewTitle{Kind: "series", TMDBID: 1, Title: "Show", Monitor: catalog.MonitorNone,
+		Episodes: []catalog.NewEpisode{{Season: 1, Number: 1, Name: "One", AirDate: "2020-01-01"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetSeasonMonitored(ctx, "series-1", 2, true); !errors.Is(err, catalog.ErrNotFound) {
+		t.Fatalf("got %v", err)
+	}
+	if got, _ := s.Get(ctx, "series-1"); got.Monitored {
+		t.Error("a refused call must not monitor the title")
+	}
+	if _, err := s.SetSeasonMonitored(ctx, "series-9", 1, true); !errors.Is(err, catalog.ErrNotFound) {
+		t.Fatalf("got %v", err)
 	}
 }
