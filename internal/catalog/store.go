@@ -186,6 +186,8 @@ CREATE TABLE adoption (
   done INTEGER PRIMARY KEY CHECK (done = 1),
   at   TEXT NOT NULL
 );
+`, `
+ALTER TABLE titles ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {
