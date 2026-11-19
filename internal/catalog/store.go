@@ -191,6 +191,8 @@ CREATE TABLE adoption (
 ALTER TABLE titles ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;
 `, `
 CREATE INDEX activity_by_target ON activity (title_id, season, number, kind);
+`, `
+INSERT OR IGNORE INTO series_refresh (title_id, due_at) SELECT id, 0 FROM titles WHERE kind = 'series';
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -14,12 +15,14 @@ import (
 
 	"github.com/davepintodev/marquee/internal/aiostreamsfake"
 	"github.com/davepintodev/marquee/internal/app"
+	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/debridfake"
 	"github.com/davepintodev/marquee/internal/jellyfinfake"
 	"github.com/davepintodev/marquee/internal/naming"
 	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/scheduler"
 	"github.com/davepintodev/marquee/internal/tmdbfake"
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -32,17 +35,23 @@ const (
 // clock and calls Step, so every search happens exactly when the test says.
 type schedRig struct {
 	*realSvc
-	aio  *aiostreamsfake.Fake
-	cdn  *debridfake.Server
-	jf   *jellyfinfake.Server
-	sch  *scheduler.Scheduler
-	root string
-	stop func()
+	aio *aiostreamsfake.Fake
+	cdn *debridfake.Server
+	jf  *jellyfinfake.Server
+	sch *scheduler.Scheduler
+	adopted chan error
+	root    string
+	stop    func()
 }
 
 func newSchedRig(t *testing.T, dryRun bool) *schedRig {
 	t.Helper()
-	r := &schedRig{aio: newAIO(t), cdn: debridfake.New(), jf: jellyfinfake.New()}
+	return newSchedRigWith(t, dryRun, newTMDB(t), nil)
+}
+
+func newSchedRigWith(t *testing.T, dryRun bool, tm *tmdbfake.Fake, prep func(env map[string]string)) *schedRig {
+	t.Helper()
+	r := &schedRig{aio: newAIO(t), cdn: debridfake.New(), jf: jellyfinfake.New(), adopted: make(chan error, 4)}
 	t.Cleanup(r.cdn.Close)
 	t.Cleanup(r.jf.Close)
 	env := testEnv(t)
@@ -54,9 +63,15 @@ func newSchedRig(t *testing.T, dryRun bool) *schedRig {
 		env["MARQUEE_DRY_RUN"] = "true"
 	}
 	r.root = filepath.Dir(env["MARQUEE_MOVIES_PATH"])
-	r.realSvc = &realSvc{t: t, env: env, logs: newSyncBuf(), tmdb: newTMDB(t)}
+	if prep != nil {
+		prep(env)
+	}
+	r.realSvc = &realSvc{t: t, env: env, logs: newSyncBuf(), tmdb: tm}
 	r.now.Store(today.UnixNano())
 	r.start()
+	if prep != nil {
+		r.adoptErr = awaitAdoption(t, r.adopted)
+	}
 	return r
 }
 
@@ -76,6 +91,7 @@ func (r *schedRig) start() {
 		},
 		Scheduler:   scheduler.Tuning{Tick: -1},
 		OnScheduler: func(s *scheduler.Scheduler) { r.sch = s },
+		OnAdopted:   func(err error) { r.adopted <- err },
 	}
 	r.run(opts)
 }
@@ -822,5 +838,98 @@ func TestHistoryPagesNewestFirstAndAnswersAllByDefault(t *testing.T) {
 	}
 	if past := r.mustCall("GET", "/api/history?offset=50", "", 200); len(past["history"].([]any)) != 0 || past["nextOffset"] != nil {
 		t.Errorf("past the end is an empty page: %v", past)
+	}
+}
+
+const houseFiles = "House/Season %02d/House - S%02dE01 - Episode 1 [Bluray-1080p].mkv"
+
+func adoptedHouseRig(t *testing.T) *schedRig {
+	t.Helper()
+	var files []string
+	for _, n := range []int{2, 3, 4} {
+		files = append(files, fmt.Sprintf(houseFiles, n, n))
+	}
+	r := newSchedRigWith(t, true, adoptTMDB(t), library(t, nil, files))
+	if r.adoptErr != nil {
+		t.Fatal(r.adoptErr)
+	}
+	return r
+}
+
+func TestAnAdoptedSeriesIsRefreshedWhenTheDailyRefreshIsDue(t *testing.T) {
+	r := adoptedHouseRig(t)
+	adopted := r.tmdb.Hits("/3/tv/1622")
+
+	r.advance(23 * time.Hour)
+	r.step()
+	if got := r.tmdb.Hits("/3/tv/1622"); got != adopted {
+		t.Fatalf("refreshed before a day went by: %d requests after adoption", got-adopted)
+	}
+	r.advance(time.Hour)
+	r.step()
+	if got := r.tmdb.Hits("/3/tv/1622"); got == adopted {
+		t.Error("an adopted series is never refreshed")
+	}
+}
+
+func TestADailyRefreshAddsAnAiredEpisodeOfAnUnownedSeasonOfAnAdoptedSeriesUnmonitored(t *testing.T) {
+	r := adoptedHouseRig(t)
+	r.tmdb.Replace(tmdbfake.Title{Kind: "series", ID: 1622, Name: "House", Date: "2004-11-16", Overview: "Diagnostics.", IMDb: "tt0412142", TVDB: 73255,
+		Seasons: []tmdbfake.Season{
+			season(0, "2004-01-01"),
+			season(1, "2004-11-16", "2004-11-23", "2004-11-30", "2004-12-07"),
+			season(2, "2005-09-13", "2005-09-20", "2005-09-27", "2005-10-04"),
+			season(3, "2006-09-05", "2006-09-12", "2006-09-19"),
+			season(4, "2007-09-25", "2007-10-02", "2007-10-09"),
+			season(5, "2026-10-01", "2026-11-18", "2026-12-25", "", "2027-01-08"),
+		}})
+
+	r.advance(24 * time.Hour)
+	r.step()
+	eps := r.episodes("series-1622")
+	for id, want := range map[string]bool{
+		"s01e04": false, // aired, and the owner has no file of season 1
+		"s02e04": true,  // aired, but season 2 is on disk
+		"s05e05": true,  // still to air
+	} {
+		got, ok := eps[id]
+		if !ok || got["monitored"] != want {
+			t.Errorf("%s = %v, want monitored %v", id, got, want)
+		}
+	}
+	if got := eps["s01e04"]["state"]; got != "missing" {
+		t.Errorf("s01e04 state = %v, want missing", got)
+	}
+}
+
+func TestAnAdoptedSeriesFromBeforeTheFixIsRefreshedAfterARestart(t *testing.T) {
+	r := adoptedHouseRig(t)
+	r.stop()
+
+	db, err := sql.Open("sqlite", filepath.Join(r.env["MARQUEE_DATA_DIR"], catalog.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What the database looked like when adoption left no refresh row behind.
+	if _, err := db.Exec(`DELETE FROM series_refresh; PRAGMA user_version = 7`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r.tmdb.Replace(tmdbfake.Title{Kind: "series", ID: 1622, Name: "House", Date: "2004-11-16", IMDb: "tt0412142", TVDB: 73255,
+		Seasons: []tmdbfake.Season{
+			season(1, "2004-11-16", "2004-11-23", "2004-11-30", "2004-12-07"),
+			season(2, "2005-09-13", "2005-09-20", "2005-09-27"),
+			season(3, "2006-09-05", "2006-09-12", "2006-09-19"),
+			season(4, "2007-09-25", "2007-10-02", "2007-10-09"),
+			season(5, "2026-10-01", "2026-11-18", "2026-12-25", ""),
+		}})
+
+	r.start()
+	r.advance(24 * time.Hour)
+	r.step()
+	if e, ok := r.episodes("series-1622")["s01e04"]; !ok || e["monitored"] != false {
+		t.Errorf("a series adopted before the fix is not refreshed after a restart: %v", e)
 	}
 }
