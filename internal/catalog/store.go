@@ -24,8 +24,9 @@ var (
 // Writes share one connection so they never contend; WAL lets the read
 // pool run during a write.
 type Store struct {
-	w, r *sql.DB
-	now  func() time.Time
+	w, r         *sql.DB
+	now          func() time.Time
+	activityKeep int
 }
 
 // FileName is the database file inside the data directory.
@@ -48,7 +49,7 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 		"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)", "synchronous(NORMAL)",
 	}}.Encode()}).String()
 
-	s := &Store{now: now}
+	s := &Store{now: now, activityKeep: ActivityKeep}
 	if s.w, err = sql.Open("sqlite", dsn); err != nil {
 		return nil, err
 	}
@@ -188,6 +189,8 @@ CREATE TABLE adoption (
 );
 `, `
 ALTER TABLE titles ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;
+`, `
+CREATE INDEX activity_by_target ON activity (title_id, season, number, kind);
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

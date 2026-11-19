@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"hash/fnv"
 	"html"
+	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -551,7 +553,34 @@ func (f *Fake) listHistory(w http.ResponseWriter, r *http.Request) {
 	if id := r.URL.Query().Get("titleId"); id != "" {
 		out = f.historyFor(id)
 	}
-	write(w, http.StatusOK, map[string]any{"history": append([]*historyEntry{}, out...)})
+	limit, ok := pageParam(r, "limit", 1000, 1, 1000)
+	if !ok {
+		fail(w, http.StatusBadRequest, "limit must be a number from 1 to 1000")
+		return
+	}
+	offset, ok := pageParam(r, "offset", 0, 0, math.MaxInt32)
+	if !ok {
+		fail(w, http.StatusBadRequest, "offset must be a number from 0")
+		return
+	}
+	offset = min(offset, len(out))
+	body := map[string]any{}
+	out = out[offset:]
+	if len(out) > limit {
+		out = out[:limit]
+		body["nextOffset"] = offset + limit
+	}
+	body["history"] = append([]*historyEntry{}, out...)
+	write(w, http.StatusOK, body)
+}
+
+func pageParam(r *http.Request, name string, def, lo, hi int) (int, bool) {
+	v := r.URL.Query().Get(name)
+	if v == "" {
+		return def, true
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil && n >= lo && n <= hi
 }
 
 func (f *Fake) retry(w http.ResponseWriter, r *http.Request) {

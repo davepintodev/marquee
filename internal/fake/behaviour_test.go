@@ -300,3 +300,30 @@ func TestASeriesNotInTheLibraryIsNotFoundButAMovieIs(t *testing.T) {
 		t.Error("once added, the series' episodes are served")
 	}
 }
+
+func TestHistoryPagesLikeTheRealService(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	all := exchange(t, srv, router, "GET", "/api/history", "", 200)
+	if all["nextOffset"] != nil || len(all["history"].([]any)) < 3 {
+		t.Fatalf("the fixtures fit the default page: %v", all)
+	}
+	first := exchange(t, srv, router, "GET", "/api/history?limit=2", "", 200)
+	if len(first["history"].([]any)) != 2 || first["nextOffset"] != float64(2) {
+		t.Errorf("first page: %v", first)
+	}
+	rest := exchange(t, srv, router, "GET", "/api/history?offset=2", "", 200)
+	if want := len(all["history"].([]any)) - 2; len(rest["history"].([]any)) != want || rest["nextOffset"] != nil {
+		t.Errorf("the rest: %v, want %d entries", rest, want)
+	}
+	for _, q := range []string{"limit=0", "limit=1001", "limit=x", "offset=-1", "offset=x"} {
+		resp, err := srv.Client().Get(srv.URL + "/api/history?" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("?%s: status %d, want 400", q, resp.StatusCode)
+		}
+	}
+}
