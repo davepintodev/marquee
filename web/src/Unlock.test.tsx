@@ -317,3 +317,36 @@ test("a touch pointer and the pointer over the form itself leave the colour as i
   fireEvent.pointerMove(screen.getByRole("heading"), { pointerType: "mouse", clientX: b.x + 5, clientY: b.y + 5 });
   expect(hue(slot())).toEqual(rest);
 });
+
+test("a bare modifier press is not a stray key: Shift and CapsLock leave focus and the line alone", () => {
+  show();
+  field().blur();
+  for (const key of ["Shift", "CapsLock", "Control", "Alt", "Meta"]) fireEvent.keyDown(window, { key });
+  expect(document.activeElement).toBe(document.body);
+  expect(nudgeLine()).toBeNull();
+
+  fireEvent.keyDown(window, { key: "A", shiftKey: true });
+  expect(document.activeElement).toBe(field());
+  expect(nudgeLine()).toBeNull();
+});
+
+test("the words keep their resting colour when the tile that was hovered leaves on resize", () => {
+  setViewport(390, 844);
+  const phone = show();
+  const rest = hue(slot());
+  phone.unmount();
+
+  setViewport(1280, 800);
+  show();
+  const last = tiles().at(-1)!;
+  const b = box(last);
+  const o = { x: px(wall(), "left"), y: px(wall(), "top") };
+  fireEvent.pointerMove(document.querySelector(".screen")!, { pointerType: "mouse", clientX: o.x + b.x + b.w / 2, clientY: o.y + b.y + b.h / 2 });
+
+  setViewport(390, 844);
+  act(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+
+  expect(hue(slot())).toEqual(rest);
+});

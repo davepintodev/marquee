@@ -183,6 +183,20 @@ test("a caller is told when a request that carried the token was accepted, and n
   expect(onAuthorized).toHaveBeenCalledTimes(1);
 });
 
+test("a late acceptance of an older token does not count as the held token being accepted", async () => {
+  const onAuthorized = vi.fn();
+  let token: string | null = "old";
+  const fetchStub = vi.fn(async () => {
+    token = "new";
+    return ok({ items: [] });
+  });
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch, getToken: () => token, onAuthorized });
+
+  await api.wall();
+
+  expect(onAuthorized).not.toHaveBeenCalled();
+});
+
 test("health reads the contract's shape", async () => {
   const health = { status: "ok", dryRun: false, checks: [], libraryProblems: [] };
   const fetchStub = vi.fn(async (r: Request) => (new URL(r.url).pathname === "/api/health" ? ok(health) : ok({})));

@@ -67,7 +67,7 @@ export function Shell({ baseUrl, fetch: f, path = window.location.pathname }: Pr
     <>
       {!lock && (
         <div className="shell-app" inert={covered} data-handover={phase === "open" ? "" : undefined}>
-          <App key={round} api={api} />
+          <App key={round} api={api} keys={!covered} />
         </div>
       )}
       {covered && (

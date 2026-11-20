@@ -274,3 +274,48 @@ test("Esc on the lock screen leaves it locked", async () => {
   expect(screen.getByLabelText(/api token/i)).toBeTruthy();
   expect(screen.queryByRole("searchbox")).toBeNull();
 });
+
+test("while the screen is over it, the app underneath ignores the keyboard", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const m = slowMarquee();
+    render(<Shell baseUrl={BASE} fetch={m.fetch} path="/" />);
+    await screen.findByLabelText(/api token/i);
+    unlock(TOKEN);
+    await screen.findByRole("searchbox");
+
+    fireEvent.keyDown(window, { key: "x" });
+    expect(window.location.hash).toBe("");
+
+    m.release();
+    await waitFor(() => expect(screenEl()!.getAttribute("data-phase")).toBe("open"));
+    fireEvent.keyDown(window, { key: "y" });
+    expect(window.location.hash).toBe("");
+
+    await pass(1700);
+    expect(screenEl()).toBeNull();
+    fireEvent.keyDown(window, { key: "z" });
+    expect(window.location.hash).toBe("#/grid");
+  } finally {
+    vi.useRealTimers();
+    window.location.hash = "";
+  }
+});
+
+test("Esc while unlocking onto a page does not close the page", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  window.location.hash = "#/health";
+  try {
+    const m = slowMarquee();
+    render(<Shell baseUrl={BASE} fetch={m.fetch} path="/" />);
+    await screen.findByLabelText(/api token/i);
+    unlock(TOKEN);
+    await screen.findByRole("searchbox");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(window.location.hash).toBe("#/health");
+  } finally {
+    vi.useRealTimers();
+    window.location.hash = "";
+  }
+});

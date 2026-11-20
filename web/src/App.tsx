@@ -28,7 +28,8 @@ function isAbort(e: unknown) {
   return e instanceof DOMException && e.name === "AbortError";
 }
 
-export function App({ api }: { api: Api }) {
+// keys off: the screen is over the app, so the keyboard is not its to act on.
+export function App({ api, keys = true }: { api: Api; keys?: boolean }) {
   const [query, setQuery] = useState("");
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
@@ -112,6 +113,7 @@ export function App({ api }: { api: Api }) {
   }, []);
 
   useEffect(() => {
+    if (!keys) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (selected) setSelected(null);
@@ -122,10 +124,10 @@ export function App({ api }: { api: Api }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clear, selected, onPage, atFront, searching, closePage, leave]);
+  }, [keys, clear, selected, onPage, atFront, searching, closePage, leave]);
 
   useEffect(() => {
-    if (!atFront || selected) return;
+    if (!keys || !atFront || selected) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target;
@@ -137,7 +139,7 @@ export function App({ api }: { api: Api }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [atFront, selected, enter]);
+  }, [keys, atFront, selected, enter]);
 
   // A control left focused in the grid would swallow the keys that walk in from the wall.
   useEffect(() => {

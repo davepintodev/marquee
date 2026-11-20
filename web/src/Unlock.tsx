@@ -19,6 +19,7 @@ interface Props {
 const BUTTON: Record<UnlockPhase, string> = { ask: "unlock", checking: "unlocking…", open: "unlocked" };
 
 const NUDGE_MS = 3000;
+const MODIFIERS = new Set(["Shift", "CapsLock", "Control", "Alt", "Meta"]);
 
 export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
   const fieldId = useId();
@@ -43,10 +44,10 @@ export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
   const far = useMemo(() => Math.max(1, ...tiles.map((t) => Math.hypot(t.x + t.w / 2 - slot.x - slot.w / 2, t.y + t.h / 2 - slot.y - slot.h / 2))), [tiles, slot]);
   const colours = useMemo(() => tiles.map((_, i) => lockColour(i)), [tiles]);
 
-  // The heading's last word takes the colour of the tile under the pointer, as the front page's words do.
-  const [hover, setHover] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<{ i: number; of: typeof tiles } | null>(null);
   const rest = useMemo(() => mostColourful(tilesTouching(tiles, slot, bleed, view.width, view.height).map((i) => colours[i])), [tiles, slot, bleed, view.width, view.height, colours]);
-  const tint = hover !== null ? colours[hover] : rest;
+  // A pointer index belongs to the layout it was read from; a resize re-plans the tiles and the pointer must move again.
+  const tint = hovered && hovered.of === tiles ? colours[hovered.i] : rest;
 
   useEffect(() => {
     if (asking) input.current?.focus();
@@ -64,11 +65,10 @@ export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
     setNeed(true);
   };
 
-  // A key pressed with nothing focused is meant for the field: a letter lands in it, any other key only points at it.
   useEffect(() => {
     if (!asking) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.key === "Tab" || e.key === "Escape") return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.key === "Tab" || e.key === "Escape" || MODIFIERS.has(e.key)) return;
       const a = document.activeElement;
       if (a && a !== document.body) return;
       if (e.key.length === 1) input.current?.focus();
@@ -82,7 +82,7 @@ export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
     if (e.pointerType !== "mouse" || (e.target as HTMLElement).closest(".uslot") || !wall.current) return;
     const r = wall.current.getBoundingClientRect();
     const i = nearestTile(tiles, e.clientX - r.left, e.clientY - r.top);
-    setHover(i >= 0 ? i : null);
+    setHovered(i >= 0 ? { i, of: tiles } : null);
   };
 
   return (
@@ -90,7 +90,7 @@ export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
       className="screen"
       data-phase={phase}
       onPointerMove={track}
-      onPointerLeave={() => setHover(null)}
+      onPointerLeave={() => setHovered(null)}
       onClick={(e) => {
         if (asking && !(e.target as HTMLElement).closest(".uslot")) nudge();
       }}
