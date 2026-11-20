@@ -681,6 +681,7 @@ test("a library series lists an episode's releases and a blocklisted one can be 
   await expect(blocked.getByText("Queued", { exact: true })).toBeVisible();
 
   await page.keyboard.press("Escape");
+  await expect(second).toHaveAttribute("aria-expanded", "false");
   await page.keyboard.press("Escape");
   await page.getByRole("link", { name: "Activity" }).click();
   await expect(page.locator(".board-main").getByText(/Camp Snoopy/).first()).toBeVisible();
