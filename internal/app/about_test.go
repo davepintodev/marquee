@@ -396,3 +396,19 @@ func TestAboutWhenOMDbRefusesKeepsTMDBsPartAndAsksOMDbAgainLater(t *testing.T) {
 		})
 	}
 }
+
+func TestAboutWhenOMDbGlitchesStoresNothingSoItsScoresComeBack(t *testing.T) {
+	tm := aboutTMDB(t)
+	r := startAbout(t, tm, true)
+	r.omdb.Glitch()
+
+	v := r.mustCall("GET", "/api/titles/movie-438631/about", "", 200)
+	if got := sources(v); len(got) != 1 || got[0] != "tmdb" {
+		t.Fatalf("TMDB's score alone while OMDb glitches: %v", got)
+	}
+	r.omdb.Heal()
+	v = r.mustCall("GET", "/api/titles/movie-438631/about", "", 200)
+	if len(sources(v)) != 3 {
+		t.Errorf("a passing fault must not hide OMDb's scores for the day: %v", v["ratings"])
+	}
+}

@@ -101,7 +101,10 @@ func (c *Client) Scores(ctx context.Context, imdbID string) (Scores, error) {
 		if strings.Contains(msg, "api key") || strings.Contains(msg, "limit") {
 			return Scores{}, ErrRefused
 		}
-		return Scores{}, ErrNotFound
+		if resp.StatusCode == http.StatusOK {
+			return Scores{}, ErrNotFound
+		}
+		return Scores{}, ErrUnavailable
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return Scores{}, ErrRefused

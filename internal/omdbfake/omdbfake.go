@@ -28,9 +28,11 @@ type Fake struct {
 	entries map[string]Entry
 	status  int
 	refusal string
-	hang    bool
-	hits    int
-	release chan struct{}
+	// refusalStatus is the HTTP status the refusal rides on: 401 for a key or quota, 500 for a glitch.
+	refusalStatus int
+	hang          bool
+	hits          int
+	release       chan struct{}
 }
 
 func New() *Fake {
@@ -67,15 +69,18 @@ func (f *Fake) Down(status int) {
 }
 
 // Quota answers every request as OMDb does once the day's free calls are used up.
-func (f *Fake) Quota() { f.refuse("Request limit reached!") }
+func (f *Fake) Quota() { f.refuse("Request limit reached!", http.StatusUnauthorized) }
 
 // RefuseKey answers every request as OMDb does to a key it does not know.
-func (f *Fake) RefuseKey() { f.refuse("Invalid API key!") }
+func (f *Fake) RefuseKey() { f.refuse("Invalid API key!", http.StatusUnauthorized) }
 
-func (f *Fake) refuse(message string) {
+// Glitch answers every request with a server error whose body still says Response False, as OMDb does on a passing fault.
+func (f *Fake) Glitch() { f.refuse("Error getting data.", http.StatusInternalServerError) }
+
+func (f *Fake) refuse(message string, status int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.refusal = message
+	f.refusal, f.refusalStatus = message, status
 }
 
 // Hang holds every request until the fake closes.
@@ -88,7 +93,7 @@ func (f *Fake) Hang() {
 func (f *Fake) Heal() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.status, f.refusal, f.hang = 0, "", false
+	f.status, f.refusal, f.refusalStatus, f.hang = 0, "", 0, false
 }
 
 // Hits counts the requests seen so far.
@@ -101,7 +106,7 @@ func (f *Fake) Hits() int {
 func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.hits++
-	status, refusal, hang, release := f.status, f.refusal, f.hang, f.release
+	status, refusal, refusalStatus, hang, release := f.status, f.refusal, f.refusalStatus, f.hang, f.release
 	e, known := f.entries[r.URL.Query().Get("i")]
 	f.mu.Unlock()
 
@@ -118,7 +123,7 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if refusal != "" {
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(refusalStatus)
 		_ = json.NewEncoder(w).Encode(map[string]any{"Response": "False", "Error": refusal})
 		return
 	}

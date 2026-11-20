@@ -14,8 +14,6 @@ export function Attempts({ title }: { title: Title }) {
   const root = useRef<HTMLSpanElement>(null);
   const tip = useId();
 
-  // The tooltip shows on hover, on keyboard focus and when pinned by a click; Esc hides it however it came up,
-  // until the pointer leaves or focus moves on.
   useEscape(shown, () => {
     setOpen(false);
     setDismissed(true);
