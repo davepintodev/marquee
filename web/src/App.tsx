@@ -156,6 +156,17 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     bar.current?.focus();
   }, [atFront, onPage, touch]);
 
+  // Focus returns to the opener when it can take it, but a poster on the wall cannot (the wall is inert in the grid),
+  // so a title's page closing hands it to the same title's tile, when the grid shows one.
+  const pageOf = useRef("");
+  const onTitle = route.name === "title" ? route.id : "";
+  useEffect(() => {
+    const left = pageOf.current;
+    pageOf.current = onTitle;
+    if (!left || onTitle || atFront) return;
+    gridScreen.current?.querySelector<HTMLElement>(`.stage:not([inert]) [data-tid="${CSS.escape(left)}"]`)?.focus({ preventScroll: true });
+  }, [onTitle, atFront]);
+
   // The wall is the library first, so a title that joins it is fetched for once the wall is up.
   const wallIds = useRef<Set<string> | null>(null);
   const asked = useRef(new Set<string>());
