@@ -1,64 +1,1336 @@
 [
-  {"tmdbId": 687163, "kind": "movie", "title": "Project Hail Mary", "year": 2026, "inLibrary": true, "state": "downloaded",
-   "overview": "A lone astronaut wakes with no memory and a mission to save Earth."},
-  {"tmdbId": 13187, "kind": "movie", "title": "A Charlie Brown Christmas", "year": 1965, "inLibrary": true, "state": "downloaded",
-   "overview": "Charlie Brown finds the true meaning of the holiday."},
-  {"tmdbId": 693134, "kind": "movie", "title": "Dune: Part Two", "year": 2024, "inLibrary": true, "state": "missing", "nextSearchIn": "2h",
-   "overview": "Paul unites with the Fremen to avenge his family."},
-  {"tmdbId": 329865, "kind": "movie", "title": "Arrival", "year": 2016, "inLibrary": true, "state": "missing", "nextSearchIn": "30m",
-   "overview": "A linguist decodes an alien language."},
-  {"tmdbId": 335984, "kind": "movie", "title": "Blade Runner 2049", "year": 2017, "inLibrary": true, "state": "missing",
-   "overview": "A new blade runner unearths a long-buried secret."},
-  {"tmdbId": 1408, "kind": "series", "title": "House", "year": 2004, "inLibrary": true,
-   "overview": "A diagnostician and his team of brilliant, difficult doctors.", "nextSearchIn": "6h",
-   "seasons": [
-     {"number": 1, "episodes": [
-       {"number": 1, "name": "Pilot", "airDate": "2004-11-16", "state": "downloaded"},
-       {"number": 2, "name": "Paternity", "airDate": "2004-11-23", "state": "downloaded"}]},
-     {"number": 2, "episodes": [
-       {"number": 1, "name": "Acceptance", "airDate": "2005-09-13", "state": "downloaded"},
-       {"number": 2, "name": "Autopsy", "airDate": "2005-09-20", "state": "downloaded"}]},
-     {"number": 3, "episodes": [
-       {"number": 1, "name": "Meaning", "airDate": "2006-09-05", "state": "downloaded"},
-       {"number": 2, "name": "Cane and Able", "airDate": "2006-09-12", "state": "downloaded"}]},
-     {"number": 4, "episodes": [
-       {"number": 1, "name": "Alone", "airDate": "2007-09-25", "state": "downloaded"},
-       {"number": 2, "name": "Big Baby", "airDate": "2007-10-02", "state": "missing"},
-       {"number": 3, "name": "You Don't Want to Know", "airDate": "2007-10-09", "state": "missing"},
-       {"number": 4, "name": "Sex Kills", "airDate": "2007-10-16", "state": "missing"}]}]},
-  {"tmdbId": 226745, "kind": "series", "title": "Camp Snoopy", "year": 2024, "inLibrary": true,
-   "overview": "Snoopy and the Beagle Scouts at summer camp.",
-   "seasons": [{"number": 1, "episodes": [
-     {"number": 1, "name": "Arrival at Camp", "airDate": "2024-06-14", "state": "searching"},
-     {"number": 2, "name": "Campfire Songs", "airDate": "2024-06-14", "state": "searching"}]}]},
-  {"tmdbId": 213375, "kind": "series", "title": "VisionQuest", "year": 2026, "inLibrary": true,
-   "overview": "Vision searches for his lost identity.",
-   "seasons": [{"number": 1, "episodes": [
-     {"number": 1, "name": "Reboot", "airDate": "2026-10-01", "state": "downloaded"},
-     {"number": 2, "name": "Memory", "airDate": "2026-10-08", "state": "downloaded"},
-     {"number": 3, "name": "Identity", "airDate": "2099-01-01", "state": "unaired"}]}]},
-
-  {"tmdbId": 157336, "kind": "movie", "title": "Interstellar", "year": 2014, "inLibrary": true, "state": "missing",
-   "overview": "Explorers travel through a wormhole to find humanity a new home."},
-  {"tmdbId": 286217, "kind": "movie", "title": "The Martian", "year": 2015, "inLibrary": true, "state": "missing",
-   "overview": "An astronaut stranded on Mars works to survive until rescue."},
-
-  {"tmdbId": 438631, "kind": "movie", "title": "Dune", "year": 2021, "inLibrary": false, "state": "missing",
-   "overview": "Paul Atreides leads nomadic tribes in a battle for the desert planet."},
-  {"tmdbId": 95396, "kind": "series", "title": "Severance", "year": 2022, "inLibrary": false,
-   "overview": "Employees whose memories are split between work and home.",
-   "seasons": [{"number": 1, "episodes": [
-     {"number": 1, "name": "Good News About Hell", "airDate": "2022-02-18", "state": "missing"},
-     {"number": 2, "name": "Half Loop", "airDate": "2022-02-18", "state": "missing"},
-     {"number": 3, "name": "In Perpetuity", "airDate": "2099-01-01", "state": "unaired"}]}]},
-  {"tmdbId": 83867, "kind": "series", "title": "Andor", "year": 2022, "inLibrary": false,
-   "overview": "A rebel spy in the Star Wars galaxy.",
-   "seasons": [{"number": 1, "episodes": [
-     {"number": 1, "name": "Kassa", "airDate": "2022-09-21", "state": "missing"},
-     {"number": 2, "name": "That Would Be Me", "airDate": "2022-09-21", "state": "missing"}]}]},
-  {"tmdbId": 62560, "kind": "series", "title": "Mr. Robot", "year": 2015, "inLibrary": false,
-   "overview": "A hacker is recruited by an underground group.",
-   "seasons": [{"number": 1, "episodes": [
-     {"number": 1, "name": "eps1.0_hellofriend.mov", "airDate": "2015-05-27", "state": "missing"},
-     {"number": 2, "name": "eps1.1_ones-and-zer0es.mpeg", "airDate": "2015-06-03", "state": "missing"}]}]}
+ {
+  "tmdbId": 687163,
+  "kind": "movie",
+  "title": "Project Hail Mary",
+  "year": 2026,
+  "inLibrary": true,
+  "state": "downloaded",
+  "overview": "A lone astronaut wakes with no memory and a mission to save Earth."
+ },
+ {
+  "tmdbId": 13187,
+  "kind": "movie",
+  "title": "A Charlie Brown Christmas",
+  "year": 1965,
+  "inLibrary": true,
+  "state": "downloaded",
+  "overview": "Charlie Brown finds the true meaning of the holiday."
+ },
+ {
+  "tmdbId": 693134,
+  "kind": "movie",
+  "title": "Dune: Part Two",
+  "year": 2024,
+  "inLibrary": true,
+  "state": "missing",
+  "nextSearchIn": "2h",
+  "overview": "Paul unites with the Fremen to avenge his family."
+ },
+ {
+  "tmdbId": 329865,
+  "kind": "movie",
+  "title": "Arrival",
+  "year": 2016,
+  "inLibrary": true,
+  "state": "missing",
+  "nextSearchIn": "30m",
+  "overview": "A linguist decodes an alien language."
+ },
+ {
+  "tmdbId": 335984,
+  "kind": "movie",
+  "title": "Blade Runner 2049",
+  "year": 2017,
+  "inLibrary": true,
+  "state": "missing",
+  "overview": "A new blade runner unearths a long-buried secret."
+ },
+ {
+  "tmdbId": 1408,
+  "kind": "series",
+  "title": "House",
+  "year": 2004,
+  "inLibrary": true,
+  "overview": "A diagnostician and his team of brilliant, difficult doctors.",
+  "nextSearchIn": "6h",
+  "seasons": [
+   {
+    "number": 1,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Pilot",
+      "airDate": "2004-09-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 2,
+      "name": "Paternity",
+      "airDate": "2004-09-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 3,
+      "name": "Open Window",
+      "airDate": "2004-09-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 4,
+      "name": "Wrong Room",
+      "airDate": "2004-09-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 5,
+      "name": "Broken Habit",
+      "airDate": "2004-09-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 6,
+      "name": "Silent Bridge",
+      "airDate": "2004-10-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 7,
+      "name": "Fair Room",
+      "airDate": "2004-10-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 8,
+      "name": "Quiet Question",
+      "airDate": "2004-10-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 9,
+      "name": "Dead Heart",
+      "airDate": "2004-10-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 10,
+      "name": "Right Visit",
+      "airDate": "2004-10-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 11,
+      "name": "Broken Promise",
+      "airDate": "2004-11-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 12,
+      "name": "Right Room",
+      "airDate": "2004-11-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 13,
+      "name": "Fair Truth",
+      "airDate": "2004-11-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 14,
+      "name": "Final Switch",
+      "airDate": "2004-11-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 15,
+      "name": "Dead Switch",
+      "airDate": "2004-11-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 16,
+      "name": "Fair Trial",
+      "airDate": "2004-12-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 17,
+      "name": "Dead Promise",
+      "airDate": "2004-12-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 18,
+      "name": "Dead Habit",
+      "airDate": "2004-12-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 19,
+      "name": "Hidden Morning",
+      "airDate": "2004-12-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 20,
+      "name": "Right Window",
+      "airDate": "2004-12-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 21,
+      "name": "Bitter Truth",
+      "airDate": "2005-01-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 22,
+      "name": "Fair Morning",
+      "airDate": "2005-01-10",
+      "state": "downloaded"
+     }
+    ]
+   },
+   {
+    "number": 2,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Acceptance",
+      "airDate": "2005-09-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 2,
+      "name": "Autopsy",
+      "airDate": "2005-09-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 3,
+      "name": "Bitter Season",
+      "airDate": "2005-09-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 4,
+      "name": "Silent Switch",
+      "airDate": "2005-09-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 5,
+      "name": "Fair Question",
+      "airDate": "2005-09-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 6,
+      "name": "Closed Truth",
+      "airDate": "2005-10-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 7,
+      "name": "Bitter Heart",
+      "airDate": "2005-10-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 8,
+      "name": "Honest Question",
+      "airDate": "2005-10-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 9,
+      "name": "Big Habit",
+      "airDate": "2005-10-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 10,
+      "name": "Right Letter",
+      "airDate": "2005-10-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 11,
+      "name": "Small Switch",
+      "airDate": "2005-11-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 12,
+      "name": "Small Bridge",
+      "airDate": "2005-11-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 13,
+      "name": "Cold Promise",
+      "airDate": "2005-11-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 14,
+      "name": "Second Promise",
+      "airDate": "2005-11-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 15,
+      "name": "Broken Switch",
+      "airDate": "2005-11-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 16,
+      "name": "Cold Mirror",
+      "airDate": "2005-12-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 17,
+      "name": "Big Letter",
+      "airDate": "2005-12-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 18,
+      "name": "Small Morning",
+      "airDate": "2005-12-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 19,
+      "name": "Honest Heart",
+      "airDate": "2005-12-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 20,
+      "name": "Silent Mirror",
+      "airDate": "2005-12-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 21,
+      "name": "Right Season",
+      "airDate": "2006-01-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 22,
+      "name": "Big Visit",
+      "airDate": "2006-01-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 23,
+      "name": "Bitter Switch",
+      "airDate": "2006-01-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 24,
+      "name": "Open Letter",
+      "airDate": "2006-01-22",
+      "state": "downloaded"
+     }
+    ]
+   },
+   {
+    "number": 3,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Meaning",
+      "airDate": "2006-09-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 2,
+      "name": "Cane and Able",
+      "airDate": "2006-09-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 3,
+      "name": "Closed Offer",
+      "airDate": "2006-09-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 4,
+      "name": "Big Switch",
+      "airDate": "2006-09-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 5,
+      "name": "Small Heart",
+      "airDate": "2006-09-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 6,
+      "name": "Broken Night",
+      "airDate": "2006-10-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 7,
+      "name": "Big Heart",
+      "airDate": "2006-10-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 8,
+      "name": "Dead Morning",
+      "airDate": "2006-10-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 9,
+      "name": "Fair Season",
+      "airDate": "2006-10-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 10,
+      "name": "Cold Trial",
+      "airDate": "2006-10-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 11,
+      "name": "Closed Road",
+      "airDate": "2006-11-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 12,
+      "name": "Second Offer",
+      "airDate": "2006-11-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 13,
+      "name": "Silent Debt",
+      "airDate": "2006-11-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 14,
+      "name": "Dead Question",
+      "airDate": "2006-11-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 15,
+      "name": "Cold Window",
+      "airDate": "2006-11-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 16,
+      "name": "Final Trial",
+      "airDate": "2006-12-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 17,
+      "name": "Wrong Debt",
+      "airDate": "2006-12-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 18,
+      "name": "Broken Season",
+      "airDate": "2006-12-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 19,
+      "name": "Small Trial",
+      "airDate": "2006-12-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 20,
+      "name": "Bitter Night",
+      "airDate": "2006-12-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 21,
+      "name": "Hidden Visit",
+      "airDate": "2007-01-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 22,
+      "name": "Right Bridge",
+      "airDate": "2007-01-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 23,
+      "name": "Wrong Promise",
+      "airDate": "2007-01-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 24,
+      "name": "Hidden Heart",
+      "airDate": "2007-01-22",
+      "state": "downloaded"
+     }
+    ]
+   },
+   {
+    "number": 4,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Alone",
+      "airDate": "2007-09-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 2,
+      "name": "Big Baby",
+      "airDate": "2007-09-10",
+      "state": "missing"
+     },
+     {
+      "number": 3,
+      "name": "You Don't Want to Know",
+      "airDate": "2007-09-16",
+      "state": "missing"
+     },
+     {
+      "number": 4,
+      "name": "Sex Kills",
+      "airDate": "2007-09-22",
+      "state": "missing"
+     },
+     {
+      "number": 5,
+      "name": "Second Window",
+      "airDate": "2007-09-28",
+      "state": "missing"
+     },
+     {
+      "number": 6,
+      "name": "Final Promise",
+      "airDate": "2007-10-04",
+      "state": "missing"
+     },
+     {
+      "number": 7,
+      "name": "The Long Debt",
+      "airDate": "2007-10-10",
+      "state": "missing"
+     },
+     {
+      "number": 8,
+      "name": "Red Morning",
+      "airDate": "2007-10-16",
+      "state": "missing"
+     },
+     {
+      "number": 9,
+      "name": "The Long Window",
+      "airDate": "2007-10-22",
+      "state": "missing"
+     },
+     {
+      "number": 10,
+      "name": "Right Habit",
+      "airDate": "2007-10-28",
+      "state": "missing"
+     },
+     {
+      "number": 11,
+      "name": "Fair Letter",
+      "airDate": "2007-11-04",
+      "state": "missing"
+     },
+     {
+      "number": 12,
+      "name": "Hidden Mirror",
+      "airDate": "2007-11-10",
+      "state": "missing"
+     },
+     {
+      "number": 13,
+      "name": "Honest Room",
+      "airDate": "2007-11-16",
+      "state": "missing"
+     },
+     {
+      "number": 14,
+      "name": "Small Habit",
+      "airDate": "2007-11-22",
+      "state": "missing"
+     },
+     {
+      "number": 15,
+      "name": "Wrong Trial",
+      "airDate": "2007-11-28",
+      "state": "missing"
+     },
+     {
+      "number": 16,
+      "name": "Last Heart",
+      "airDate": "2007-12-04",
+      "state": "missing"
+     }
+    ]
+   },
+   {
+    "number": 5,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Last Season",
+      "airDate": "2008-09-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 2,
+      "name": "Second Truth",
+      "airDate": "2008-09-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 3,
+      "name": "Open Offer",
+      "airDate": "2008-09-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 4,
+      "name": "Dead Truth",
+      "airDate": "2008-09-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 5,
+      "name": "The Long Switch",
+      "airDate": "2008-09-28",
+      "state": "downloaded"
+     },
+     {
+      "number": 6,
+      "name": "Hidden Habit",
+      "airDate": "2008-10-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 7,
+      "name": "Honest Road",
+      "airDate": "2008-10-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 8,
+      "name": "Broken Question",
+      "airDate": "2008-10-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 9,
+      "name": "Honest Trial",
+      "airDate": "2008-10-22",
+      "state": "downloaded"
+     },
+     {
+      "number": 10,
+      "name": "Hidden Night",
+      "airDate": "2008-10-28",
+      "state": "missing"
+     },
+     {
+      "number": 11,
+      "name": "Closed Debt",
+      "airDate": "2008-11-04",
+      "state": "missing"
+     },
+     {
+      "number": 12,
+      "name": "Silent Truth",
+      "airDate": "2008-11-10",
+      "state": "missing"
+     },
+     {
+      "number": 13,
+      "name": "Big Season",
+      "airDate": "2008-11-16",
+      "state": "missing"
+     },
+     {
+      "number": 14,
+      "name": "Big Debt",
+      "airDate": "2008-11-22",
+      "state": "missing"
+     },
+     {
+      "number": 15,
+      "name": "Cold Heart",
+      "airDate": "2008-11-28",
+      "state": "missing"
+     },
+     {
+      "number": 16,
+      "name": "Hidden Truth",
+      "airDate": "2008-12-04",
+      "state": "missing"
+     },
+     {
+      "number": 17,
+      "name": "Open Night",
+      "airDate": "2008-12-10",
+      "state": "missing"
+     },
+     {
+      "number": 18,
+      "name": "Quiet Road",
+      "airDate": "2008-12-16",
+      "state": "missing"
+     },
+     {
+      "number": 19,
+      "name": "Last Mirror",
+      "airDate": "2008-12-22",
+      "state": "missing"
+     },
+     {
+      "number": 20,
+      "name": "Closed Window",
+      "airDate": "2008-12-28",
+      "state": "missing"
+     },
+     {
+      "number": 21,
+      "name": "Bitter Road",
+      "airDate": "2009-01-04",
+      "state": "missing"
+     },
+     {
+      "number": 22,
+      "name": "Quiet Morning",
+      "airDate": "2009-01-10",
+      "state": "missing"
+     },
+     {
+      "number": 23,
+      "name": "Quiet Bridge",
+      "airDate": "2009-01-16",
+      "state": "missing"
+     },
+     {
+      "number": 24,
+      "name": "Second Bridge",
+      "airDate": "2009-01-22",
+      "state": "missing"
+     }
+    ]
+   },
+   {
+    "number": 6,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Final Habit",
+      "airDate": "2009-09-04",
+      "state": "missing"
+     },
+     {
+      "number": 2,
+      "name": "Bitter Mirror",
+      "airDate": "2009-09-10",
+      "state": "missing"
+     },
+     {
+      "number": 3,
+      "name": "Open Promise",
+      "airDate": "2009-09-16",
+      "state": "missing"
+     },
+     {
+      "number": 4,
+      "name": "Final Question",
+      "airDate": "2009-09-22",
+      "state": "missing"
+     },
+     {
+      "number": 5,
+      "name": "Quiet Debt",
+      "airDate": "2009-09-28",
+      "state": "missing"
+     },
+     {
+      "number": 6,
+      "name": "The Long Night",
+      "airDate": "2009-10-04",
+      "state": "missing"
+     },
+     {
+      "number": 7,
+      "name": "Big Night",
+      "airDate": "2009-10-10",
+      "state": "missing"
+     },
+     {
+      "number": 8,
+      "name": "Last Offer",
+      "airDate": "2009-10-16",
+      "state": "missing"
+     },
+     {
+      "number": 9,
+      "name": "Closed Season",
+      "airDate": "2009-10-22",
+      "state": "missing"
+     },
+     {
+      "number": 10,
+      "name": "Closed Bridge",
+      "airDate": "2009-10-28",
+      "state": "missing"
+     },
+     {
+      "number": 11,
+      "name": "Silent Promise",
+      "airDate": "2009-11-04",
+      "state": "missing"
+     },
+     {
+      "number": 12,
+      "name": "Big Question",
+      "airDate": "2009-11-10",
+      "state": "missing"
+     },
+     {
+      "number": 13,
+      "name": "Open Question",
+      "airDate": "2009-11-16",
+      "state": "missing"
+     },
+     {
+      "number": 14,
+      "name": "Big Offer",
+      "airDate": "2009-11-22",
+      "state": "missing"
+     },
+     {
+      "number": 15,
+      "name": "Big Bridge",
+      "airDate": "2009-11-28",
+      "state": "missing"
+     },
+     {
+      "number": 16,
+      "name": "Broken Truth",
+      "airDate": "2009-12-04",
+      "state": "missing"
+     },
+     {
+      "number": 17,
+      "name": "Wrong Question",
+      "airDate": "2009-12-10",
+      "state": "missing"
+     },
+     {
+      "number": 18,
+      "name": "Broken Trial",
+      "airDate": "2009-12-16",
+      "state": "missing"
+     },
+     {
+      "number": 19,
+      "name": "Hidden Offer",
+      "airDate": "2009-12-22",
+      "state": "missing"
+     },
+     {
+      "number": 20,
+      "name": "Honest Debt",
+      "airDate": "2009-12-28",
+      "state": "missing"
+     },
+     {
+      "number": 21,
+      "name": "Bitter Habit",
+      "airDate": "2010-01-04",
+      "state": "missing"
+     },
+     {
+      "number": 22,
+      "name": "Hidden Road",
+      "airDate": "2010-01-10",
+      "state": "missing"
+     }
+    ]
+   },
+   {
+    "number": 7,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "The Long Truth",
+      "airDate": "2010-09-04",
+      "state": "downloaded"
+     },
+     {
+      "number": 2,
+      "name": "Quiet Window",
+      "airDate": "2010-09-10",
+      "state": "downloaded"
+     },
+     {
+      "number": 3,
+      "name": "Right Question",
+      "airDate": "2010-09-16",
+      "state": "downloaded"
+     },
+     {
+      "number": 4,
+      "name": "Last Road",
+      "airDate": "2010-09-22",
+      "state": "missing"
+     },
+     {
+      "number": 5,
+      "name": "Red Question",
+      "airDate": "2010-09-28",
+      "state": "missing"
+     },
+     {
+      "number": 6,
+      "name": "Bitter Visit",
+      "airDate": "2010-10-04",
+      "state": "missing"
+     },
+     {
+      "number": 7,
+      "name": "Hidden Room",
+      "airDate": "2010-10-10",
+      "state": "missing"
+     },
+     {
+      "number": 8,
+      "name": "Fair Mirror",
+      "airDate": "2010-10-16",
+      "state": "missing"
+     },
+     {
+      "number": 9,
+      "name": "Right Mirror",
+      "airDate": "2010-10-22",
+      "state": "missing"
+     },
+     {
+      "number": 10,
+      "name": "Small Season",
+      "airDate": "2010-10-28",
+      "state": "missing"
+     },
+     {
+      "number": 11,
+      "name": "Hidden Season",
+      "airDate": "2010-11-04",
+      "state": "missing"
+     },
+     {
+      "number": 12,
+      "name": "Hidden Debt",
+      "airDate": "2010-11-10",
+      "state": "missing"
+     },
+     {
+      "number": 13,
+      "name": "Honest Truth",
+      "airDate": "2010-11-16",
+      "state": "missing"
+     },
+     {
+      "number": 14,
+      "name": "Bitter Room",
+      "airDate": "2010-11-22",
+      "state": "missing"
+     },
+     {
+      "number": 15,
+      "name": "Open Mirror",
+      "airDate": "2010-11-28",
+      "state": "missing"
+     },
+     {
+      "number": 16,
+      "name": "Quiet Habit",
+      "airDate": "2010-12-04",
+      "state": "missing"
+     },
+     {
+      "number": 17,
+      "name": "Big Truth",
+      "airDate": "2010-12-10",
+      "state": "missing"
+     },
+     {
+      "number": 18,
+      "name": "Red Room",
+      "airDate": "2010-12-16",
+      "state": "missing"
+     },
+     {
+      "number": 19,
+      "name": "The Long Heart",
+      "airDate": "2010-12-22",
+      "state": "missing"
+     },
+     {
+      "number": 20,
+      "name": "Small Letter",
+      "airDate": "2010-12-28",
+      "state": "missing"
+     },
+     {
+      "number": 21,
+      "name": "Honest Mirror",
+      "airDate": "2011-01-04",
+      "state": "missing"
+     },
+     {
+      "number": 22,
+      "name": "Last Night",
+      "airDate": "2011-01-10",
+      "state": "missing"
+     },
+     {
+      "number": 23,
+      "name": "Small Mirror",
+      "airDate": "2011-01-16",
+      "state": "missing"
+     }
+    ]
+   },
+   {
+    "number": 8,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Bitter Debt",
+      "airDate": "2011-09-04",
+      "state": "missing"
+     },
+     {
+      "number": 2,
+      "name": "Quiet Promise",
+      "airDate": "2011-09-10",
+      "state": "missing"
+     },
+     {
+      "number": 3,
+      "name": "Quiet Night",
+      "airDate": "2011-09-16",
+      "state": "missing"
+     },
+     {
+      "number": 4,
+      "name": "Bitter Question",
+      "airDate": "2011-09-22",
+      "state": "missing"
+     },
+     {
+      "number": 5,
+      "name": "Small Window",
+      "airDate": "2011-09-28",
+      "state": "missing"
+     },
+     {
+      "number": 6,
+      "name": "Right Truth",
+      "airDate": "2011-10-04",
+      "state": "missing"
+     },
+     {
+      "number": 7,
+      "name": "Wrong Season",
+      "airDate": "2011-10-10",
+      "state": "missing"
+     },
+     {
+      "number": 8,
+      "name": "Open Heart",
+      "airDate": "2011-10-16",
+      "state": "missing"
+     },
+     {
+      "number": 9,
+      "name": "Final Visit",
+      "airDate": "2011-10-22",
+      "state": "missing"
+     },
+     {
+      "number": 10,
+      "name": "Cold Truth",
+      "airDate": "2011-10-28",
+      "state": "missing"
+     },
+     {
+      "number": 11,
+      "name": "Hidden Bridge",
+      "airDate": "2011-11-04",
+      "state": "missing"
+     },
+     {
+      "number": 12,
+      "name": "Final Truth",
+      "airDate": "2011-11-10",
+      "state": "missing"
+     },
+     {
+      "number": 13,
+      "name": "Second Visit",
+      "airDate": "2011-11-16",
+      "state": "missing"
+     },
+     {
+      "number": 14,
+      "name": "Quiet Trial",
+      "airDate": "2011-11-22",
+      "state": "missing"
+     },
+     {
+      "number": 15,
+      "name": "Open Visit",
+      "airDate": "2011-11-28",
+      "state": "missing"
+     },
+     {
+      "number": 16,
+      "name": "Last Bridge",
+      "airDate": "2011-12-04",
+      "state": "missing"
+     },
+     {
+      "number": 17,
+      "name": "Open Habit",
+      "airDate": "2011-12-10",
+      "state": "missing"
+     },
+     {
+      "number": 18,
+      "name": "The Long Trial",
+      "airDate": "2011-12-16",
+      "state": "missing"
+     },
+     {
+      "number": 19,
+      "name": "Honest Morning",
+      "airDate": "2011-12-22",
+      "state": "missing"
+     },
+     {
+      "number": 20,
+      "name": "Quiet Heart",
+      "airDate": "2099-01-01",
+      "state": "unaired"
+     },
+     {
+      "number": 21,
+      "name": "Silent Heart",
+      "airDate": "2099-01-01",
+      "state": "unaired"
+     },
+     {
+      "number": 22,
+      "name": "Red Night",
+      "airDate": "2099-01-01",
+      "state": "unaired"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "tmdbId": 226745,
+  "kind": "series",
+  "title": "Camp Snoopy",
+  "year": 2024,
+  "inLibrary": true,
+  "overview": "Snoopy and the Beagle Scouts at summer camp.",
+  "seasons": [
+   {
+    "number": 1,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Arrival at Camp",
+      "airDate": "2024-06-14",
+      "state": "searching"
+     },
+     {
+      "number": 2,
+      "name": "Campfire Songs",
+      "airDate": "2024-06-14",
+      "state": "searching"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "tmdbId": 213375,
+  "kind": "series",
+  "title": "VisionQuest",
+  "year": 2026,
+  "inLibrary": true,
+  "overview": "Vision searches for his lost identity.",
+  "seasons": [
+   {
+    "number": 1,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Reboot",
+      "airDate": "2026-10-01",
+      "state": "downloaded"
+     },
+     {
+      "number": 2,
+      "name": "Memory",
+      "airDate": "2026-10-08",
+      "state": "downloaded"
+     },
+     {
+      "number": 3,
+      "name": "Identity",
+      "airDate": "2099-01-01",
+      "state": "unaired"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "tmdbId": 157336,
+  "kind": "movie",
+  "title": "Interstellar",
+  "year": 2014,
+  "inLibrary": true,
+  "state": "missing",
+  "overview": "Explorers travel through a wormhole to find humanity a new home."
+ },
+ {
+  "tmdbId": 286217,
+  "kind": "movie",
+  "title": "The Martian",
+  "year": 2015,
+  "inLibrary": true,
+  "state": "missing",
+  "overview": "An astronaut stranded on Mars works to survive until rescue."
+ },
+ {
+  "tmdbId": 438631,
+  "kind": "movie",
+  "title": "Dune",
+  "year": 2021,
+  "inLibrary": false,
+  "state": "missing",
+  "overview": "Paul Atreides leads nomadic tribes in a battle for the desert planet."
+ },
+ {
+  "tmdbId": 95396,
+  "kind": "series",
+  "title": "Severance",
+  "year": 2022,
+  "inLibrary": false,
+  "overview": "Employees whose memories are split between work and home.",
+  "seasons": [
+   {
+    "number": 1,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Good News About Hell",
+      "airDate": "2022-02-18",
+      "state": "missing"
+     },
+     {
+      "number": 2,
+      "name": "Half Loop",
+      "airDate": "2022-02-18",
+      "state": "missing"
+     },
+     {
+      "number": 3,
+      "name": "In Perpetuity",
+      "airDate": "2099-01-01",
+      "state": "unaired"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "tmdbId": 83867,
+  "kind": "series",
+  "title": "Andor",
+  "year": 2022,
+  "inLibrary": false,
+  "overview": "A rebel spy in the Star Wars galaxy.",
+  "seasons": [
+   {
+    "number": 1,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "Kassa",
+      "airDate": "2022-09-21",
+      "state": "missing"
+     },
+     {
+      "number": 2,
+      "name": "That Would Be Me",
+      "airDate": "2022-09-21",
+      "state": "missing"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "tmdbId": 62560,
+  "kind": "series",
+  "title": "Mr. Robot",
+  "year": 2015,
+  "inLibrary": false,
+  "overview": "A hacker is recruited by an underground group.",
+  "seasons": [
+   {
+    "number": 1,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "eps1.0_hellofriend.mov",
+      "airDate": "2015-05-27",
+      "state": "missing"
+     },
+     {
+      "number": 2,
+      "name": "eps1.1_ones-and-zer0es.mpeg",
+      "airDate": "2015-06-03",
+      "state": "missing"
+     }
+    ]
+   }
+  ]
+ }
 ]

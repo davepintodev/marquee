@@ -154,3 +154,37 @@ func TestCancelledRunStops(t *testing.T) {
 		t.Fatalf("want context.Canceled, got %v", err)
 	}
 }
+
+func TestDownloadsTheCastPhotosTMDBHasAndSkipsTheRest(t *testing.T) {
+	tm := tmdbfake.New()
+	t.Cleanup(tm.Close)
+	cast := fake.CastList()
+	byTitle := map[string][]tmdbfake.Person{}
+	photos := 0
+	for i, m := range cast {
+		p := tmdbfake.Person{ID: 9000 + i, Name: m.Name, Profile: "/" + m.Name + ".jpg"}
+		if i%3 == 0 {
+			p.Profile = ""
+		} else {
+			photos++
+		}
+		byTitle[m.TitleID] = append(byTitle[m.TitleID], p)
+	}
+	for _, ti := range fake.Titles() {
+		tm.Add(tmdbfake.Title{Kind: ti.Kind, ID: ti.TmdbID, Name: ti.Name, Cast: byTitle[ti.ID]})
+	}
+	dir := filepath.Join(t.TempDir(), "art")
+	var out bytes.Buffer
+
+	if err := fakeart.FetchPeople(context.Background(), client(tm, tmdbfake.Key), cast, dir, &out); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "profile-*.jpg"))
+	// a person listed under two titles is saved once
+	if len(files) == 0 || len(files) > photos {
+		t.Errorf("saved %d photos from %d with a photo", len(files), photos)
+	}
+	if !strings.Contains(out.String(), "no photo for") {
+		t.Error("a member without a photo should be reported")
+	}
+}

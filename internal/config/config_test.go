@@ -16,6 +16,7 @@ const (
 	tmdbVal     = "tmdb-SECRET456"
 	jellyVal    = "jelly-SECRET789"
 	tokenVal    = "api-SECRETabc"
+	omdbVal     = "omdb-SECRETdef"
 )
 
 func envOf(m map[string]string) func(string) string {
@@ -33,12 +34,13 @@ func fullEnv() map[string]string {
 		"MARQUEE_JELLYFIN_URL":            "http://jellyfin.example.test:8096",
 		"MARQUEE_JELLYFIN_KEY":            jellyVal,
 		"MARQUEE_API_TOKEN":               tokenVal,
+		"MARQUEE_OMDB_KEY":                omdbVal,
 	}
 }
 
 func assertNoSecrets(t *testing.T, what, s string) {
 	t.Helper()
-	for _, secret := range []string{"SECRET123", "SECRET456", "SECRET789", "SECRETabc"} {
+	for _, secret := range []string{"SECRET123", "SECRET456", "SECRET789", "SECRETabc", "SECRETdef"} {
 		if strings.Contains(s, secret) {
 			t.Errorf("%s leaks a secret: %q", what, s)
 		}
@@ -55,6 +57,35 @@ func TestLoadFromEnvironment(t *testing.T) {
 	}
 	if cfg.TMDBKey.Reveal() != tmdbVal {
 		t.Error("secret value must stay usable through Reveal")
+	}
+}
+
+func TestTheOMDbKeyIsOptionalAndComesFromEnvironmentOrFile(t *testing.T) {
+	env := fullEnv()
+	delete(env, "MARQUEE_OMDB_KEY")
+	cfg, err := config.Load(envOf(env))
+	if err != nil {
+		t.Fatalf("a missing OMDb key must not stop startup: %v", err)
+	}
+	if cfg.OMDbKey != "" {
+		t.Errorf("no key was given: %+v", cfg)
+	}
+
+	if cfg, err = config.Load(envOf(fullEnv())); err != nil || cfg.OMDbKey.Reveal() != omdbVal {
+		t.Errorf("env key: %v %v", cfg.OMDbKey, err)
+	}
+
+	file := filepath.Join(t.TempDir(), "marquee.json")
+	body := `{"aiostreams_manifest_url":"` + manifestVal + `","tmdb_key":"` + tmdbVal + `",
+	"movies_path":"/a","series_path":"/b","temp_path":"/c","data_dir":"/d","omdb_key":"` + omdbVal + `"}`
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file})); err != nil || cfg.OMDbKey.Reveal() != omdbVal {
+		t.Errorf("file key: %v %v", cfg.OMDbKey, err)
+	}
+	if cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file, "MARQUEE_OMDB_KEY": "other"})); err != nil || cfg.OMDbKey.Reveal() != "other" {
+		t.Errorf("env must override the file: %v %v", cfg.OMDbKey, err)
 	}
 }
 

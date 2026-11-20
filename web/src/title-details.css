@@ -1,0 +1,392 @@
+.ts-factlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+  margin-top: var(--space-5);
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-factlist dt {
+  color: var(--mute);
+  font-size: var(--text-xs);
+}
+
+.ts-factlist dd {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+}
+
+.ts-sec-head .ts-prog {
+  --have-text: var(--fg);
+  color: var(--mute);
+}
+
+.ts-sec-head .ts-prog .ts-have b,
+.ts-sec-head .ts-prog .ts-have[data-state] b {
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.ts-sec-head .ts-prog .ts-have svg {
+  width: 15px;
+  height: 15px;
+}
+
+.ts-hist-head {
+  align-items: center;
+  column-gap: var(--space-4);
+}
+
+.ts-hist-head .ts-prog {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0;
+  font-size: var(--text-sm);
+}
+
+.ts-hist-head .ts-prog .ts-have {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.ts-hist-head .ts-prog .ts-have b {
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.ts-hist-head .ts-att {
+  gap: var(--space-1);
+}
+
+.ts-hist-head .ts-prog .ts-have + .ts-att::before {
+  content: "·";
+  margin-inline: var(--space-2) var(--space-1);
+}
+
+@media (max-width: 640px) {
+  .ts-hist-head .ts-prog {
+    flex: 1 0 100%;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ts-hist-head .ts-prog .ts-have + .ts-att::before {
+    display: none;
+  }
+}
+
+.ts-att {
+  gap: var(--space-1);
+}
+
+.ts-att-info {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-block: -4px;
+  border-radius: 50%;
+  color: var(--mute);
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+
+.ts-att-info svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.ts-att-info .dot {
+  fill: currentColor;
+  stroke: none;
+}
+
+.ts-att-info:hover,
+.ts-att-info[aria-expanded="true"] {
+  color: var(--fg);
+}
+
+.ts-att-info:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 0;
+}
+
+.ts-att:hover .ts-att-tip,
+.ts-att:has(.ts-att-info:focus-visible) .ts-att-tip,
+.ts-att-tip[data-open] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+  pointer-events: auto;
+}
+
+/* On a phone the attempts tooltip spans the heading instead of hanging off its trigger, which would push past the screen edge. */
+@media (max-width: 640px) {
+  .ts-sec-head {
+    position: relative;
+  }
+
+  .ts-sec-head .ts-att {
+    position: static;
+  }
+
+  .ts-sec-head .ts-att-tip {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+}
+
+/* The clicked poster carries over into the title's own poster and back (see morph.ts); the rest of the screen cross-fades. */
+.ts-poster {
+  view-transition-name: poster;
+}
+
+.hx {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-1);
+}
+
+.hx-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-4);
+  padding: var(--space-3) 0 var(--space-3) var(--space-5);
+  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.hx-row:first-child {
+  border-top: 0;
+}
+
+.hx-row[data-failed]::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: calc(var(--space-3) + 8px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mark, var(--mute));
+}
+
+.hx-head {
+  color: var(--mute);
+  font-size: var(--text-sm);
+}
+
+.hx-head b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.hx-note {
+  grid-column: 1;
+  margin-top: 2px;
+  color: var(--mute);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.hx-note b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.hx-retry {
+  all: unset;
+  box-sizing: border-box;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--mute);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    transform 0.08s;
+}
+
+.hx-retry svg {
+  width: 15px;
+  height: 15px;
+}
+
+.hx-retry:hover {
+  color: var(--fg);
+}
+
+.hx-retry:active {
+  transform: scale(0.97);
+}
+
+.hx-retry:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 0;
+}
+
+.hx-retry[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+@media (max-width: 520px) {
+  .hx-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hx-retry {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    margin-top: var(--space-1);
+    padding-inline: 0;
+  }
+}
+
+.rm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
+  color: inherit;
+  font-size: inherit;
+}
+
+.rm-title {
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.rm-sub {
+  margin-top: 2px;
+  color: var(--mute);
+  font-size: var(--text-sm);
+  text-wrap: balance;
+}
+
+.rm-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rm-btn {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--mute);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    transform 0.08s;
+}
+
+.rm-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rm-btn:hover {
+  color: var(--fg);
+}
+
+.rm-btn:active {
+  transform: scale(0.97);
+}
+
+.rm:not([data-asking]) .rm-btn:hover,
+.rm:not([data-asking]) .rm-btn:focus-visible,
+.rm-btn[data-danger] {
+  color: color-mix(in srgb, var(--bad) 82%, var(--fg));
+}
+
+.rm-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 0;
+}
+
+.rm-btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.ts-rates li[data-source="imdb"] svg {
+  width: 32px;
+  height: 18px;
+}
+
+.ts-actions.ts-ghost {
+  min-height: 48px;
+}
+
+.ts-factlist.ts-ghost {
+  min-height: 38px;
+}
+
+/* Decided once when the screen mounts: a screen that arrived by morph never plays its own fade, and nothing later can start it. */
+.ts[data-enter] {
+  animation: ts-in 0.28s var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ts[data-enter] {
+    animation: none;
+  }
+}
+
+::view-transition-group(root) {
+  animation-duration: 0.3s;
+}
+
+::view-transition-group(poster) {
+  overflow: clip;
+  border-radius: 14px;
+  animation-duration: 0.45s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+::view-transition-old(poster),
+::view-transition-new(poster) {
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+    animation: none;
+  }
+}

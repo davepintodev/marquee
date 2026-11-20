@@ -336,15 +336,16 @@ test("the gallery jumps instead of gliding when the person prefers less motion",
   expect(scrollBy).toHaveBeenCalledWith({ left: 540, behavior: "auto" });
 });
 
-test("the grid links to Activity and a library popup links to the title's detail", async () => {
+test("the grid links to Activity, and a library title opens its own page from there", async () => {
   const wall = { items: [{ source: "library", title: lib({ id: "series-4", title: "House", kind: "series", tmdbId: 4 }) }] };
   setupApp(() => json(wall), "#/grid");
   const link = await screen.findByRole("link", { name: "Activity" });
   expect(link.getAttribute("href")).toBe("#/activity");
 
   fireEvent.click((await screen.findAllByRole("button", { name: /house/i }))[0]);
-  const dialog = await screen.findByRole("dialog");
-  expect(within(dialog).getByRole("link", { name: "Details" }).getAttribute("href")).toBe("#/title/series-4");
+
+  await waitFor(() => expect(window.location.hash).toBe("#/title/series-4"));
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 const newest: HistoryEntry = { id: "h-new", at: local(18, 11, 59), kind: "searched", titleId: "movie-2", titleName: "Arrival", message: "Search now: skipping the backoff.", retryable: false };

@@ -173,3 +173,52 @@ func TestArtRevalidatesAndAnswers304WhenUnchanged(t *testing.T) {
 		t.Errorf("conditional request: status %d, want 304", resp.StatusCode)
 	}
 }
+
+func TestAboutLinksACastPhotoOnlyWhenTheFolderHasIt(t *testing.T) {
+	dir := t.TempDir()
+	photo := []byte{0xff, 0xd8, 0xff, 0xe0, 'f', 0xff, 0xd9}
+	if err := os.WriteFile(fake.ProfileFile(dir, 1001), photo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := startFakeWithArt(t, dir)
+
+	var about struct {
+		Cast []struct {
+			PersonID    int
+			ProfilePath string
+		}
+	}
+	getJSON(t, srv, "/api/titles/movie-687163/about", &about)
+	if len(about.Cast) < 2 || about.Cast[0].PersonID != 1001 || about.Cast[0].ProfilePath != "/api/people/1001/image" || about.Cast[1].ProfilePath != "" {
+		t.Fatalf("only the cast member with a file in the folder has a photo: %+v", about.Cast)
+	}
+	code, ctype, body := fetch(t, srv, "/api/people/1001/image")
+	if code != 200 || ctype != "image/jpeg" || string(body) != string(photo) {
+		t.Errorf("photo: %d %q %q", code, ctype, body)
+	}
+	for _, path := range []string{"/api/people/1002/image", "/api/people/0/image", "/api/people/abc/image"} {
+		if code, _, _ := fetch(t, srv, path); code != 404 {
+			t.Errorf("%s: %d, want 404", path, code)
+		}
+	}
+	if code, _, _ := fetch(t, startFake(t), "/api/people/1001/image"); code != 404 {
+		t.Errorf("with no art folder there are no photos: %d", code)
+	}
+}
+
+func TestAboutOfEveryFixtureTitleHasAScoreAndKnownSimilarTitles(t *testing.T) {
+	srv := startFake(t)
+	for _, ti := range fake.Titles() {
+		var about struct {
+			Ratings []struct{ Source string }
+			Similar []struct{ ID string }
+		}
+		getJSON(t, srv, "/api/titles/"+ti.ID+"/about", &about)
+		if len(about.Ratings) == 0 || about.Ratings[0].Source != "tmdb" {
+			t.Errorf("%s: TMDB's score comes first: %+v", ti.ID, about.Ratings)
+		}
+		if len(about.Similar) == 0 {
+			t.Errorf("%s: no similar titles", ti.ID)
+		}
+	}
+}

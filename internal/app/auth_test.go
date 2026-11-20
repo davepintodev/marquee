@@ -124,7 +124,7 @@ func sessionCookie(t *testing.T, h http.Header) *http.Cookie {
 
 func TestImagesAndTheEventStreamNeedTheTokenOrItsSession(t *testing.T) {
 	base := start(t, testEnv(t), io.Discard)
-	for _, path := range []string{"/api/images/poster/movie-438631", "/api/events"} {
+	for _, path := range []string{"/api/images/poster/movie-438631", "/api/people/1/image", "/api/events"} {
 		if code, _ := status(t, http.MethodGet, base+path, nil, nil); code != 401 {
 			t.Errorf("%s without a credential: %d, want 401", path, code)
 		}
@@ -153,7 +153,7 @@ func TestABearerRequestHandsOutASessionThatOnlyReadsImagesAndEvents(t *testing.T
 		t.Errorf("the cookie must not carry the token: %q", c.Value)
 	}
 
-	for _, path := range []string{"/api/images/poster/movie-438631", "/api/events"} {
+	for _, path := range []string{"/api/images/poster/movie-438631", "/api/people/1/image", "/api/events"} {
 		if code, _ := status(t, http.MethodGet, base+path, nil, c); code == 401 {
 			t.Errorf("%s with the session: 401", path)
 		}
@@ -162,6 +162,9 @@ func TestABearerRequestHandsOutASessionThatOnlyReadsImagesAndEvents(t *testing.T
 	for _, tc := range []struct{ method, path string }{
 		{http.MethodGet, "/api/downloads"},
 		{http.MethodGet, "/api/wall"},
+		{http.MethodGet, "/api/titles/movie-438631/about"},
+		{http.MethodGet, "/api/people/1/imagery"},
+		{http.MethodDelete, "/api/people/1/image"},
 		{http.MethodPost, "/api/titles"},
 		{http.MethodDelete, "/api/titles/movie-1"},
 		{http.MethodPost, "/api/events"},
@@ -189,7 +192,7 @@ func TestWithoutAnAPITokenImagesAndEventsAnswerWithoutACookie(t *testing.T) {
 	env := testEnv(t)
 	delete(env, "MARQUEE_API_TOKEN")
 	base := start(t, env, io.Discard)
-	for _, path := range []string{"/api/images/poster/movie-438631", "/api/events", "/api/downloads"} {
+	for _, path := range []string{"/api/images/poster/movie-438631", "/api/people/1/image", "/api/events", "/api/downloads"} {
 		code, h := status(t, http.MethodGet, base+path, nil, nil)
 		if code == 401 {
 			t.Errorf("%s: 401 with no token configured", path)

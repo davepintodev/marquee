@@ -128,51 +128,6 @@ button {
   color: var(--mute);
 }
 
-.badge {
-  position: absolute;
-  top: var(--space-2);
-  left: var(--space-2);
-  max-width: calc(100% - 2 * var(--space-2));
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: var(--space-1) 9px;
-  border-radius: var(--radius-pill);
-  background: var(--pill);
-  color: var(--pill-fg);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.25;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  backdrop-filter: blur(8px);
-}
-
-.badge i {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--mute);
-}
-
-.badge-downloaded i {
-  background: var(--ok);
-}
-.badge-searching i,
-.badge-downloading i {
-  background: var(--info);
-}
-.badge-stalled i,
-.badge-partial_season i {
-  background: var(--warn);
-}
-.badge-missing i {
-  background: var(--bad);
-}
-
 /* home: header */
 .app {
   --top-h: 76px;
@@ -326,7 +281,6 @@ button {
 .page a:focus-visible,
 .page button:focus-visible,
 .page summary:focus-visible,
-.page .season-toggle:focus-visible,
 .page .collapse button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -692,27 +646,13 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   *,
-  *::before,
-  *::after {
+*::before,
+*::after {
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
   }
-}
-
-.popup-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-}
-
-.popup-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(6px);
-  animation: fade 0.2s both;
 }
 
 @keyframes fade {
@@ -721,87 +661,7 @@ button {
   }
 }
 
-.popup {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(760px, 92vw);
-  max-height: min(560px, 90vh);
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "poster head"
-    "poster overview"
-    "poster actions";
-  column-gap: 28px;
-  padding: 28px;
-  border-radius: 22px;
-  background: var(--glass);
-  backdrop-filter: blur(22px);
-  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
-  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.55);
-  animation: pop 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-@keyframes pop {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 12px));
-  }
-}
-
-.popup-poster {
-  grid-area: poster;
-  align-self: start;
-  position: relative;
-  display: block;
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  border-radius: 14px;
-  background: var(--tile);
-}
-
-.popup-poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.popup-head {
-  grid-area: head;
-  padding-right: 36px;
-}
-
-.popup-head h2 {
-  font-size: clamp(22px, 3vw, 30px);
-  line-height: 1.15;
-}
-
-.popup-meta {
-  margin-top: 4px;
-  color: var(--mute);
-}
-
-.popup-overview {
-  grid-area: overview;
-  margin-top: 16px;
-  min-height: 0;
-  overflow: auto;
-  line-height: 1.5;
-}
-
-.popup-actions {
-  grid-area: actions;
-  margin-top: 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.popup-error {
+.fail-line {
   flex: 1 0 100%;
   color: var(--bad);
   font-size: 14px;
@@ -945,11 +805,6 @@ button {
   stroke-linecap: round;
 }
 
-.popup button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--fg) 70%, transparent);
-  outline-offset: 2px;
-}
-
 .toast {
   position: absolute;
   left: 50%;
@@ -969,94 +824,7 @@ button {
   animation: fade 0.2s var(--ease-out) both;
 }
 
-.ix {
-  grid-area: overview;
-  margin-top: 16px;
-  min-height: 0;
-  overflow: auto;
-}
-
-.ix-episode {
-  width: 100%;
-  margin-bottom: 8px;
-  padding: 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
-  border-radius: 12px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.ix-episode:focus {
-  outline: 0;
-  border-color: color-mix(in srgb, var(--fg) 45%, transparent);
-}
-
-.ix-episode option {
-  color: var(--fg);
-  background: var(--bg);
-}
-
-.ix-empty {
-  color: var(--mute);
-  padding: 8px 0;
-}
-
-.ix-empty .btn-small {
-  margin-top: 10px;
-}
-
-.rels-dropped {
-  margin-top: 12px;
-}
-
-.rels-dropped summary {
-  cursor: pointer;
-  color: var(--mute);
-  padding: 8px 0;
-}
-
-.rel-queued {
-  flex: none;
-  color: var(--mute);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.popup summary:focus-visible,
-.popup select:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--fg) 70%, transparent);
-  outline-offset: 2px;
-}
-
 @media (max-width: 640px) {
-  .popup {
-    left: 0;
-    right: 0;
-    top: auto;
-    bottom: 0;
-    transform: none;
-    width: 100%;
-    max-height: 88vh;
-    grid-template-columns: 110px minmax(0, 1fr);
-    grid-template-areas:
-      "poster head"
-      "overview overview"
-      "actions actions";
-    column-gap: 18px;
-    padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
-    border-radius: 22px 22px 0 0;
-    animation-name: sheet;
-  }
-
-  .popup-head {
-    align-self: center;
-  }
-
-  .popup-actions > button,
-  .popup-actions > .add-split {
-    flex: 1 1 auto;
-  }
 
   .add-menu button {
     padding-block: 8px;
@@ -1183,7 +951,7 @@ button {
 
 @keyframes peel-fade {
   30%,
-  55% {
+55% {
     opacity: 0.85;
   }
   to {
@@ -1368,12 +1136,12 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .unlock-error,
-  .unlock-field {
+.unlock-field {
     animation: none;
   }
 
   .unlock-words,
-  .unlock-words em {
+.unlock-words em {
     transition: none;
   }
 }
@@ -1465,100 +1233,6 @@ a.btn-secondary {
   text-decoration-color: currentColor;
 }
 
-.detail-head {
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  column-gap: 26px;
-  margin-top: 6px;
-}
-
-.detail-head .popup-meta {
-  margin-top: 0;
-}
-
-.detail-poster {
-  position: relative;
-  display: block;
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  border-radius: 14px;
-  background: var(--tile);
-  grid-row: 1;
-}
-
-.detail-poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.detail-state {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.detail-summary {
-  margin-top: 14px;
-  font-size: 17px;
-  line-height: 1.4;
-}
-
-.detail-overview {
-  margin-top: 10px;
-  color: var(--mute);
-  line-height: 1.5;
-}
-
-.detail-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.confirm {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent);
-}
-
-.confirm .detail-actions {
-  margin-top: 12px;
-}
-
-.btn-danger {
-  padding: 12px 22px;
-  border-radius: 999px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid var(--bad);
-  background: var(--bad);
-  color: #fff;
-}
-
-.btn-danger[aria-disabled="true"] {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-.badge.inline {
-  position: static;
-  max-width: none;
-  background: color-mix(in srgb, var(--fg) 9%, transparent);
-  color: var(--fg);
-  font-size: 12px;
-  backdrop-filter: none;
-}
-
-.badge-unaired i {
-  background: var(--mute);
-}
-
 .tag {
   display: inline-block;
   padding: 1px 8px;
@@ -1583,140 +1257,10 @@ a.btn-secondary {
   margin-top: 22px;
 }
 
-.season-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.season-toggle,
 .collapse button {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
-}
-
-.season-toggle {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-  padding: 6px 0;
-}
-
-.season-toggle::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-right: 2px solid var(--mute);
-  border-bottom: 2px solid var(--mute);
-  transform: rotate(-45deg);
-  transition: transform 0.2s;
-}
-
-.season-toggle[aria-expanded="true"]::before {
-  transform: rotate(45deg);
-}
-
-.season-monitor {
-  white-space: nowrap;
-}
-
-@media (max-width: 640px) {
-  .season-head {
-    flex-wrap: wrap;
-    gap: 0;
-  }
-
-  .season-toggle {
-    flex-basis: 100%;
-  }
-
-  .season-monitor {
-    margin: -4px 0 0 7px;
-  }
-}
-
-.season-name {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.rows {
-  list-style: none;
-  padding: 0;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
-}
-
-.row:first-child {
-  border-top: 0;
-}
-
-.row.unmonitored .row-title {
-  color: var(--mute);
-}
-
-.row-main {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.row-title {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.row-title .sep,
-.row-title time {
-  font-weight: 400;
-  color: var(--mute);
-}
-
-.row-title .ep {
-  color: var(--mute);
-  font-variant-numeric: tabular-nums;
-  margin-right: 4px;
-}
-
-.row-note {
-  margin-top: 2px;
-  color: var(--mute);
-  font-size: 14px;
-  overflow-wrap: anywhere;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-}
-
-.row .badge {
-  flex: none;
-}
-
-.reason {
-  display: inline-block;
-  padding: 1px 9px;
-  border-radius: 99px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--warn);
-  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
-}
-
-.history-imported .row-note,
-.history-added .row-note,
-.history-searched .row-note,
-.history-would_grab .row-note {
-  display: block;
 }
 
 .btn-small {
@@ -1732,11 +1276,6 @@ a.btn-secondary {
 
 .btn-small:hover {
   background: color-mix(in srgb, var(--fg) 10%, transparent);
-}
-
-.btn-small.ghost {
-  border-color: transparent;
-  color: var(--mute);
 }
 
 .btn-small[aria-disabled="true"] {
@@ -1768,24 +1307,6 @@ a.btn-secondary {
 
   .page-title {
     padding-right: 44px;
-  }
-
-  .detail-head {
-    grid-template-columns: 96px minmax(0, 1fr);
-    column-gap: 14px;
-  }
-
-  .detail-actions > button,
-  .detail-actions > a {
-    flex: 1 1 auto;
-  }
-
-  .row {
-    flex-wrap: wrap;
-  }
-
-  .row-main {
-    flex-basis: 100%;
   }
 }
 
@@ -2537,8 +2058,8 @@ a.btn-secondary {
 
 @media (prefers-reduced-motion: reduce) {
   .bd-act,
-  .forget,
-  .bd-line {
+.forget,
+.bd-line {
     transition: none;
   }
 }

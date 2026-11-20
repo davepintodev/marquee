@@ -1,41 +1,37 @@
 import type { HistoryEntry } from "./api/types";
-import { hrefOf } from "./route";
+import { IconRetry } from "./icons";
 import { ago, reasonLabel } from "./words";
 
 interface Props {
   entries: HistoryEntry[];
-  // Activity lists every title, so each entry names its own; a title's own history does not.
-  showTitle?: boolean;
   retrying: string | null;
   onRetry: (e: HistoryEntry) => void;
   empty: string;
 }
 
-export function HistoryList({ entries, showTitle, retrying, onRetry, empty }: Props) {
+// No pills: a failure is a gutter dot and the reason in bold; Retry is a quiet icon and a word.
+export function HistoryList({ entries, retrying, onRetry, empty }: Props) {
   if (entries.length === 0) return <p className="empty">{empty}</p>;
   return (
-    <ul className="rows" aria-label="History">
+    <ul className="hx" aria-label="History">
       {entries.map((h) => (
-        <li key={h.id} className={`row history-${h.kind}`}>
-          <div className="row-main">
-            <p className="row-title">
-              {showTitle && (
-                <>
-                  <a href={hrefOf({ name: "title", id: h.titleId })}>{h.titleName}</a>
-                  {h.episode ? ` · ${h.episode.toUpperCase()}` : ""}
-                  <span className="sep"> · </span>
-                </>
-              )}
-              {!showTitle && h.episode && <>{h.episode.toUpperCase()}<span className="sep"> · </span></>}
-              <time dateTime={h.at}>{ago(h.at)}</time>
-            </p>
-            <p className="row-note">
-              {h.kind === "failed" && <span className="reason">{reasonLabel(h.reason)}</span>}
-              {h.message}
-            </p>
-          </div>
+        <li key={h.id} className="hx-row" data-failed={h.kind === "failed" || undefined} data-reason={h.reason ?? "other"}>
+          <p className="hx-head">
+            {h.episode && (
+              <>
+                <b>{h.episode.toUpperCase()}</b>
+                <span aria-hidden="true"> · </span>
+              </>
+            )}
+            <time dateTime={h.at}>{ago(h.at)}</time>
+          </p>
+          <p className="hx-note">
+            {h.kind === "failed" && <b>{reasonLabel(h.reason)}. </b>}
+            {h.message}
+          </p>
           {h.retryable && (
-            <button type="button" className="btn-small" aria-label={`Retry ${h.titleName}`} aria-disabled={retrying === h.id} onClick={() => onRetry(h)}>
+            <button type="button" className="hx-retry" aria-label={`Retry ${h.episode ? h.episode.toUpperCase() : h.titleName}`} aria-disabled={retrying === h.id} onClick={() => onRetry(h)}>
+              <IconRetry />
               Retry
             </button>
           )}

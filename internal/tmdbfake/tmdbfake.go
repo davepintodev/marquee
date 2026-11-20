@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,14 @@ type Season struct {
 	Episodes []Episode
 }
 
+// Person is one cast member of a title; an empty Profile means TMDB has no photo.
+type Person struct {
+	ID        int
+	Name      string
+	Character string
+	Profile   string
+}
+
 type Title struct {
 	Kind     string // "movie" or "series"
 	ID       int
@@ -39,6 +48,18 @@ type Title struct {
 	IMDb     string
 	TVDB     int
 	Seasons  []Season
+	Cast     []Person
+
+	Genres []string
+	// Runtime is minutes: a movie's, or an episode's for a series.
+	Runtime int
+	Status  string
+	// Language is TMDB's two-letter code and LanguageName its English name.
+	Language, LanguageName string
+	Score                  float64
+	Votes                  int
+	// Similar lists the ids of titles of the same kind.
+	Similar []int
 }
 
 // Step scripts one answer: a status, an optional Retry-After, a hang that
@@ -261,9 +282,27 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request) {
 			}
 			s["seasons"] = seasons
 		}
-		if r.URL.Query().Get("append_to_response") == "external_ids" {
+		extras := strings.Split(r.URL.Query().Get("append_to_response"), ",")
+		if slices.Contains(extras, "external_ids") {
 			s["external_ids"] = ext
 		}
+		if slices.Contains(extras, "credits") {
+			cast := []map[string]any{}
+			for _, p := range t.Cast {
+				cast = append(cast, map[string]any{"id": p.ID, "name": p.Name, "character": p.Character, "profile_path": nilIfEmpty(p.Profile)})
+			}
+			s["credits"] = map[string]any{"cast": cast}
+		}
+		if slices.Contains(extras, "similar") {
+			similar := []map[string]any{}
+			for _, id := range t.Similar {
+				if o, ok := f.find(parts[0], strconv.Itoa(id)); ok {
+					similar = append(similar, f.summary(o, false))
+				}
+			}
+			s["similar"] = map[string]any{"results": similar}
+		}
+		f.describe(s, t)
 		writeJSON(w, 200, s)
 	case len(parts) == 4 && parts[0] == "tv" && parts[2] == "season":
 		t, ok := f.find("tv", parts[1])
@@ -311,6 +350,30 @@ func (f *Fake) summary(t Title, withType bool) map[string]any {
 		}
 	}
 	return m
+}
+
+// describe adds the facts the details screen reads, in the shapes TMDB uses for each kind.
+func (f *Fake) describe(m map[string]any, t Title) {
+	genres := []map[string]any{}
+	for i, g := range t.Genres {
+		genres = append(genres, map[string]any{"id": i + 1, "name": g})
+	}
+	m["genres"], m["status"], m["original_language"] = genres, t.Status, t.Language
+	m["vote_average"], m["vote_count"] = t.Score, t.Votes
+	m["spoken_languages"] = []map[string]any{{"iso_639_1": t.Language, "english_name": t.LanguageName}}
+	if t.Kind == "movie" {
+		m["runtime"] = t.Runtime
+		return
+	}
+	m["episode_run_time"] = []int{}
+	m["last_episode_to_air"] = map[string]any{"runtime": nilIfZero(t.Runtime)}
+}
+
+func nilIfZero(n int) any {
+	if n == 0 {
+		return nil
+	}
+	return n
 }
 
 func nilIfEmpty(s string) any {

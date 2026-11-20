@@ -307,6 +307,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/titles/{id}/about": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Scores, cast and similar titles, to fill the details screen of any title.
+         * @description Answers for a title in the library and for one that is not, so the screen has something worth reading before a series is added. Scores are whatever sources marquee can reach: TMDB's, and IMDb's and Rotten Tomatoes' only when an OMDb key is configured (MARQUEE_OMDB_KEY) and OMDb answers. The answer is kept for a day; when TMDB cannot be reached, an older copy is served if there is one.
+         */
+        get: operations["getTitleAbout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{personId}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * A cast member's photo (2:3). Fetched and cached by marquee like a poster.
+         * @description Only linked from a cast member that has a photo.
+         */
+        get: operations["getPersonImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -383,6 +427,40 @@ export interface components {
             monitored?: boolean;
             /** @description Present when inLibrary. */
             badge?: components["schemas"]["Badge"];
+        };
+        /** @description One score for a title, in the scale its source uses. */
+        Rating: {
+            /** @enum {string} */
+            source: "tmdb" | "imdb" | "rotten_tomatoes";
+            /** @description 8.4 on a scale of 10, or 91 on a scale of 100. */
+            score: number;
+            /** @enum {integer} */
+            scale: 10 | 100;
+            /** @description Present when the source says how many voted. */
+            votes?: number;
+        };
+        CastMember: {
+            personId: number;
+            name: string;
+            /** @description Empty when TMDB lists none. */
+            character: string;
+            /** @description Same-origin URL path of the photo. Absent when TMDB has none. */
+            profilePath?: string;
+        };
+        TitleAbout: {
+            /** @description TMDB's score first, then any other source marquee reaches. Empty when there is none. */
+            ratings: components["schemas"]["Rating"][];
+            genres: string[];
+            /** @description An episode for a series. */
+            runtimeMinutes?: number;
+            /** @example Ended */
+            status?: string;
+            /** @example English */
+            language?: string;
+            /** @description Billing order, at most 20. */
+            cast: components["schemas"]["CastMember"][];
+            /** @description At most 12 titles, each as it would show on the wall. */
+            similar: components["schemas"]["TitleSummary"][];
         };
         WallItem: {
             /** @enum {string} */
@@ -1145,6 +1223,62 @@ export interface operations {
                 };
                 content: {
                     "image/svg+xml": string;
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/webp": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getTitleAbout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What is known about the title. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TitleAbout"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getPersonImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The photo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "image/jpeg": string;
                     "image/png": string;
                     "image/webp": string;

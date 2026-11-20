@@ -2,6 +2,7 @@ import { render } from "@testing-library/react";
 import { vi } from "vitest";
 import { App } from "./App";
 import { createApi } from "./api/client";
+import type { Title, TitleAbout } from "./api/types";
 
 // jsdom's Request rejects relative URLs, so tests use an absolute base.
 export const BASE = "http://marquee.test";
@@ -60,4 +61,16 @@ export function setupApp(handler: Handler, hash: string) {
   });
   render(<App api={api} />);
   return { calls, writes };
+}
+
+// Serves one title's page: an empty wall, the title itself and, when given, its about; `extra` answers first.
+export function titleApi(title: Title, extra?: (url: URL, init: Request) => Response | Promise<Response> | undefined, about: TitleAbout | null = null): Handler {
+  return async (url, init) => {
+    const special = await extra?.(url, init);
+    if (special) return special;
+    if (url.pathname === "/api/wall") return json({ items: [] });
+    if (url.pathname === `/api/titles/${title.id}` && init.method === "GET") return json(title);
+    if (url.pathname === `/api/titles/${title.id}/about`) return about ? json(about) : json({ error: "nope" }, 404);
+    return json({ error: "nope" }, 404);
+  };
 }

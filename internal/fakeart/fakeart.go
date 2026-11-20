@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/davepintodev/marquee/internal/fake"
 	"github.com/davepintodev/marquee/internal/metadata"
@@ -18,7 +19,7 @@ import (
 // The sizes the real image route asks TMDB for.
 const (
 	posterSize   = "w500"
-	backdropSize = "w780"
+	backdropSize = "w1280"
 )
 
 // Fetch downloads every title's poster and backdrop into dir as
@@ -59,6 +60,64 @@ func Fetch(ctx context.Context, c *metadata.Client, titles []fake.Title, dir str
 			}
 			_, _ = fmt.Fprintf(out, "%s: %s saved\n", t.ID, img.kind)
 		}
+	}
+	return errors.Join(failed...)
+}
+
+// profileSize is a cast photo shown at most about 120 CSS pixels wide.
+const profileSize = "w185"
+
+// FetchPeople downloads the profile photo of every fixture cast member TMDB has
+// one for, as profile-<personId>.jpg. The fixtures' person ids are their own, so
+// each member is found in the title's TMDB credits by name. A title whose credits
+// cannot be read, or a member TMDB has no photo for, is reported and skipped; a
+// refused key or a cancelled ctx stops the run.
+func FetchPeople(ctx context.Context, c *metadata.Client, cast []fake.Cast, dir string, out io.Writer) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("art folder: %w", err)
+	}
+	var failed []error
+	credits := map[string][]metadata.Credit{}
+	saved := map[int]bool{}
+	for _, m := range cast {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if saved[m.PersonID] {
+			continue
+		}
+		list, ok := credits[m.TitleID]
+		if !ok {
+			about, err := c.About(ctx, m.Kind, m.TmdbID)
+			if err != nil {
+				if errors.Is(err, metadata.ErrRejected) || ctx.Err() != nil {
+					return err
+				}
+				failed = append(failed, fmt.Errorf("%s credits: %w", m.TitleID, err))
+			}
+			list = about.Cast
+			credits[m.TitleID] = list
+		}
+		path := ""
+		for _, p := range list {
+			if strings.EqualFold(p.Name, m.Name) {
+				path = p.ProfilePath
+				break
+			}
+		}
+		if path == "" {
+			_, _ = fmt.Fprintf(out, "%s: no photo for %s\n", m.TitleID, m.Name)
+			continue
+		}
+		if err := download(ctx, c, profileSize, path, fake.ProfileFile(dir, m.PersonID)); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			failed = append(failed, fmt.Errorf("%s %s photo: %w", m.TitleID, m.Name, err))
+			continue
+		}
+		saved[m.PersonID] = true
+		_, _ = fmt.Fprintf(out, "%s: photo of %s saved\n", m.TitleID, m.Name)
 	}
 	return errors.Join(failed...)
 }

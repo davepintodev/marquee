@@ -111,6 +111,7 @@ type Fake struct {
 	history   []*historyEntry
 	lastSeq   int
 	releases  map[string][]release
+	aboutBy   map[string]aboutEntry
 	health    json.RawMessage
 	nextID    int
 	subs      map[chan event]struct{}
@@ -149,6 +150,7 @@ func New(opts Options) *Fake {
 	load("downloads.json", &f.downloads)
 	load("history.json", &f.history)
 	load("releases.json", &f.releases)
+	load("about.json", &f.aboutBy)
 	f.health = mustRaw("health.json")
 	for _, t := range f.titles {
 		t.monitored = t.InLibrary

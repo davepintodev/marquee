@@ -11,10 +11,12 @@ import (
 
 func atoi(s string) int { n, _ := strconv.Atoi(s); return n }
 
-// TMDB's own size names: a 2:3 poster and a 16:9 backdrop, enough for the wall and the popup.
+// TMDB's own size names: a 2:3 poster and a 16:9 backdrop. The backdrop is the full-width header of the title
+// screen, up to 1920 CSS pixels (twice that on a retina screen), so it needs TMDB's w1280, not the w780 that
+// only covers a tile.
 func imageSize(kind string) string {
 	if kind == "backdrop" {
-		return "w780"
+		return "w1280"
 	}
 	return "w500"
 }
@@ -62,7 +64,12 @@ func (a *api) image(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(svg))
 		return
 	}
-	file, err := a.Images.Open(r.Context(), imageSize(kind), path)
+	a.serveImage(w, r, imageSize(kind), path)
+}
+
+// serveImage serves a TMDB image from the disk cache, fetching it first when the cache has none.
+func (a *api) serveImage(w http.ResponseWriter, r *http.Request, size, path string) {
+	file, err := a.Images.Open(r.Context(), size, path)
 	if err != nil {
 		if errors.Is(err, metadata.ErrNotFound) {
 			fail(w, http.StatusNotFound, "TMDB no longer has this image")

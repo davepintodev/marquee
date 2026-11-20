@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // Title is what the art downloader needs to know about a fixture title.
@@ -46,4 +47,31 @@ func (f *Fake) serveArt(w http.ResponseWriter, r *http.Request, kind, titleID st
 	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, "", info.ModTime(), file)
 	return true
+}
+
+// Cast is a fixture cast member and the title the fixtures list them under.
+type Cast struct {
+	TitleID  string
+	Kind     string
+	TmdbID   int
+	PersonID int
+	Name     string
+}
+
+// CastList lists every cast member of the fixture titles, in billing order.
+func CastList() []Cast {
+	var about map[string]aboutEntry
+	load("about.json", &about)
+	var out []Cast
+	for _, t := range Titles() {
+		for _, c := range about[t.ID].Cast {
+			out = append(out, Cast{TitleID: t.ID, Kind: t.Kind, TmdbID: t.TmdbID, PersonID: c.PersonID, Name: c.Name})
+		}
+	}
+	return out
+}
+
+// ProfileFile names the photo of a cast member inside the art folder.
+func ProfileFile(dir string, personID int) string {
+	return filepath.Join(dir, "profile-"+strconv.Itoa(personID)+".jpg")
 }

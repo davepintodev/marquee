@@ -1,0 +1,909 @@
+{
+ "movie-687163": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.2,
+    "scale": 10,
+    "votes": 2900
+   },
+   {
+    "source": "imdb",
+    "score": 8.4,
+    "scale": 10,
+    "votes": 310000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 95,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Science Fiction",
+   "Adventure",
+   "Drama"
+  ],
+  "runtimeMinutes": 156,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1001,
+    "name": "Ryan Gosling",
+    "character": "Ryland Grace"
+   },
+   {
+    "personId": 1002,
+    "name": "Sandra Hüller",
+    "character": "Eva Stratt"
+   },
+   {
+    "personId": 1003,
+    "name": "Lionel Boyce",
+    "character": "Olesya"
+   },
+   {
+    "personId": 1004,
+    "name": "Ken Leung",
+    "character": "Yao"
+   },
+   {
+    "personId": 1005,
+    "name": "Milana Vayntrub",
+    "character": "Lokken"
+   },
+   {
+    "personId": 1006,
+    "name": "Liz Kingsman",
+    "character": "Hail Mary crew"
+   }
+  ],
+  "similar": [
+   "movie-286217",
+   "movie-157336",
+   "movie-329865",
+   "movie-335984",
+   "movie-13187",
+   "movie-693134"
+  ]
+ },
+ "movie-13187": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 7.7,
+    "scale": 10,
+    "votes": 1500
+   },
+   {
+    "source": "imdb",
+    "score": 8.3,
+    "scale": 10,
+    "votes": 22000
+   }
+  ],
+  "genres": [
+   "Animation",
+   "Family",
+   "Comedy"
+  ],
+  "runtimeMinutes": 25,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1007,
+    "name": "Peter Robbins",
+    "character": "Charlie Brown (voice)"
+   },
+   {
+    "personId": 1008,
+    "name": "Christopher Shea",
+    "character": "Linus van Pelt (voice)"
+   },
+   {
+    "personId": 1009,
+    "name": "Kathy Steinberg",
+    "character": "Lucy van Pelt (voice)"
+   },
+   {
+    "personId": 1010,
+    "name": "Tracy Stratford",
+    "character": "Sally Brown (voice)"
+   }
+  ],
+  "similar": [
+   "series-226745",
+   "movie-687163",
+   "movie-693134",
+   "movie-329865",
+   "movie-335984",
+   "movie-157336"
+  ]
+ },
+ "movie-693134": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.2,
+    "scale": 10,
+    "votes": 7100
+   },
+   {
+    "source": "imdb",
+    "score": 8.5,
+    "scale": 10,
+    "votes": 630000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 92,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Science Fiction",
+   "Adventure"
+  ],
+  "runtimeMinutes": 166,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1011,
+    "name": "Timothée Chalamet",
+    "character": "Paul Atreides"
+   },
+   {
+    "personId": 1012,
+    "name": "Zendaya",
+    "character": "Chani"
+   },
+   {
+    "personId": 1013,
+    "name": "Rebecca Ferguson",
+    "character": "Lady Jessica"
+   },
+   {
+    "personId": 1014,
+    "name": "Javier Bardem",
+    "character": "Stilgar"
+   },
+   {
+    "personId": 1015,
+    "name": "Josh Brolin",
+    "character": "Gurney Halleck"
+   },
+   {
+    "personId": 1016,
+    "name": "Austin Butler",
+    "character": "Feyd-Rautha Harkonnen"
+   },
+   {
+    "personId": 1017,
+    "name": "Florence Pugh",
+    "character": "Princess Irulan"
+   },
+   {
+    "personId": 1018,
+    "name": "Christopher Walken",
+    "character": "Emperor Shaddam IV"
+   }
+  ],
+  "similar": [
+   "movie-438631",
+   "movie-335984",
+   "movie-329865",
+   "movie-157336",
+   "movie-687163",
+   "movie-13187"
+  ]
+ },
+ "movie-329865": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 7.6,
+    "scale": 10,
+    "votes": 16800
+   },
+   {
+    "source": "imdb",
+    "score": 7.9,
+    "scale": 10,
+    "votes": 720000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 94,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Science Fiction",
+   "Drama",
+   "Mystery"
+  ],
+  "runtimeMinutes": 116,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1019,
+    "name": "Amy Adams",
+    "character": "Louise Banks"
+   },
+   {
+    "personId": 1020,
+    "name": "Jeremy Renner",
+    "character": "Ian Donnelly"
+   },
+   {
+    "personId": 1021,
+    "name": "Forest Whitaker",
+    "character": "Colonel Weber"
+   },
+   {
+    "personId": 1022,
+    "name": "Michael Stuhlbarg",
+    "character": "Agent Halpern"
+   },
+   {
+    "personId": 1023,
+    "name": "Tzi Ma",
+    "character": "General Shang"
+   }
+  ],
+  "similar": [
+   "movie-335984",
+   "movie-157336",
+   "movie-693134",
+   "movie-286217",
+   "movie-687163",
+   "movie-13187"
+  ]
+ },
+ "movie-335984": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 7.5,
+    "scale": 10,
+    "votes": 14100
+   },
+   {
+    "source": "imdb",
+    "score": 8.0,
+    "scale": 10,
+    "votes": 630000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 88,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Science Fiction",
+   "Drama"
+  ],
+  "runtimeMinutes": 164,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1024,
+    "name": "Ryan Gosling",
+    "character": "K"
+   },
+   {
+    "personId": 1025,
+    "name": "Harrison Ford",
+    "character": "Rick Deckard"
+   },
+   {
+    "personId": 1026,
+    "name": "Ana de Armas",
+    "character": "Joi"
+   },
+   {
+    "personId": 1027,
+    "name": "Sylvia Hoeks",
+    "character": "Luv"
+   },
+   {
+    "personId": 1028,
+    "name": "Jared Leto",
+    "character": "Niander Wallace"
+   },
+   {
+    "personId": 1029,
+    "name": "Robin Wright",
+    "character": "Lt. Joshi"
+   },
+   {
+    "personId": 1030,
+    "name": "Dave Bautista",
+    "character": "Sapper Morton"
+   }
+  ],
+  "similar": [
+   "movie-329865",
+   "movie-693134",
+   "movie-438631",
+   "movie-157336",
+   "movie-687163",
+   "movie-13187"
+  ]
+ },
+ "movie-157336": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.5,
+    "scale": 10,
+    "votes": 36000
+   },
+   {
+    "source": "imdb",
+    "score": 8.7,
+    "scale": 10,
+    "votes": 2000000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 73,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Adventure",
+   "Drama",
+   "Science Fiction"
+  ],
+  "runtimeMinutes": 169,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1031,
+    "name": "Matthew McConaughey",
+    "character": "Cooper"
+   },
+   {
+    "personId": 1032,
+    "name": "Anne Hathaway",
+    "character": "Brand"
+   },
+   {
+    "personId": 1033,
+    "name": "Jessica Chastain",
+    "character": "Murph"
+   },
+   {
+    "personId": 1034,
+    "name": "Michael Caine",
+    "character": "Professor Brand"
+   },
+   {
+    "personId": 1035,
+    "name": "Matt Damon",
+    "character": "Dr. Mann"
+   },
+   {
+    "personId": 1036,
+    "name": "Casey Affleck",
+    "character": "Tom"
+   }
+  ],
+  "similar": [
+   "movie-286217",
+   "movie-329865",
+   "movie-335984",
+   "movie-687163",
+   "movie-13187",
+   "movie-693134"
+  ]
+ },
+ "movie-286217": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 7.7,
+    "scale": 10,
+    "votes": 19500
+   },
+   {
+    "source": "imdb",
+    "score": 8.0,
+    "scale": 10,
+    "votes": 900000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 91,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Drama",
+   "Adventure",
+   "Science Fiction"
+  ],
+  "runtimeMinutes": 144,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1037,
+    "name": "Matt Damon",
+    "character": "Mark Watney"
+   },
+   {
+    "personId": 1038,
+    "name": "Jessica Chastain",
+    "character": "Melissa Lewis"
+   },
+   {
+    "personId": 1039,
+    "name": "Kristen Wiig",
+    "character": "Annie Montrose"
+   },
+   {
+    "personId": 1040,
+    "name": "Jeff Daniels",
+    "character": "Teddy Sanders"
+   },
+   {
+    "personId": 1041,
+    "name": "Chiwetel Ejiofor",
+    "character": "Vincent Kapoor"
+   },
+   {
+    "personId": 1042,
+    "name": "Sean Bean",
+    "character": "Mitch Henderson"
+   }
+  ],
+  "similar": [
+   "movie-157336",
+   "movie-687163",
+   "movie-329865",
+   "movie-693134",
+   "movie-13187",
+   "movie-335984"
+  ]
+ },
+ "movie-438631": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 7.8,
+    "scale": 10,
+    "votes": 12500
+   },
+   {
+    "source": "imdb",
+    "score": 8.0,
+    "scale": 10,
+    "votes": 820000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 83,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Science Fiction",
+   "Adventure"
+  ],
+  "runtimeMinutes": 155,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1043,
+    "name": "Timothée Chalamet",
+    "character": "Paul Atreides"
+   },
+   {
+    "personId": 1044,
+    "name": "Rebecca Ferguson",
+    "character": "Lady Jessica"
+   },
+   {
+    "personId": 1045,
+    "name": "Oscar Isaac",
+    "character": "Duke Leto Atreides"
+   },
+   {
+    "personId": 1046,
+    "name": "Jason Momoa",
+    "character": "Duncan Idaho"
+   },
+   {
+    "personId": 1047,
+    "name": "Zendaya",
+    "character": "Chani"
+   },
+   {
+    "personId": 1048,
+    "name": "Stellan Skarsgård",
+    "character": "Baron Harkonnen"
+   }
+  ],
+  "similar": [
+   "movie-693134",
+   "movie-335984",
+   "movie-157336",
+   "movie-329865",
+   "movie-687163",
+   "movie-13187"
+  ]
+ },
+ "series-1408": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.7,
+    "scale": 10,
+    "votes": 6400
+   },
+   {
+    "source": "imdb",
+    "score": 8.7,
+    "scale": 10,
+    "votes": 510000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 87,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Drama",
+   "Mystery"
+  ],
+  "runtimeMinutes": 44,
+  "status": "Ended",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1049,
+    "name": "Hugh Laurie",
+    "character": "Dr. Gregory House"
+   },
+   {
+    "personId": 1050,
+    "name": "Lisa Edelstein",
+    "character": "Dr. Lisa Cuddy"
+   },
+   {
+    "personId": 1051,
+    "name": "Omar Epps",
+    "character": "Dr. Eric Foreman"
+   },
+   {
+    "personId": 1052,
+    "name": "Robert Sean Leonard",
+    "character": "Dr. James Wilson"
+   },
+   {
+    "personId": 1053,
+    "name": "Jennifer Morrison",
+    "character": "Dr. Allison Cameron"
+   },
+   {
+    "personId": 1054,
+    "name": "Jesse Spencer",
+    "character": "Dr. Robert Chase"
+   },
+   {
+    "personId": 1055,
+    "name": "Peter Jacobson",
+    "character": "Dr. Chris Taub"
+   },
+   {
+    "personId": 1056,
+    "name": "Olivia Wilde",
+    "character": "Dr. Remy Hadley"
+   }
+  ],
+  "similar": [
+   "series-62560",
+   "series-95396",
+   "series-83867",
+   "series-226745",
+   "series-213375",
+   "movie-687163"
+  ]
+ },
+ "series-226745": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 7.4,
+    "scale": 10,
+    "votes": 42
+   }
+  ],
+  "genres": [
+   "Animation",
+   "Family"
+  ],
+  "runtimeMinutes": 22,
+  "status": "Returning Series",
+  "language": "English",
+  "cast": [],
+  "similar": [
+   "movie-13187",
+   "series-1408",
+   "series-213375",
+   "series-95396",
+   "series-83867",
+   "series-62560"
+  ]
+ },
+ "series-213375": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 7.1,
+    "scale": 10,
+    "votes": 640
+   },
+   {
+    "source": "imdb",
+    "score": 7.0,
+    "scale": 10,
+    "votes": 41000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 82,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Sci-Fi & Fantasy",
+   "Drama"
+  ],
+  "runtimeMinutes": 50,
+  "status": "In Production",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1057,
+    "name": "Paul Bettany",
+    "character": "Vision"
+   }
+  ],
+  "similar": [
+   "series-83867",
+   "series-95396",
+   "series-1408",
+   "series-226745",
+   "series-62560",
+   "movie-687163"
+  ]
+ },
+ "series-95396": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.3,
+    "scale": 10,
+    "votes": 5200
+   },
+   {
+    "source": "imdb",
+    "score": 8.7,
+    "scale": 10,
+    "votes": 560000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 97,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Drama",
+   "Sci-Fi & Fantasy",
+   "Mystery"
+  ],
+  "runtimeMinutes": 50,
+  "status": "Returning Series",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1058,
+    "name": "Adam Scott",
+    "character": "Mark Scout"
+   },
+   {
+    "personId": 1059,
+    "name": "Britt Lower",
+    "character": "Helly R."
+   },
+   {
+    "personId": 1060,
+    "name": "Zach Cherry",
+    "character": "Dylan G."
+   },
+   {
+    "personId": 1061,
+    "name": "Patricia Arquette",
+    "character": "Harmony Cobel"
+   },
+   {
+    "personId": 1062,
+    "name": "John Turturro",
+    "character": "Irving B."
+   },
+   {
+    "personId": 1063,
+    "name": "Tramell Tillman",
+    "character": "Seth Milchick"
+   },
+   {
+    "personId": 1064,
+    "name": "Christopher Walken",
+    "character": "Burt Goodman"
+   },
+   {
+    "personId": 1065,
+    "name": "Dichen Lachman",
+    "character": "Ms. Casey"
+   }
+  ],
+  "similar": [
+   "series-62560",
+   "series-83867",
+   "series-1408",
+   "series-226745",
+   "series-213375",
+   "movie-687163"
+  ]
+ },
+ "series-83867": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.4,
+    "scale": 10,
+    "votes": 3100
+   },
+   {
+    "source": "imdb",
+    "score": 8.4,
+    "scale": 10,
+    "votes": 270000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 96,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Sci-Fi & Fantasy",
+   "Drama",
+   "Action & Adventure"
+  ],
+  "runtimeMinutes": 47,
+  "status": "Ended",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1066,
+    "name": "Diego Luna",
+    "character": "Cassian Andor"
+   },
+   {
+    "personId": 1067,
+    "name": "Stellan Skarsgård",
+    "character": "Luthen Rael"
+   },
+   {
+    "personId": 1068,
+    "name": "Genevieve O'Reilly",
+    "character": "Mon Mothma"
+   },
+   {
+    "personId": 1069,
+    "name": "Denise Gough",
+    "character": "Dedra Meero"
+   },
+   {
+    "personId": 1070,
+    "name": "Kyle Soller",
+    "character": "Syril Karn"
+   },
+   {
+    "personId": 1071,
+    "name": "Adria Arjona",
+    "character": "Bix Caleen"
+   }
+  ],
+  "similar": [
+   "series-95396",
+   "series-62560",
+   "series-213375",
+   "series-1408",
+   "series-226745",
+   "movie-687163"
+  ]
+ },
+ "series-62560": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.3,
+    "scale": 10,
+    "votes": 9100
+   },
+   {
+    "source": "imdb",
+    "score": 8.5,
+    "scale": 10,
+    "votes": 420000
+   },
+   {
+    "source": "rotten_tomatoes",
+    "score": 94,
+    "scale": 100
+   }
+  ],
+  "genres": [
+   "Drama",
+   "Crime"
+  ],
+  "runtimeMinutes": 49,
+  "status": "Ended",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1072,
+    "name": "Rami Malek",
+    "character": "Elliot Alderson"
+   },
+   {
+    "personId": 1073,
+    "name": "Christian Slater",
+    "character": "Mr. Robot"
+   },
+   {
+    "personId": 1074,
+    "name": "Carly Chaikin",
+    "character": "Darlene"
+   },
+   {
+    "personId": 1075,
+    "name": "Portia Doubleday",
+    "character": "Angela Moss"
+   },
+   {
+    "personId": 1076,
+    "name": "Martin Wallström",
+    "character": "Tyrell Wellick"
+   },
+   {
+    "personId": 1077,
+    "name": "Grace Gummer",
+    "character": "Dom DiPierro"
+   }
+  ],
+  "similar": [
+   "series-95396",
+   "series-1408",
+   "series-83867",
+   "series-226745",
+   "series-213375",
+   "movie-687163"
+  ]
+ }
+}

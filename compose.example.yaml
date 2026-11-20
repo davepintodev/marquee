@@ -25,4 +25,5 @@ services:
       # Optional:
       # MARQUEE_JELLYFIN_URL: "<jellyfin-url>"
       # MARQUEE_JELLYFIN_KEY: "<jellyfin-api-key>"
+      # MARQUEE_OMDB_KEY: "<omdb-api-key>"
       # MARQUEE_API_TOKEN: "<a-long-random-token>"

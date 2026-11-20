@@ -203,6 +203,16 @@ UPDATE activity SET at_ms = CAST(ROUND((julianday(at) - 2440587.5) * 86400000) A
 CREATE INDEX downloads_finished ON downloads (at_ms) WHERE state IN ('done', 'failed');
 CREATE INDEX downloads_finished_by_target ON downloads (title_id, season, number, at_ms) WHERE state IN ('done', 'failed');
 CREATE INDEX activity_by_at ON activity (at_ms);
+`, `
+CREATE TABLE IF NOT EXISTS about_cache (
+  title_id   TEXT PRIMARY KEY,
+  fetched_ms INTEGER NOT NULL,
+  body       TEXT NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS people (
+  person_id    INTEGER PRIMARY KEY,
+  profile_path TEXT NOT NULL
+);
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

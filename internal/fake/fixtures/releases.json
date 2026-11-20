@@ -1,16 +1,242 @@
 {
-  "movie": [
-    {"id": "rel-movie-1", "name": "Blade.Runner.2049.2017.1080p.BluRay.x264", "quality": "Bluray-1080p", "sizeBytes": 12884901888, "source": "Torrentio", "cached": true},
-    {"id": "rel-movie-2", "name": "Blade.Runner.2049.2017.2160p.WEB-DL", "quality": "WEBDL-2160p", "sizeBytes": 34359738368, "source": "Comet", "cached": true},
-    {"id": "rel-movie-3", "name": "Blade.Runner.2049.2017.720p.HDTV", "quality": "HDTV-720p", "sizeBytes": 3221225472, "source": "Comet", "cached": false, "drop": "not_cached", "message": "not cached on the debrid service"},
-    {"id": "rel-movie-4", "name": "Blade.Runner.2049.2017.1080p.exe", "quality": "WEBDL-1080p", "sizeBytes": 4194304000, "source": "Torrentio", "cached": true, "drop": "not_video", "message": "a .exe file, not a video"},
-    {"id": "rel-movie-5", "name": "Blade.Runner.2049.2017.sample", "quality": "WEBDL-1080p", "sizeBytes": 31457280, "source": "Torrentio", "cached": true, "drop": "too_small", "message": "30 MB, too small to be the film"}
-  ],
-  "series": [
-    {"id": "rel-series-1", "name": "House.S04E02.1080p.BluRay.x264", "quality": "Bluray-1080p", "sizeBytes": 2147483648, "source": "Torrentio", "cached": true},
-    {"id": "rel-series-2", "name": "House.S04E02.720p.HDTV", "quality": "HDTV-720p", "sizeBytes": 734003200, "source": "Comet", "cached": true},
-    {"id": "rel-series-3", "name": "House.S04E03.1080p.BluRay.x264", "quality": "Bluray-1080p", "sizeBytes": 2147483648, "source": "Torrentio", "cached": true, "drop": "wrong_episode", "message": "this is episode 3, not episode 2"},
-    {"id": "rel-series-4", "name": "House.S04E02.1080p.7z", "quality": "WEBDL-1080p", "sizeBytes": 1073741824, "source": "Comet", "cached": true, "drop": "not_video", "message": "a .7z archive, not a video"},
-    {"id": "rel-series-5", "name": "House.S04E02.1080p.WEB-DL", "quality": "WEBDL-1080p", "sizeBytes": 1610612736, "source": "Comet", "cached": true, "drop": "blocklisted", "message": "failed before (stalled); blocked for 30 days"}
-  ]
+ "movie": [
+  {
+   "id": "rel-movie-1",
+   "name": "Blade.Runner.2049.2017.1080p.BluRay.x264-SPARKS",
+   "quality": "Bluray-1080p",
+   "sizeBytes": 12884901888,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-6",
+   "name": "Blade.Runner.2049.2017.1080p.WEB-DL.DDP5.1.H.264-CMRG",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 9019431321,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-2",
+   "name": "Blade.Runner.2049.2017.2160p.WEB-DL.DDP5.1.HDR.H.265-FLUX",
+   "quality": "WEBDL-2160p",
+   "sizeBytes": 34359738368,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-9",
+   "name": "Blade.Runner.2049.2017.1080p.BluRay.DTS-HD.MA.7.1.x264-EbP",
+   "quality": "Bluray-1080p",
+   "sizeBytes": 23085449216,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-10",
+   "name": "Blade.Runner.2049.2017.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 8160437862,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-7",
+   "name": "Blade.Runner.2049.2017.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.Atmos-FraMeSToR",
+   "quality": "Remux-2160p",
+   "sizeBytes": 71725953843,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-11",
+   "name": "Blade.Runner.2049.2017.2160p.UHD.BluRay.x265.10bit.HDR-RARBG",
+   "quality": "Bluray-2160p",
+   "sizeBytes": 19542101196,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-8",
+   "name": "Blade.Runner.2049.2017.720p.BluRay.x264-YIFY",
+   "quality": "Bluray-720p",
+   "sizeBytes": 1288490188,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-12",
+   "name": "Blade.Runner.2049.2017.720p.WEB-DL.H.264-FGT",
+   "quality": "WEBDL-720p",
+   "sizeBytes": 3006477107,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-movie-3",
+   "name": "Blade.Runner.2049.2017.720p.HDTV",
+   "quality": "HDTV-720p",
+   "sizeBytes": 3221225472,
+   "source": "Comet",
+   "cached": false,
+   "drop": "not_cached",
+   "message": "not cached on the debrid service"
+  },
+  {
+   "id": "rel-movie-4",
+   "name": "Blade.Runner.2049.2017.1080p.exe",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 4194304000,
+   "source": "Torrentio",
+   "cached": true,
+   "drop": "not_video",
+   "message": "a .exe file, not a video"
+  },
+  {
+   "id": "rel-movie-5",
+   "name": "Blade.Runner.2049.2017.sample",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 31457280,
+   "source": "Torrentio",
+   "cached": true,
+   "drop": "too_small",
+   "message": "30 MB, too small to be the film"
+  },
+  {
+   "id": "rel-movie-13",
+   "name": "Blade.Runner.2049.2017.1080p.BluRay.x264.RUS.HC-HDClub",
+   "quality": "Bluray-1080p",
+   "sizeBytes": 9771050598,
+   "source": "Comet",
+   "cached": true,
+   "drop": "blocklisted",
+   "message": "failed before: stalled with no bytes for 30 min"
+  },
+  {
+   "id": "rel-movie-14",
+   "name": "Blade.Runner.2049.2017.480p.DVDRip.XviD-AC3",
+   "quality": "DVD",
+   "sizeBytes": 1503238553,
+   "source": "Comet",
+   "cached": true,
+   "drop": "blocklisted",
+   "message": "failed before: wrong size, 1.4 GB for a 4 GB release"
+  }
+ ],
+ "series": [
+  {
+   "id": "rel-series-1",
+   "name": "House.S04E02.1080p.BluRay.x264-REWARD",
+   "quality": "Bluray-1080p",
+   "sizeBytes": 2147483648,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-series-6",
+   "name": "House.S04E02.1080p.WEB-DL.DD5.1.H.264-NTb",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 1610612736,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-series-2",
+   "name": "House.S04E02.720p.HDTV.x264-CTU",
+   "quality": "HDTV-720p",
+   "sizeBytes": 734003200,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-series-8",
+   "name": "House.S04E02.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 1825361100,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-series-9",
+   "name": "House.S04E02.720p.BluRay.x264-SiNNERS",
+   "quality": "Bluray-720p",
+   "sizeBytes": 966367641,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-series-7",
+   "name": "House.S04E02.2160p.UHD.BluRay.REMUX.HDR.HEVC-EPSiLON",
+   "quality": "Remux-2160p",
+   "sizeBytes": 9019431321,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-series-10",
+   "name": "House.S04E02.720p.WEB-DL.H.264-DEFLATE",
+   "quality": "WEBDL-720p",
+   "sizeBytes": 671088640,
+   "source": "Comet",
+   "cached": true
+  },
+  {
+   "id": "rel-series-11",
+   "name": "House.S04E02.1080p.BluRay.x265.10bit-RARBG",
+   "quality": "Bluray-1080p",
+   "sizeBytes": 1181116006,
+   "source": "Torrentio",
+   "cached": true
+  },
+  {
+   "id": "rel-series-3",
+   "name": "House.S04E03.1080p.BluRay.x264",
+   "quality": "Bluray-1080p",
+   "sizeBytes": 2147483648,
+   "source": "Torrentio",
+   "cached": false,
+   "drop": "wrong_episode",
+   "message": "this is episode 3, not episode 2"
+  },
+  {
+   "id": "rel-series-4",
+   "name": "House.S04E02.1080p.7z",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 1073741824,
+   "source": "Comet",
+   "cached": true,
+   "drop": "not_video",
+   "message": "a .7z archive, not a video"
+  },
+  {
+   "id": "rel-series-12",
+   "name": "House.S04E02.720p.HDTV.x264-LOL",
+   "quality": "HDTV-720p",
+   "sizeBytes": 536870912,
+   "source": "Comet",
+   "cached": false,
+   "drop": "not_cached",
+   "message": "not cached on the debrid service"
+  },
+  {
+   "id": "rel-series-13",
+   "name": "House.S04E02.sample",
+   "quality": "WEBDL-1080p",
+   "sizeBytes": 23068672,
+   "source": "Torrentio",
+   "cached": true,
+   "drop": "too_small",
+   "message": "22 MB, too small to be an episode"
+  },
+  {
+   "id": "rel-series-5",
+   "name": "House.S04E02.480p.DVDRip.XviD",
+   "quality": "DVD",
+   "sizeBytes": 367001600,
+   "source": "Comet",
+   "cached": true,
+   "drop": "blocklisted",
+   "message": "failed before: stalled with no bytes for 30 min"
+  }
+ ]
 }
