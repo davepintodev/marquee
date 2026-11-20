@@ -1,9 +1,10 @@
 import { expect, test } from "vitest";
 import { hrefOf, parseRoute } from "./route";
 
-test("hashes name the wall, Activity or a title; anything else is the wall", () => {
+test("hashes name the wall, the grid, Activity, Health or a title; anything else is the wall", () => {
   expect(parseRoute("")).toEqual({ name: "wall" });
   expect(parseRoute("#/")).toEqual({ name: "wall" });
+  expect(parseRoute("#/grid")).toEqual({ name: "grid" });
   expect(parseRoute("#/activity")).toEqual({ name: "activity" });
   expect(parseRoute("#/health")).toEqual({ name: "health" });
   expect(parseRoute("#/title/series-1408")).toEqual({ name: "title", id: "series-1408" });
@@ -13,7 +14,7 @@ test("hashes name the wall, Activity or a title; anything else is the wall", () 
 });
 
 test("a route's href parses back to the same route", () => {
-  for (const r of [{ name: "wall" }, { name: "activity" }, { name: "health" }, { name: "title", id: "movie-9" }] as const) {
+  for (const r of [{ name: "wall" }, { name: "grid" }, { name: "activity" }, { name: "health" }, { name: "title", id: "movie-9" }] as const) {
     expect(parseRoute(hrefOf(r))).toEqual(r);
   }
 });

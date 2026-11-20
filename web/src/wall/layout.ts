@@ -99,3 +99,130 @@ function nearestReachable(want: number): number {
     }
   }
 }
+
+export interface Carved {
+  tiles: Tile[];
+  text: Tile | null;
+  arrow: Tile | null;
+}
+
+const touches = (a: Tile, b: Tile) => Math.abs(a.x + a.w - b.x) < 1 || Math.abs(b.x + b.w - a.x) < 1;
+const sameRow = (a: Tile, b: Tile) => Math.abs(a.y - b.y) < 1 && Math.abs(a.h - b.h) < 1;
+const centreX = (t: Tile) => t.x + t.w / 2;
+const centreY = (t: Tile) => t.y + t.h / 2;
+
+// Cuts two empty slots out of the wall, so words and an arrow sit in it as
+// tiles do. The text slot is the pair of full-height tiles nearest the middle
+// of the screen (a single one when it has no neighbour), wider ones preferred.
+// The arrow slot is the lower half of a tile on the bottom edge in line with
+// it, and the upper half stays a poster.
+export function carveWall(width: number, height: number): Carved {
+  const all = layoutWall(width, height);
+  if (all.length < 5) return { tiles: all, text: null, arrow: null };
+
+  const bandH = Math.max(...all.map((t) => t.h));
+  const isFull = (t: Tile) => t.h >= bandH * 0.9;
+  const onBottom = (t: Tile) => t.y + t.h >= height - 1;
+  const mid = { x: width / 2, y: height / 2 };
+  const dist = (t: Tile) => Math.hypot(centreX(t) - mid.x, centreY(t) - mid.y) - 0.35 * t.w;
+  const upper = all.filter((t) => isFull(t) && !onBottom(t));
+  const pool = upper.length >= 1 ? upper : all.filter((t) => !onBottom(t));
+  const first = (pool.length > 0 ? pool : all).reduce((best, t) => (dist(t) < dist(best) ? t : best));
+
+  let text: Tile = first;
+  let used = [first];
+  const mate = all
+    .filter((t) => t !== first && sameRow(t, first) && touches(t, first) && !onBottom(t))
+    .sort((a, b) => dist(a) - dist(b))[0];
+  if (mate) {
+    const x = Math.min(first.x, mate.x);
+    text = { x, y: first.y, w: Math.max(first.x + first.w, mate.x + mate.w) - x, h: first.h, shape: "wide" };
+    used = [first, mate];
+  }
+
+  const room = all.filter((t) => onBottom(t) && !used.includes(t));
+  const base = room.length > 0 ? room : all.filter((t) => !used.includes(t));
+  const chosen = base.reduce((best, t) => {
+    const score = (u: Tile) => Math.abs(centreX(u) - centreX(text)) + (u.w * u.h) / (bandH * 2);
+    return score(t) < score(best) ? t : best;
+  });
+
+  const rest = all.filter((t) => !used.includes(t) && t !== chosen);
+  if (!isFull(chosen)) return { tiles: rest, text, arrow: chosen };
+  const half = chosen.h / 2;
+  const keep: Tile = { ...chosen, h: half, shape: "wide" };
+  const arrow: Tile = { ...chosen, y: chosen.y + half, h: chosen.h - half, shape: "wide" };
+  return { tiles: [...rest, keep], text, arrow };
+}
+
+// Which title goes on each tile. Titles keep their order while there are
+// enough of them; once the list has to repeat, each tile takes the least
+// used title that sits farthest from its other copies (a title used once
+// more than the least is allowed when that keeps it clear of its twin), so
+// one poster never shows up next to itself.
+export function spreadTitles(tiles: Tile[], count: number): number[] {
+  if (count <= 0) return tiles.map(() => 0);
+  const used = new Array<number>(count).fill(0);
+  const placed: { x: number; y: number }[][] = Array.from({ length: count }, () => []);
+  return tiles.map((t) => {
+    const c = { x: centreX(t), y: centreY(t) };
+    const least = Math.min(...used);
+    let best = -1;
+    let bestGap = -1;
+    for (let k = 0; k < count; k++) {
+      if (used[k] > least + 1) continue;
+      const far = placed[k].length === 0 ? Infinity : Math.min(...placed[k].map((p) => Math.hypot(p.x - c.x, p.y - c.y)));
+      const gap = far - (used[k] - least) * 240;
+      if (gap > bestGap) {
+        best = k;
+        bestGap = gap;
+      }
+    }
+    used[best]++;
+    placed[best].push(c);
+    return best;
+  });
+}
+
+export const GAP = 10;
+
+// How far the posters run past each screen edge: 14 to 28px, plus the half-gap
+// padding, so what shows of an edge poster is the same slice at every width.
+export const bleedOf = (width: number) => GAP / 2 + Math.round(Math.min(28, Math.max(14, width * 0.022)));
+
+export interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  padding: number;
+}
+
+// Whole-pixel edges shared by neighbours, so every visible gap is exactly GAP wide.
+export function snapTile(t: Tile): Box {
+  const left = Math.round(t.x);
+  const top = Math.round(t.y);
+  return { left, top, width: Math.round(t.x + t.w) - left, height: Math.round(t.y + t.h) - top, padding: GAP / 2 };
+}
+
+// The tile under a point, or the one nearest to it.
+export function nearestTile(tiles: Tile[], x: number, y: number): number {
+  let best = -1;
+  let bestDist = Infinity;
+  tiles.forEach((t, i) => {
+    const d = Math.hypot(Math.max(t.x - x, 0, x - (t.x + t.w)), Math.max(t.y - y, 0, y - (t.y + t.h)));
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+// The tiles that touch a slot (within a gap) and show on screen, given the wall's bleed.
+export function tilesTouching(tiles: Tile[], slot: Tile, bleed: number, width: number, height: number): number[] {
+  const m = GAP + 2;
+  const touching = (t: Tile) => t.x < slot.x + slot.w + m && t.x + t.w > slot.x - m && t.y < slot.y + slot.h + m && t.y + t.h > slot.y - m;
+  const shown = (t: Tile) => t.x + t.w > bleed && t.x < bleed + width && t.y + t.h > bleed && t.y < bleed + height;
+  return tiles.flatMap((t, i) => (touching(t) && shown(t) ? [i] : []));
+}
