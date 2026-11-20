@@ -465,7 +465,7 @@ paths:
       summary: What is misconfigured or broken. Read-only.
       responses:
         "200":
-          description: Overall status, checks and library problems.
+          description: Overall status, checks, library problems and library totals.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
@@ -846,9 +846,16 @@ components:
         path: { type: string, description: Relative to the library root. }
         reason: { type: string, enum: [unmatched, ambiguous, unparsed_file] }
         message: { type: string }
+    LibraryTotals:
+      type: object
+      description: How much the library holds, so a client need not read every title to say so.
+      required: [movies, episodes]
+      properties:
+        movies: { type: integer, minimum: 0, description: Movies in the library. }
+        episodes: { type: integer, minimum: 0, description: Episodes of every series in the library. }
     Health:
       type: object
-      required: [status, dryRun, checks, libraryProblems]
+      required: [status, dryRun, checks, libraryProblems, libraryTotals]
       properties:
         status: { $ref: "#/components/schemas/CheckStatus" }
         dryRun: { type: boolean }
@@ -858,3 +865,4 @@ components:
         libraryProblems:
           type: array
           items: { $ref: "#/components/schemas/LibraryProblem" }
+        libraryTotals: { $ref: "#/components/schemas/LibraryTotals" }

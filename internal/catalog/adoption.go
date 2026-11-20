@@ -141,3 +141,15 @@ func (s *Store) LibraryProblems(ctx context.Context) ([]LibraryProblem, error) {
 	}
 	return out, rows.Err()
 }
+
+// LibraryTotals counts the movies and the episodes of every series in the library, in two aggregate queries that
+// read no row into memory.
+func (s *Store) LibraryTotals(ctx context.Context) (movies, episodes int, err error) {
+	if err = s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM titles WHERE kind = 'movie'`).Scan(&movies); err != nil {
+		return 0, 0, err
+	}
+	if err = s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes`).Scan(&episodes); err != nil {
+		return 0, 0, err
+	}
+	return movies, episodes, nil
+}

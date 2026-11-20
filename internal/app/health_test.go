@@ -232,3 +232,41 @@ func TestHealthSaysWhenDryRunIsOn(t *testing.T) {
 		t.Errorf("health = %v", h)
 	}
 }
+
+func libraryTotals(t *testing.T, s *realSvc) (movies, episodes float64) {
+	t.Helper()
+	totals, ok := s.mustCall("GET", "/api/health", "", 200)["libraryTotals"].(map[string]any)
+	if !ok {
+		t.Fatal("health carries no libraryTotals")
+	}
+	return totals["movies"].(float64), totals["episodes"].(float64)
+}
+
+func TestHealthCountsTheLibraryMoviesAndEpisodesAcrossSeries(t *testing.T) {
+	tm := newTMDB(t)
+	tm.Add(tmdbfake.Title{Kind: "series", ID: 2000, Name: "Second Show", Date: "2020-01-01", Overview: "More.", IMDb: "tt2000000",
+		Seasons: []tmdbfake.Season{
+			{Number: 1, Episodes: []tmdbfake.Episode{{Number: 1, Name: "One", AirDate: "2020-01-01"}, {Number: 2, Name: "Two", AirDate: "2020-01-08"}}},
+			{Number: 2, Episodes: []tmdbfake.Episode{{Number: 1, Name: "Three", AirDate: "2021-01-01"}}},
+		}})
+	s := startReal(t, tm)
+
+	if m, e := libraryTotals(t, s); m != 0 || e != 0 {
+		t.Errorf("an empty library counts %v movies and %v episodes, want 0 and 0", m, e)
+	}
+
+	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
+	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":7}`, 201)
+	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408}`, 201)
+	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":2000}`, 201)
+
+	if m, e := libraryTotals(t, s); m != 2 || e != 6 {
+		t.Errorf("library counts %v movies and %v episodes, want 2 and 6 (3 dated episodes in each series)", m, e)
+	}
+
+	s.mustCall("DELETE", "/api/titles/movie-7", "", 204)
+	s.mustCall("DELETE", "/api/titles/series-1408", "", 204)
+	if m, e := libraryTotals(t, s); m != 1 || e != 3 {
+		t.Errorf("after removals the library counts %v movies and %v episodes, want 1 and 3", m, e)
+	}
+}
