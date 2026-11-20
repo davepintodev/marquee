@@ -29,6 +29,11 @@ export function useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast }:
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const working = useRef(false);
+  // Read only when the title answers 404; as a dependency it would refetch on every live event, since the caller rebuilds it.
+  const seeded = useRef(seed);
+  useEffect(() => {
+    seeded.current = seed;
+  });
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -37,7 +42,7 @@ export function useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast }:
       async (e) => {
         if (ctl.signal.aborted || isAbort(e)) return;
         if (e instanceof ApiError && e.status === 404) {
-          let s = seed;
+          let s = seeded.current;
           if (!s) s = (await api.wall(ctl.signal).catch(() => [])).map((i) => i.title).find((t) => t.id === id);
           if (ctl.signal.aborted) return;
           if (s) return setLoad({ status: "ok", title: unadded(s) });
@@ -46,7 +51,7 @@ export function useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast }:
       },
     );
     return () => ctl.abort();
-  }, [api, id, attempt, seed]);
+  }, [api, id, attempt]);
 
   const refetch = useCallback(() => {
     api.title(id).then((title) => setLoad({ status: "ok", title }), () => {});
