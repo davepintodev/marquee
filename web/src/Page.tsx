@@ -5,16 +5,16 @@ interface Props {
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
-  board?: boolean;
+  className?: string;
 }
 
-export function Page({ heading, onClose, children, wide, board }: Props) {
+export function Page({ heading, onClose, children, wide, className }: Props) {
   const id = useId();
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => close.current?.focus(), []);
   return (
-    <div className={board ? "page-layer page-layer-board" : "page-layer"}>
-      <main className={board ? "page page-board" : wide ? "page page-wide" : "page"} aria-labelledby={id}>
+    <div className="page-layer">
+      <main className={["page", wide && "page-wide", className].filter(Boolean).join(" ")} aria-labelledby={id}>
         <button ref={close} type="button" className="popup-close" aria-label="Close" onClick={onClose}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" />

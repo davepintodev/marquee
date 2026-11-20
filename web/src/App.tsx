@@ -29,7 +29,7 @@ function isAbort(e: unknown) {
 }
 
 // keys off: the screen is over the app, so the keyboard is not its to act on.
-export function App({ api, keys = true }: { api: Api; keys?: boolean }) {
+export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; onForget?: () => void }) {
   const [query, setQuery] = useState("");
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
@@ -332,7 +332,7 @@ export function App({ api, keys = true }: { api: Api; keys?: boolean }) {
           onToast={notify}
         />
       )}
-      {route.name === "health" && <Health api={api} onClose={closePage} />}
+      {route.name === "health" && <Health api={api} onClose={closePage} onForget={onForget} />}
       {route.name === "activity" && <Activity api={api} onClose={closePage} onChanged={keep} onToast={notify} />}
       {toast && (
         <div className="toast" role="status">

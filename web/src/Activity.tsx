@@ -157,7 +157,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
 
   if (load.status !== "ok") {
     return (
-      <Page heading="Activity" onClose={onClose} board>
+      <Page heading="Activity" onClose={onClose} className="page-activity">
         {load.status === "loading" && <p className="empty">Loading…</p>}
         {load.status === "error" && (
           <div className="empty" role="alert">
@@ -182,7 +182,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
   ];
   const summary = summaryOf({ downloading: running.length, waiting: upcoming.length, retryable: history.filter((h) => h.retryable).length });
   return (
-    <Page heading="Activity" onClose={onClose} board>
+    <Page heading="Activity" onClose={onClose} className="page-activity">
       <p className="board-sum">{summary}</p>
       {error && (
         <p className="popup-error" role="alert">

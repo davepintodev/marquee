@@ -198,11 +198,27 @@ test("a late acceptance of an older token does not count as the held token being
 });
 
 test("health reads the contract's shape", async () => {
-  const health = { status: "ok", dryRun: false, checks: [], libraryProblems: [] };
+  const health = { status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 0, episodes: 0 }, libraryProblems: [] };
   const fetchStub = vi.fn(async (r: Request) => (new URL(r.url).pathname === "/api/health" ? ok(health) : ok({})));
   const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
 
   await expect(api.health()).resolves.toEqual(health);
+});
+
+test("a health answer without the library totals is an ApiError, not a crash on the Health page", async () => {
+  const old = { status: "ok", dryRun: false, checks: [], libraryProblems: [] };
+  const fetchStub = vi.fn(async () => ok(old));
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  await expect(api.health()).rejects.toBeInstanceOf(ApiError);
+});
+
+test("a health answer with only the movie total is an ApiError too", async () => {
+  const half = { status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 3 }, libraryProblems: [] };
+  const fetchStub = vi.fn(async () => ok(half));
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  await expect(api.health()).rejects.toBeInstanceOf(ApiError);
 });
 
 // The browser holds the session cookie only once marquee has answered a request that carried the token; a stream opened sooner is refused and never retries.

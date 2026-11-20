@@ -116,7 +116,7 @@ test("every page, by path or by hash, asks for the token on a 401 and comes back
     const answers = (input: Request) => {
       if (input.headers.get("Authorization") !== `Bearer ${TOKEN}`) return json({ error: "this marquee needs its API token" }, 401);
       const p = new URL(input.url).pathname;
-      if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryProblems: [] });
+      if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 0, episodes: 0 }, libraryProblems: [] });
       if (p === "/api/wall") return json({ items: [] });
       return json({ error: "nope" }, 404);
     };
@@ -318,4 +318,55 @@ test("Esc while unlocking onto a page does not close the page", async () => {
     vi.useRealTimers();
     window.location.hash = "";
   }
+});
+
+function healthMarquee(token: string | null) {
+  const f = vi.fn(async (input: Request) => {
+    if (token !== null && input.headers.get("Authorization") !== `Bearer ${token}`) return json({ error: "this marquee needs its API token" }, 401);
+    const p = new URL(input.url).pathname;
+    if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 0, episodes: 0 }, libraryProblems: [] });
+    return json({ items: [] });
+  });
+  return f as unknown as typeof fetch;
+}
+
+test("Forget on this device on the Health page forgets the token and asks for it again", async () => {
+  window.location.hash = "#/health";
+  localStorage.setItem("marquee.token", TOKEN);
+  render(<Shell baseUrl={BASE} fetch={healthMarquee(TOKEN)} path="/" />);
+
+  fireEvent.click(await screen.findByRole("button", { name: /forget on this device/i }));
+  fireEvent.click(screen.getByRole("button", { name: "yes" }));
+
+  await screen.findByLabelText(/api token/i);
+  expect(localStorage.getItem("marquee.token")).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Health" })).toBeNull();
+
+  unlock(TOKEN);
+  await screen.findByRole("heading", { name: "Health" });
+  window.location.hash = "";
+});
+
+test("Esc answers the forget question without closing the Health page, and closes the page once it is answered", async () => {
+  window.location.hash = "#/health";
+  localStorage.setItem("marquee.token", TOKEN);
+  render(<Shell baseUrl={BASE} fetch={healthMarquee(TOKEN)} path="/" />);
+
+  fireEvent.click(await screen.findByRole("button", { name: /forget on this device/i }));
+  fireEvent.keyDown(screen.getByRole("button", { name: "no" }), { key: "Escape" });
+  expect(screen.getByRole("heading", { name: "Health" })).toBeTruthy();
+  expect(screen.queryByRole("group", { name: /forget the saved token/i })).toBeNull();
+  expect(localStorage.getItem("marquee.token")).toBe(TOKEN);
+
+  fireEvent.keyDown(screen.getByRole("button", { name: /forget on this device/i }), { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("heading", { name: "Health" })).toBeNull());
+  window.location.hash = "";
+});
+
+test("a marquee with no token has nothing to forget", async () => {
+  window.location.hash = "#/health";
+  render(<Shell baseUrl={BASE} fetch={healthMarquee(null)} path="/" />);
+  await screen.findByRole("heading", { name: "Health" });
+  expect(screen.queryByRole("button", { name: /forget on this device/i })).toBeNull();
+  window.location.hash = "";
 });
