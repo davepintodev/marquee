@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strconv"
@@ -21,6 +22,10 @@ type Scorer interface {
 // aboutFresh is how long a title's details are served without asking TMDB
 // or OMDb again; OMDb's free tier allows a thousand calls a day.
 const aboutFresh = 24 * time.Hour
+
+// scoresRetry is how soon a title whose OMDb scores were refused (key or
+// quota) is fetched again; the rest of it is served from the cache meanwhile.
+const scoresRetry = 15 * time.Minute
 
 // profileSize is a cast photo shown at most about 120 CSS pixels wide.
 const profileSize = "w185"
@@ -53,6 +58,8 @@ type aboutFacts struct {
 type aboutDoc struct {
 	aboutFacts
 	Similar []metadata.Summary `json:"similar"`
+	// ScoresPending marks a copy kept without OMDb's scores because OMDb refused; it is fetched again sooner.
+	ScoresPending bool `json:"scoresPending,omitempty"`
 }
 
 type aboutJSON struct {
@@ -81,12 +88,16 @@ func (a *api) about(w http.ResponseWriter, r *http.Request) {
 	if found && json.Unmarshal(body, &kept) != nil {
 		found = false
 	}
-	if found && a.Now().Sub(at) < aboutFresh {
+	fresh := aboutFresh
+	if kept.ScoresPending {
+		fresh = scoresRetry
+	}
+	if found && a.Now().Sub(at) < fresh {
 		a.writeAbout(w, r, kept)
 		return
 	}
 
-	doc, photos, complete, err := a.fetchAbout(r, kind, tmdbID)
+	doc, photos, outcome, err := a.fetchAbout(r, kind, tmdbID)
 	if err != nil {
 		if found {
 			a.writeAbout(w, r, kept)
@@ -95,11 +106,15 @@ func (a *api) about(w http.ResponseWriter, r *http.Request) {
 		a.upstream(w, r, err)
 		return
 	}
-	if !complete {
+	switch outcome {
+	case scoresMissing:
 		// OMDb did not answer: its scores stay as they were, and it is asked again next time.
 		doc.Ratings = withKept(doc.Ratings, kept.Ratings)
 		a.writeAbout(w, r, doc)
 		return
+	case scoresRefused:
+		doc.Ratings = withKept(doc.Ratings, kept.Ratings)
+		doc.ScoresPending = true
 	}
 	if err := a.keepAbout(r, id, doc, photos); err != nil {
 		a.internal(w, r, err)
@@ -118,12 +133,20 @@ func withKept(fresh, earlier []ratingJSON) []ratingJSON {
 	return fresh
 }
 
-// fetchAbout asks TMDB, then OMDb when it is set up. complete is false when
-// OMDb was due and did not answer.
-func (a *api) fetchAbout(r *http.Request, kind string, tmdbID int) (doc aboutDoc, photos []catalog.PersonPhoto, complete bool, err error) {
+// scoresOutcome says how the OMDb half of a fetch went.
+type scoresOutcome int
+
+const (
+	scoresDone    scoresOutcome = iota // answered, or not asked, or the title is not OMDb's: nothing more to ask
+	scoresMissing                      // no usable answer: nothing is cached, OMDb is asked again next time
+	scoresRefused                      // key or quota refused: cached without scores, asked again soon
+)
+
+// fetchAbout asks TMDB, then OMDb when it is set up.
+func (a *api) fetchAbout(r *http.Request, kind string, tmdbID int) (doc aboutDoc, photos []catalog.PersonPhoto, outcome scoresOutcome, err error) {
 	m, err := a.TMDB.About(r.Context(), kind, tmdbID)
 	if err != nil {
-		return aboutDoc{}, nil, false, err
+		return aboutDoc{}, nil, scoresDone, err
 	}
 	doc = aboutDoc{
 		aboutFacts: aboutFacts{
@@ -146,13 +169,17 @@ func (a *api) fetchAbout(r *http.Request, kind string, tmdbID int) (doc aboutDoc
 		}
 		doc.Cast = append(doc.Cast, cj)
 	}
-	complete = true
 	if a.OMDb != nil && m.IMDbID != "" {
 		s, err := a.OMDb.Scores(r.Context(), m.IMDbID)
 		switch {
+		case errors.Is(err, omdb.ErrNotFound):
+			// OMDb answered: it has no scores for this title.
+		case errors.Is(err, omdb.ErrRefused):
+			a.Log.Warn("omdb refused the key or the daily limit; the scores are TMDB's alone for now", "path", r.URL.Path)
+			outcome = scoresRefused
 		case err != nil:
 			a.Log.Warn("omdb is not answering; the scores are TMDB's alone", "path", r.URL.Path)
-			complete = false
+			outcome = scoresMissing
 		default:
 			if s.IMDb > 0 {
 				votes := s.IMDbVotes
@@ -168,7 +195,7 @@ func (a *api) fetchAbout(r *http.Request, kind string, tmdbID int) (doc aboutDoc
 		}
 	}
 	a.rememberImages(r, doc.Similar)
-	return doc, photos, complete, nil
+	return doc, photos, outcome, nil
 }
 
 func (a *api) keepAbout(r *http.Request, id string, doc aboutDoc, photos []catalog.PersonPhoto) error {

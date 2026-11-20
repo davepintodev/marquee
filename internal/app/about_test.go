@@ -333,3 +333,66 @@ func TestAPersonsPhotoFailsInTheContractsShapeWhenTMDBDoes(t *testing.T) {
 		t.Errorf("a photo TMDB dropped: %d", got.status)
 	}
 }
+
+func TestAboutOfATitleOMDbDoesNotHaveIsCachedWithTMDBsScoreAlone(t *testing.T) {
+	tm := aboutTMDB(t)
+	tm.Add(tmdbfake.Title{
+		Kind: "movie", ID: 700, Name: "Obscure", Date: "2020-01-01", IMDb: "tt0000700", Score: 6.1, Votes: 40,
+		Cast: []tmdbfake.Person{{ID: 7001, Name: "Unknown Actor", Profile: "/unknown.jpg"}},
+	})
+	r := startAbout(t, tm, true)
+
+	v := r.mustCall("GET", "/api/titles/movie-700/about", "", 200)
+	if got := sources(v); len(got) != 1 || got[0] != "tmdb" {
+		t.Fatalf("a title OMDb lacks has TMDB's score alone: %v", got)
+	}
+	tmdbHits, omdbHits := tm.Hits("/3/movie/700"), r.omdb.Hits()
+	r.mustCall("GET", "/api/titles/movie-700/about", "", 200)
+	if tm.Hits("/3/movie/700") != tmdbHits || r.omdb.Hits() != omdbHits {
+		t.Errorf("a title OMDb does not know is still cached: tmdb %d then %d, omdb %d then %d", tmdbHits, tm.Hits("/3/movie/700"), omdbHits, r.omdb.Hits())
+	}
+	if got := r.call("GET", "/api/people/7001/image", ""); got.status != 200 {
+		t.Errorf("its cast photo: %d %s", got.status, got.body)
+	}
+}
+
+func TestAboutWhenOMDbRefusesKeepsTMDBsPartAndAsksOMDbAgainLater(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		break_ func(*omdbfake.Fake)
+	}{
+		{"daily limit reached", (*omdbfake.Fake).Quota},
+		{"key refused", (*omdbfake.Fake).RefuseKey},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tm := aboutTMDB(t)
+			r := startAbout(t, tm, true)
+			tc.break_(r.omdb)
+
+			v := r.mustCall("GET", "/api/titles/movie-438631/about", "", 200)
+			if got := sources(v); len(got) != 1 || got[0] != "tmdb" {
+				t.Fatalf("TMDB's score alone: %v", got)
+			}
+			tmdbHits := tm.Hits("/3/movie/438631")
+			r.mustCall("GET", "/api/titles/movie-438631/about", "", 200)
+			if tm.Hits("/3/movie/438631") != tmdbHits {
+				t.Errorf("TMDB's part is cached though OMDb refused: %d then %d calls", tmdbHits, tm.Hits("/3/movie/438631"))
+			}
+			if got := r.call("GET", "/api/people/1190668/image", ""); got.status != 200 {
+				t.Errorf("cast photo: %d %s", got.status, got.body)
+			}
+
+			r.omdb.Heal()
+			r.now.Store(today.Add(time.Hour).UnixNano())
+			v = r.mustCall("GET", "/api/titles/movie-438631/about", "", 200)
+			if len(sources(v)) != 3 {
+				t.Errorf("OMDb is asked again well before the day is out: %v", v["ratings"])
+			}
+			for _, leak := range []string{omdbfake.Key, "apikey"} {
+				if strings.Contains(r.logs.String(), leak) {
+					t.Errorf("%q leaks into the logs", leak)
+				}
+			}
+		})
+	}
+}

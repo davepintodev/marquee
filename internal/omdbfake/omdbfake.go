@@ -27,6 +27,7 @@ type Fake struct {
 	mu      sync.Mutex
 	entries map[string]Entry
 	status  int
+	refusal string
 	hang    bool
 	hits    int
 	release chan struct{}
@@ -65,6 +66,18 @@ func (f *Fake) Down(status int) {
 	f.status = status
 }
 
+// Quota answers every request as OMDb does once the day's free calls are used up.
+func (f *Fake) Quota() { f.refuse("Request limit reached!") }
+
+// RefuseKey answers every request as OMDb does to a key it does not know.
+func (f *Fake) RefuseKey() { f.refuse("Invalid API key!") }
+
+func (f *Fake) refuse(message string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refusal = message
+}
+
 // Hang holds every request until the fake closes.
 func (f *Fake) Hang() {
 	f.mu.Lock()
@@ -75,7 +88,7 @@ func (f *Fake) Hang() {
 func (f *Fake) Heal() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.status, f.hang = 0, false
+	f.status, f.refusal, f.hang = 0, "", false
 }
 
 // Hits counts the requests seen so far.
@@ -88,7 +101,7 @@ func (f *Fake) Hits() int {
 func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.hits++
-	status, hang, release := f.status, f.hang, f.release
+	status, refusal, hang, release := f.status, f.refusal, f.hang, f.release
 	e, known := f.entries[r.URL.Query().Get("i")]
 	f.mu.Unlock()
 
@@ -104,6 +117,11 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if refusal != "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{"Response": "False", "Error": refusal})
+		return
+	}
 	if r.URL.Query().Get("apikey") != Key {
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]any{"Response": "False", "Error": "Invalid API key!"})

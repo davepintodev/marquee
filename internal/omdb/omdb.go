@@ -16,9 +16,16 @@ import (
 	"github.com/davepintodev/marquee/internal/config"
 )
 
-// ErrUnavailable covers every way OMDb fails to give an answer. It carries
-// no URL: the key travels in the query string, and net/http's errors quote it.
-var ErrUnavailable = errors.New("omdb: no answer")
+// The ways OMDb fails to give scores. None carries a URL: the key travels in
+// the query string, and net/http's errors quote it.
+var (
+	// ErrUnavailable is no usable answer at all: a network error, a timeout, a bad status or body.
+	ErrUnavailable = errors.New("omdb: no answer")
+	// ErrNotFound is OMDb answering that it does not have the title.
+	ErrNotFound = errors.New("omdb: no such title")
+	// ErrRefused is OMDb turning the request away over its key or its daily quota; both clear up later.
+	ErrRefused = errors.New("omdb: key or daily limit refused")
+)
 
 const (
 	defaultBase    = "https://www.omdbapi.com/"
@@ -79,6 +86,7 @@ func (c *Client) Scores(ctx context.Context, imdbID string) (Scores, error) {
 	defer func() { _ = resp.Body.Close() }()
 	var v struct {
 		Response   string `json:"Response"`
+		Error      string `json:"Error"`
 		IMDbRating string `json:"imdbRating"`
 		IMDbVotes  string `json:"imdbVotes"`
 		Ratings    []struct {
@@ -86,7 +94,19 @@ func (c *Client) Scores(ctx context.Context, imdbID string) (Scores, error) {
 			Value  string `json:"Value"`
 		} `json:"Ratings"`
 	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, maxBytes)).Decode(&v) != nil || v.Response != "True" {
+	decoded := json.NewDecoder(io.LimitReader(resp.Body, maxBytes)).Decode(&v) == nil
+	if decoded && v.Response == "False" {
+		// OMDb words these by hand; its status code is 401 for both a bad key and a spent quota.
+		msg := strings.ToLower(v.Error)
+		if strings.Contains(msg, "api key") || strings.Contains(msg, "limit") {
+			return Scores{}, ErrRefused
+		}
+		return Scores{}, ErrNotFound
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return Scores{}, ErrRefused
+	}
+	if resp.StatusCode != http.StatusOK || !decoded || v.Response != "True" {
 		return Scores{}, ErrUnavailable
 	}
 	var s Scores
