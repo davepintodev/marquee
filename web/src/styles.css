@@ -1835,38 +1835,6 @@ a.btn-secondary {
   margin-top: 10px;
 }
 
-.bar-track {
-  height: 6px;
-  margin-top: 8px;
-  border-radius: 99px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--fg) 12%, transparent);
-}
-
-.bar-fill {
-  height: 100%;
-  border-radius: 99px;
-  background: var(--info);
-  transition: width 0.6s linear;
-}
-
-.bar-fill.stalled {
-  background: var(--warn);
-}
-
-.percent {
-  flex: none;
-  min-width: 3.5em;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.percent.mute {
-  color: var(--mute);
-  font-weight: 400;
-}
-
 @media (max-width: 640px) {
   .page-layer {
     padding: 0;
