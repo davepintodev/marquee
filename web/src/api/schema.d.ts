@@ -459,7 +459,7 @@ export interface components {
             language?: string;
             /** @description Billing order, at most 20. */
             cast: components["schemas"]["CastMember"][];
-            /** @description At most 12 titles, each as it would show on the wall. */
+            /** @description At most 6 titles, each as it would show on the wall. */
             similar: components["schemas"]["TitleSummary"][];
         };
         WallItem: {
