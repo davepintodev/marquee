@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -805,9 +804,23 @@ func TestARateLimitedRequestIsRetriedOnceAfterTheBoundedWait(t *testing.T) {
 }
 
 func TestAnUnreachableTMDBLeaksNeitherItsAddressNorTheKey(t *testing.T) {
-	dead := httptest.NewServer(http.NotFoundHandler())
-	base := dead.URL
-	dead.Close()
+	// A closed port can be handed to another parallel test's server and answer
+	// 404; holding the port and dropping every connection keeps it unreachable.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	base := "http://" + ln.Addr().String()
 	s := startReal(t, newTMDB(t), func(o *app.Options) { o.TMDBAPIBase = base + "/3" })
 	r := s.call("GET", "/api/search?q=dune", "")
 	if r.status != 502 {
