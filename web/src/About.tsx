@@ -133,7 +133,7 @@ export function AboutSections({ api, about, onOpen }: { api: Api; about: AboutLo
             <h2 id="ts-sim">More like this</h2>
           </div>
           <ul className="ts-sim">
-            {a.similar.slice(0, 6).map((s) => (
+            {a.similar.map((s) => (
               <li key={s.id}>
                 <button type="button" onClick={() => onOpen?.(s)} aria-label={`${s.title}, ${s.year}`}>
                   <span className="ts-sim-art">

@@ -165,8 +165,8 @@ func TestAboutCapsCastAndSimilarTitlesAndMarksTheOnesInTheLibrary(t *testing.T) 
 		t.Errorf("cast is capped at 20: %d", n)
 	}
 	list := v["similar"].([]any)
-	if len(list) != 12 {
-		t.Fatalf("similar is capped at 12: %d", len(list))
+	if len(list) != 6 {
+		t.Fatalf("similar is capped at 6: %d", len(list))
 	}
 	if first := list[0].(map[string]any); first["id"] != "movie-2001" || first["inLibrary"] != true {
 		t.Errorf("a similar title already in the library says so: %v", first)

@@ -8,7 +8,7 @@ import (
 
 const (
 	maxCast    = 20
-	maxSimilar = 12
+	maxSimilar = 6
 )
 
 // Credit is one cast member in billing order.

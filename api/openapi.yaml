@@ -718,7 +718,7 @@ components:
           items: { $ref: "#/components/schemas/CastMember" }
         similar:
           type: array
-          description: At most 12 titles, each as it would show on the wall.
+          description: At most 6 titles, each as it would show on the wall.
           items: { $ref: "#/components/schemas/TitleSummary" }
     WallItem:
       type: object
