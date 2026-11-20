@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Children, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Api } from "./api/client";
 import type { Download } from "./api/types";
 import { Art } from "./Art";
@@ -69,15 +69,17 @@ export function WaitingCard({ api, n }: { api: Api; n: Upcoming }) {
   );
 }
 
-// Cards scroll sideways a screenful at a time; the arrows appear only while some are out of view.
 export function Carousel({ label, children }: { label: string; children: ReactNode }) {
   const list = useRef<HTMLUListElement>(null);
   const [edge, setEdge] = useState({ start: true, end: true });
   const measure = useCallback(() => {
     const el = list.current;
     if (!el) return;
-    setEdge({ start: el.scrollLeft < 4, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4 });
+    const start = el.scrollLeft < 4;
+    const end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+    setEdge((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
   }, []);
+  const count = Children.count(children);
   useEffect(() => {
     const el = list.current;
     if (!el) return;
@@ -86,7 +88,7 @@ export function Carousel({ label, children }: { label: string; children: ReactNo
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [measure, children]);
+  }, [measure, count]);
   const go = (dir: 1 | -1) => list.current?.scrollBy({ left: dir * list.current.clientWidth * 0.9, behavior: calm() ? "auto" : "smooth" });
   const overflow = !(edge.start && edge.end);
   const name = label.charAt(0).toUpperCase() + label.slice(1);

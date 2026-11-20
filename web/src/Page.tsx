@@ -5,7 +5,6 @@ interface Props {
   onClose: () => void;
   children: ReactNode;
   wide?: boolean;
-  // A full-bleed board on the plain background instead of the glass sheet.
   board?: boolean;
 }
 

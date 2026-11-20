@@ -34,6 +34,12 @@ test("byDay groups newest first, one group per day, whatever order the pages arr
   ]);
 });
 
+test("byDay orders by the instant, not by the timestamp text", () => {
+  const stamped = (id: string, text: string): HistoryEntry => ({ ...entry(id, now), at: text });
+  const days = byDay([stamped("plain", "2026-11-18T20:00:00Z"), stamped("fraction", "2026-11-18T20:00:00.500Z")], now);
+  expect(days[0].entries.map((e) => e.id)).toEqual(["fraction", "plain"]);
+});
+
 test("byDay of nothing is nothing", () => {
   expect(byDay([], now)).toEqual([]);
 });

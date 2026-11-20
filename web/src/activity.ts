@@ -19,7 +19,7 @@ export interface Day {
 // Sorted newest first so a day is a run of neighbours, whatever order the pages arrived in.
 export function byDay(entries: HistoryEntry[], now = new Date()): Day[] {
   const days: Day[] = [];
-  for (const h of [...entries].sort((a, b) => b.at.localeCompare(a.at))) {
+  for (const h of [...entries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at))) {
     const at = new Date(h.at);
     const key = dayKey(at);
     const last = days[days.length - 1];

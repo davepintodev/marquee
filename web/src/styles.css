@@ -2122,8 +2122,9 @@ a.btn-secondary {
 }
 
 .board-cols {
+  --col-gap: clamp(32px, 4vw, 64px);
   display: grid;
-  gap: 0 clamp(32px, 4vw, 64px);
+  gap: 0 var(--col-gap);
 }
 
 .board-main,
@@ -2133,7 +2134,7 @@ a.btn-secondary {
 
 @media (min-width: 1000px) {
   .board-cols {
-    grid-template-columns: min(790px, calc(var(--n, 1) * 390px - 10px)) minmax(300px, 720px);
+    grid-template-columns: min(790px, calc(var(--n, 1) * 390px - 10px), calc(100% - 360px - var(--col-gap))) minmax(360px, 720px);
     align-items: start;
   }
 }
