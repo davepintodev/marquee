@@ -221,7 +221,7 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       };
     },
     health(signal) {
-      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems) && typeof d.libraryTotals?.movies === "number");
+      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems) && typeof d.libraryTotals?.movies === "number" && typeof d.libraryTotals?.episodes === "number");
     },
     imageUrl: (path) => base + path,
   };

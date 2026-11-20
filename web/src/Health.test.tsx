@@ -79,6 +79,28 @@ test("the headline follows the checks: a dry-run alone is not downloading yet, a
   expect(screen.getByText("2 passing")).toBeTruthy();
 });
 
+test("a Jellyfin-only problem or a plain warning does not block the headline", async () => {
+  const jelly = { id: "jellyfin" as const, name: "Jellyfin", status: "error" as const, message: "Jellyfin is not answering." };
+  setup([() => json(fine({ status: "error", checks: [jelly] }))]);
+  const ready = await screen.findByRole("heading", { level: 2, name: /ready to download/i });
+  expect(ready.parentElement?.getAttribute("data-blocked")).toBe("false");
+  cleanup();
+
+  const note = { id: "fake_data" as const, name: "Data", status: "warning" as const, message: "Some fixture data." };
+  setup([() => json(fine({ status: "warning", checks: [note] }))]);
+  await screen.findByRole("heading", { level: 2, name: /ready, with a note/i });
+});
+
+test("the fold controls point at their region only while it is on screen", async () => {
+  setup([() => json(sick)]);
+  await line();
+  const details = screen.getByRole("button", { name: /show details/i });
+  expect(details.getAttribute("aria-controls")).toBeNull();
+  fireEvent.click(details);
+  const id = screen.getByRole("button", { name: /hide details/i }).getAttribute("aria-controls");
+  expect(id && document.getElementById(id)).toBeTruthy();
+});
+
 test("the checks are a path in the order a title travels, folded to a name and one state word each", async () => {
   setup([() => json(sick)]);
 

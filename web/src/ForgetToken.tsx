@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-// Forgetting the token signs this device out, so it asks first. The question opens on "Keep" and Esc answers it
+// Forgetting the token signs this device out, so it asks first. The question opens on "no" and Esc answers it
 // without closing the page behind it.
 export function ForgetToken({ onForget }: { onForget: () => void }) {
   const [asking, setAsking] = useState(false);

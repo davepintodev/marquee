@@ -2286,8 +2286,8 @@ a.btn-secondary {
   --a: 180deg;
   position: absolute;
   left: 13px;
-  top: 32px;
-  bottom: 4px;
+  top: 24px;
+  bottom: -4px;
   width: 2px;
   background: var(--link);
 }
@@ -2342,8 +2342,7 @@ a.btn-secondary {
   font-weight: 650;
 }
 
-.bd-stop[data-status="warning"] .bd-word,
-.bd-row[data-status="warning"] .bd-word {
+.bd-stop[data-status="warning"] .bd-word {
   color: var(--fg);
 }
 
@@ -2357,8 +2356,7 @@ a.btn-secondary {
   font-weight: 700;
 }
 
-.bd-stop[data-status="error"] .bd-word,
-.bd-row[data-status="error"] .bd-word {
+.bd-stop[data-status="error"] .bd-word {
   color: var(--bad);
   font-weight: 600;
 }
@@ -2494,10 +2492,6 @@ a.btn-secondary {
 
 .bd-row[data-status="error"] .bd-rname i {
   background: var(--bad);
-}
-
-.bd-row .bd-word {
-  margin-left: auto;
 }
 
 .bd-stats {

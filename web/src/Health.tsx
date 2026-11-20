@@ -33,8 +33,7 @@ function stops(checks: Check[]): Stop[] {
   });
 }
 
-// One answer to the one question: can marquee be trusted to download? A check that already is the answer is
-// not repeated below it.
+// One answer to the one question: can marquee be trusted to download? `used` is the check the answer came from.
 function verdict(checks: Check[]): { title: string; why: string; used?: Check } {
   const blocker = checks.find((c) => c.status === "error" && c.id !== "jellyfin");
   if (blocker) return { title: "Can’t download right now", why: blocker.message, used: blocker };
@@ -70,7 +69,7 @@ function Chevron({ open }: { open: boolean }) {
 }
 
 // A plain-text control that folds and unfolds one region.
-function Fold({ open, onToggle, controls, children }: { open: boolean; onToggle: () => void; controls: string; children: string }) {
+function Fold({ open, onToggle, controls, children }: { open: boolean; onToggle: () => void; controls?: string; children: string }) {
   return (
     <button type="button" className="bd-act bd-fold" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
       {children}
@@ -150,7 +149,7 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
             </li>
           ))}
         </ol>
-        <Fold open={pathOpen} onToggle={() => setPathOpen((o) => !o)} controls={`${lineId} ${pathId}`}>
+        <Fold open={pathOpen} onToggle={() => setPathOpen((o) => !o)} controls={pathOpen ? pathId : undefined}>
           {pathOpen ? "Hide details" : "Show details"}
         </Fold>
         {pathOpen && (
@@ -176,7 +175,7 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
           </span>
           <span className="bd-probn">{problems.length > 0 ? plural(problems.length, "problem", "problems") : "No problems"}</span>
           {problems.length > 0 && (
-            <Fold open={libOpen} onToggle={() => setLibOpen((o) => !o)} controls={libId}>
+            <Fold open={libOpen} onToggle={() => setLibOpen((o) => !o)} controls={libOpen ? libId : undefined}>
               {libOpen ? "Hide problems" : "Show problems"}
             </Fold>
           )}
