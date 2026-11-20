@@ -62,12 +62,20 @@ export function Shell({ baseUrl, fetch: f, path = window.location.pathname }: Pr
     }
   }, [phase]);
 
+  // Forgetting the token on this device puts the unlock back, as if the browser had never been unlocked.
+  const forget = () => {
+    store.clear();
+    setLock({ rejected: false });
+    setPhase("ask");
+    setAttempt((n) => n + 1);
+  };
+
   const covered = lock !== null || phase !== "gone";
   return (
     <>
       {!lock && (
         <div className="shell-app" inert={covered} data-handover={phase === "open" ? "" : undefined}>
-          <App key={round} api={api} keys={!covered} />
+          <App key={round} api={api} keys={!covered} onForget={store.get() ? forget : undefined} />
         </div>
       )}
       {covered && (

@@ -10,9 +10,11 @@
     {"id": "temp_path", "name": "Temp path", "status": "ok", "message": "On the same filesystem as the library, so imports are atomic."},
     {"id": "jellyfin", "name": "Jellyfin", "status": "error", "message": "Jellyfin is unreachable. Imports still succeed; refreshes are skipped."}
   ],
+  "libraryTotals": {"movies": 7, "episodes": 15},
   "libraryProblems": [
     {"path": "Movies/Heat", "reason": "ambiguous", "message": "Matched more than one TMDB title (1995 and 1986); add the title to pick one."},
     {"path": "Series/Unknown Show", "reason": "unmatched", "message": "No TMDB title matches this folder name."},
-    {"path": "Series/House/Season 4/notes.txt", "reason": "unparsed_file", "message": "The file name has no S01E01 token; ignored."}
+    {"path": "Series/House/Season 4/notes.txt", "reason": "unparsed_file", "message": "The file name has no S01E01 token; ignored."},
+    {"path": "Movies/Everything Everywhere All At Once (2022)/Extras/Behind The Scenes/Deleted And Extended Scenes Director Commentary Track/commentary-track-01-original-uncompressed.mkv", "reason": "unparsed_file", "message": "The file name has no title or year token; ignored."}
   ]
 }

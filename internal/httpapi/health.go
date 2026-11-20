@@ -81,6 +81,11 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 		a.internal(w, r, err)
 		return
 	}
+	movies, episodes, err := a.Catalog.LibraryTotals(r.Context())
+	if err != nil {
+		a.internal(w, r, err)
+		return
+	}
 	type problemJSON struct {
 		Path    string `json:"path"`
 		Reason  string `json:"reason"`
@@ -92,6 +97,7 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": status, "dryRun": a.DryRun, "checks": checks, "libraryProblems": library2,
+		"libraryTotals": map[string]int{"movies": movies, "episodes": episodes},
 	})
 }
 

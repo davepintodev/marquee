@@ -537,11 +537,19 @@ export interface components {
             reason: "unmatched" | "ambiguous" | "unparsed_file";
             message: string;
         };
+        /** @description How much the library holds, so a client need not read every title to say so. */
+        LibraryTotals: {
+            /** @description Movies in the library. */
+            movies: number;
+            /** @description Episodes of every series in the library. */
+            episodes: number;
+        };
         Health: {
             status: components["schemas"]["CheckStatus"];
             dryRun: boolean;
             checks: components["schemas"]["HealthCheck"][];
             libraryProblems: components["schemas"]["LibraryProblem"][];
+            libraryTotals: components["schemas"]["LibraryTotals"];
         };
     };
     responses: {
@@ -1158,7 +1166,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Overall status, checks and library problems. */
+            /** @description Overall status, checks, library problems and library totals. */
             200: {
                 headers: {
                     [name: string]: unknown;
