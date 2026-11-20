@@ -1,13 +1,25 @@
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { type FocusEvent, useEffect, useId, useRef, useState } from "react";
 import type { Title } from "./api/types";
+import { useEscape } from "./useEscape";
 import { ago, inHours, reasonLabel } from "./words";
 
 export function Attempts({ title }: { title: Title }) {
   const failed = (title.history ?? []).filter((h) => h.kind === "failed").reverse();
   const next = title.nextSearchAt;
   const [open, setOpen] = useState(false);
+  const [hover, setHover] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const shown = !dismissed && (open || hover || focused);
   const root = useRef<HTMLSpanElement>(null);
   const tip = useId();
+
+  // The tooltip shows on hover, on keyboard focus and when pinned by a click; Esc hides it however it came up,
+  // until the pointer leaves or focus moves on.
+  useEscape(shown, () => {
+    setOpen(false);
+    setDismissed(true);
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -21,16 +33,35 @@ export function Attempts({ title }: { title: Title }) {
   if (failed.length === 0 && !next) return null;
   const summary = title.historySummary || (next ? `Next search in ${inHours(next)}.` : "");
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== "Escape" || !open) return;
-    e.stopPropagation();
-    setOpen(false);
+  const onFocus = (e: FocusEvent) => {
+    try {
+      setFocused(e.target.matches(":focus-visible"));
+    } catch {
+      setFocused(false);
+    }
   };
 
   return (
-    <span className="ts-att" ref={root} onKeyDown={onKeyDown}>
+    <span
+      className="ts-att"
+      ref={root}
+      data-dismissed={dismissed || undefined}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => {
+        setHover(false);
+        setDismissed(false);
+      }}
+      onFocus={onFocus}
+      onBlur={() => {
+        setFocused(false);
+        setDismissed(false);
+      }}
+    >
       {next && <span className="ts-att-next">{`next try in ${inHours(next)}`}</span>}
-      <button type="button" className="ts-att-info" aria-label="About these attempts" aria-expanded={open} aria-controls={tip} onClick={() => setOpen(!open)}>
+      <button type="button" className="ts-att-info" aria-label="About these attempts" aria-expanded={open} aria-controls={tip} onClick={() => {
+          setDismissed(false);
+          setOpen(!open);
+        }}>
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <circle cx="8" cy="8" r="6.6" />
           <path d="M6.2 6.3a1.9 1.9 0 1 1 2.7 1.7c-.6.3-.9.7-.9 1.3" />

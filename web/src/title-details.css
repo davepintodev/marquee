@@ -120,8 +120,8 @@
   outline-offset: 0;
 }
 
-.ts-att:hover .ts-att-tip,
-.ts-att:has(.ts-att-info:focus-visible) .ts-att-tip,
+.ts-att:not([data-dismissed]):hover .ts-att-tip,
+.ts-att:not([data-dismissed]):has(.ts-att-info:focus-visible) .ts-att-tip,
 .ts-att-tip[data-open] {
   opacity: 1;
   visibility: visible;

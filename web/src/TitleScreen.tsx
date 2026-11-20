@@ -11,6 +11,7 @@ import { MonitorMark } from "./MonitorMark";
 import { ProgressLine } from "./Progress";
 import { ReleaseList } from "./ReleaseList";
 import { BackBar, Collapse, RemoveBlock } from "./TitleParts";
+import { useEscape } from "./useEscape";
 import { useTitleScreen } from "./useTitleScreen";
 import { inHours, stateLabel } from "./words";
 import "./icons.css";
@@ -81,6 +82,14 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
     }, FOLD_MS);
   }, []);
 
+  // While a release list is open, or folding, Esc belongs to it; only after that does App's Esc leave the page.
+  useEscape(open !== null, () => {
+    if (closing || !open) return;
+    const row = open;
+    closeRow();
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-ep="${row}"]`)?.focus({ preventScroll: true }));
+  });
+
   const t = load.status === "ok" ? load.title : null;
   const ordered = useMemo(() => (t ? [...t.seasons].sort((a, b) => (a.number === 0 ? 1 : b.number === 0 ? -1 : a.number - b.number)) : []), [t]);
   const chosen = ordered.find((s) => s.number === season) ?? defaultSeason(t, ordered);
@@ -134,17 +143,8 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
   const retry = (h: HistoryEntry) => run(h.id, () => api.retry(h.id), `Searching for “${t.title}” again.`);
   const monitored = t.monitored !== false;
 
-  // Esc folds an open release list first; only when none is open does App's own Esc handler leave the page.
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== "Escape" || !open || closing) return;
-    e.stopPropagation();
-    const row = open;
-    closeRow();
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-ep="${row}"]`)?.focus({ preventScroll: true }));
-  };
-
   return (
-    <div className="ts" data-enter={enter || undefined} ref={root} role="main" aria-labelledby="ts-h1" onKeyDown={onKeyDown}>
+    <div className="ts" data-enter={enter || undefined} ref={root} role="main" aria-labelledby="ts-h1">
       <BackBar title={t.title} solid={scrolled} back={back} onClose={onClose} />
 
       <div className="ts-hero">

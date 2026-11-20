@@ -288,6 +288,53 @@ test("Esc folds an open episode first and leaves the page where it is", async ()
   await waitFor(() => expect(window.location.hash).toBe("#/grid"));
 });
 
+test("Esc pressed while an episode row is folding does not leave the page, and neither does Esc with focus on the page body", async () => {
+  await open(house(), (url) => (url.pathname === "/api/titles/series-2/releases" ? json({ candidates: [], dropped: [] }) : undefined));
+  const row = screen.getByRole("button", { name: /S04E02 Big Baby/ });
+  fireEvent.click(row);
+  await screen.findByText(/has nothing for/);
+
+  (document.activeElement as HTMLElement | null)?.blur();
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(window.location.hash).toBe("#/title/series-2");
+  await waitFor(() => expect(row.getAttribute("aria-expanded")).toBe("false"));
+
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
+});
+
+test("Esc closes the attempts explanation first, however it was opened, then the open row, then leaves the page", async () => {
+  await open(house(), (url) => (url.pathname === "/api/titles/series-2/releases" ? json({ candidates: [], dropped: [] }) : undefined));
+  const info = screen.getByRole("button", { name: "About these attempts" });
+  const tip = screen.getByRole("tooltip", { hidden: true });
+  const row = screen.getByRole("button", { name: /S04E02 Big Baby/ });
+  fireEvent.click(row);
+  await screen.findByText(/has nothing for/);
+
+  fireEvent.mouseEnter(info.parentElement!);
+  (document.activeElement as HTMLElement | null)?.blur();
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(info.parentElement!.hasAttribute("data-dismissed")).toBe(true);
+  expect(row.getAttribute("aria-expanded")).toBe("true");
+  expect(window.location.hash).toBe("#/title/series-2");
+
+  fireEvent.mouseLeave(info.parentElement!);
+  expect(info.parentElement!.hasAttribute("data-dismissed")).toBe(false);
+  vi.spyOn(HTMLElement.prototype, "matches").mockImplementation(function (this: HTMLElement, sel: string) {
+    return sel === ":focus-visible" ? this === info : Element.prototype.matches.call(this, sel);
+  });
+  fireEvent.focus(info);
+  fireEvent.keyDown(info, { key: "Escape" });
+  expect(info.parentElement!.hasAttribute("data-dismissed")).toBe(true);
+  expect(row.getAttribute("aria-expanded")).toBe("true");
+  expect(tip.hasAttribute("data-open")).toBe(false);
+
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  await waitFor(() => expect(row.getAttribute("aria-expanded")).toBe("false"));
+  expect(window.location.hash).toBe("#/title/series-2");
+});
+
 test("History is one muted line with the progress and the next try, closed until opened", async () => {
   await open(house());
   const toggle = screen.getByRole("button", { name: "History" });
