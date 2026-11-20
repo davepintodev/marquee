@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
-import { Wall as WallView } from "./Wall";
+import { Library } from "./Library";
 import { createApi } from "./api/client";
 import type { Badge, TitleSummary, Wall } from "./api/types";
 
@@ -40,7 +40,8 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function setup(handler: Handler) {
+function setup(handler: Handler, hash = "#/grid") {
+  window.location.hash = hash;
   const calls: URL[] = [];
   const writes: { method: string; path: string; body: unknown }[] = [];
   const fetchStub = vi.fn(async (input: Request) => {
@@ -57,6 +58,7 @@ function setup(handler: Handler) {
   return { calls, writes };
 }
 
+const grid = () => within(document.querySelector<HTMLElement>(".grid-screen")!);
 const bar = () => screen.getByRole("searchbox", { name: /search movies and series/i });
 const type = (v: string) => fireEvent.change(bar(), { target: { value: v } });
 const root = () => document.querySelector("[data-mode]") as HTMLElement;
@@ -69,36 +71,44 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("the wall shows the API's tiles in order with their badges and same-origin images", async () => {
+test("the library grid lists the API's titles, library first, each with its state as a bar and no pill", async () => {
   setup((url) => (url.pathname === "/api/wall" ? json(wall) : json({ error: "nope" }, 404)));
 
-  const tiles = await screen.findAllByRole("button", { name: /house|hail mary|dune/i });
+  const tiles = await grid().findAllByRole("button", { name: /house|hail mary|dune/i });
   const names = tiles.map((t) => t.getAttribute("aria-label"));
-  expect(names.slice(0, 3)).toEqual(["House (2004), Season 4 · 3 missing", "Project Hail Mary (2026), Downloaded", "Dune (2021)"]);
-  expect(within(tiles[0]).getByText("Season 4 · 3 missing")).toBeTruthy();
-  expect(within(tiles[2]).queryByText(/downloaded|missing/i)).toBeNull();
-  const img = tiles[0].querySelector("img")!;
-  expect(img.getAttribute("src")).toMatch(new RegExp(`^${BASE}/api/images/(poster|backdrop)/series-2$`));
-  expect(root().dataset.mode).toBe("wall");
+  expect(names).toEqual(["House (2004), Season 4 · 3 missing", "Project Hail Mary (2026), Downloaded", "Dune (2021)"]);
+  expect(tiles[0].querySelector<HTMLElement>(".meter")?.dataset.state).toBe("partial_season");
+  expect(tiles[1].querySelector(".meter")).toBeNull();
+  expect(tiles[2].querySelector(".meter")).toBeNull();
+  expect(tiles[0].querySelector(".badge")).toBeNull();
+  expect(within(tiles[0]).getByText("House")).toBeTruthy();
+  expect(within(tiles[0]).getByText("2004 · Series")).toBeTruthy();
+  expect(tiles[0].querySelector("img")!.getAttribute("src")).toBe(`${BASE}/api/images/poster/series-2`);
+  expect(root().dataset.mode).toBe("library");
 });
 
-test("portrait tiles ask for the poster and wide tiles for the backdrop", async () => {
+test("the filter chips count and narrow the library", async () => {
   setup(() => json(wall));
-  await screen.findAllByRole("button", { name: /house/i });
-  const kinds = new Set(Array.from(document.querySelectorAll(".tile img")).map((i) => /\/(poster|backdrop)\//.exec(i.getAttribute("src")!)![1]));
-  expect(kinds).toEqual(new Set(["poster", "backdrop"]));
-  for (const tile of Array.from(document.querySelectorAll<HTMLElement>(".tile"))) {
-    const want = tile.dataset.shape === "portrait" ? "poster" : "backdrop";
-    expect(tile.querySelector("img")!.getAttribute("src")).toContain(`/${want}/`);
-  }
+  await grid().findAllByRole("button", { name: /house/i });
+  const chips = within(grid().getByRole("group", { name: /filter the library/i }));
+
+  expect(chips.getAllByRole("button").map((c) => c.textContent)).toEqual(["All3", "Movies2", "Series1", "Downloading0", "Missing1"]);
+  fireEvent.click(chips.getByRole("button", { name: /^movies/i }));
+
+  expect(chips.getByRole("button", { name: /^movies/i }).getAttribute("aria-pressed")).toBe("true");
+  expect(grid().getAllByRole("button", { name: /\(20\d\d\)/ }).map((t) => t.getAttribute("aria-label"))).toEqual(["Project Hail Mary (2026), Downloaded", "Dune (2021)"]);
+  fireEvent.click(chips.getByRole("button", { name: /^missing/i }));
+  expect(grid().getAllByRole("button", { name: /\(20\d\d\)/ }).map((t) => t.getAttribute("aria-label"))).toEqual(["House (2004), Season 4 · 3 missing"]);
+  fireEvent.click(chips.getByRole("button", { name: /^downloading/i }));
+  expect(grid().getByText("Nothing here.")).toBeTruthy();
 });
 
-test("typing switches to search mode, shows results with year, kind and badge", async () => {
+test("typing switches to search mode and shows the results in the same grid, with year, kind and state", async () => {
   const { calls } = setup((url) => {
     if (url.pathname === "/api/wall") return json(wall);
     return json({ results: [dune, house] });
   });
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
 
   type("du");
 
@@ -106,37 +116,39 @@ test("typing switches to search mode, shows results with year, kind and badge", 
   const results = await screen.findByRole("list", { name: /results/i });
   const items = within(results).getAllByRole("listitem");
   expect(items).toHaveLength(2);
+  expect(screen.getByText("2 results")).toBeTruthy();
   expect(within(items[0]).getByText("Dune")).toBeTruthy();
-  expect(within(items[0]).getByText("2021 · movie")).toBeTruthy();
+  expect(within(items[0]).getByText("2021 · Movie")).toBeTruthy();
   expect(within(items[0]).queryByText(/downloaded|missing/i)).toBeNull();
-  expect(within(items[1]).getByText("2004 · series")).toBeTruthy();
+  expect(within(items[1]).getByText("2004 · Series")).toBeTruthy();
   expect(within(items[1]).getByText("Season 4 · 3 missing")).toBeTruthy();
+  expect(items[1].querySelector<HTMLElement>(".meter")?.dataset.state).toBe("partial_season");
   expect(items[0].querySelector("img")!.getAttribute("src")).toBe(`${BASE}/api/images/poster/movie-1`);
   expect(calls.filter((u) => u.pathname === "/api/search").map((u) => u.searchParams.get("q"))).toEqual(["du"]);
 });
 
-test("Esc clears the search and brings the wall back", async () => {
+test("Esc clears the search and brings the library back", async () => {
   setup((url) => (url.pathname === "/api/wall" ? json(wall) : json({ results: [dune] })));
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
   type("dune");
   await screen.findByRole("list", { name: /results/i });
 
   fireEvent.keyDown(window, { key: "Escape" });
 
-  expect(root().dataset.mode).toBe("wall");
+  expect(root().dataset.mode).toBe("library");
   expect((bar() as HTMLInputElement).value).toBe("");
   expect(screen.queryByRole("list", { name: /results/i })).toBeNull();
   expect(document.activeElement).toBe(bar());
 });
 
-test("a blank query never reaches the API and stays on the wall", async () => {
+test("a blank query never reaches the API and stays on the library", async () => {
   const { calls } = setup(() => json(wall));
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
 
   type("   ");
   await new Promise((r) => setTimeout(r, 350));
 
-  expect(root().dataset.mode).toBe("wall");
+  expect(root().dataset.mode).toBe("library");
   expect(calls.some((u) => u.pathname === "/api/search")).toBe(false);
 });
 
@@ -151,12 +163,12 @@ test("a slow answer to an old query never replaces the newer results", async () 
     }
     return json({ results: [dune] });
   });
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
 
   type("du");
   await new Promise((r) => setTimeout(r, 300));
   type("dune");
-  await screen.findByText("Dune");
+  await screen.findByRole("list", { name: /results/i });
   release();
   await new Promise((r) => setTimeout(r, 50));
 
@@ -167,7 +179,7 @@ test("a slow answer to an old query never replaces the newer results", async () 
 
 test("no matches say so", async () => {
   setup((url) => (url.pathname === "/api/wall" ? json(wall) : json({ results: [] })));
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
   type("zzz");
   expect(await screen.findByText(/nothing found/i)).toBeTruthy();
 });
@@ -188,7 +200,7 @@ test("a search error shows the API's message, then clears when the query does", 
   setup((url) =>
     url.pathname === "/api/wall" ? json(wall) : json({ error: "TMDB did not answer" }, 502),
   );
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
 
   type("dune");
   expect((await screen.findByRole("alert")).textContent).toContain("TMDB did not answer");
@@ -208,13 +220,13 @@ test("a network failure and a non-JSON error body both give a plain message, nev
   await waitFor(() => expect(screen.getAllByRole("alert").some((a) => /502/.test(a.textContent ?? ""))).toBe(true));
 });
 
-test("an empty wall still shows the search bar", async () => {
+test("an empty library still shows the search bar", async () => {
   setup(() => json({ items: [] }));
-  expect(await screen.findByText(/nothing to show yet/i)).toBeTruthy();
+  expect(await grid().findByText(/nothing to show yet/i)).toBeTruthy();
   expect(bar()).toBeTruthy();
 });
 
-test("the wall reads as loading only while it loads, not when it is empty or failed", async () => {
+test("the library reads as loading only while it loads, not when it is empty or failed", async () => {
   let answer!: () => void;
   const held = new Promise<void>((r) => (answer = r));
   setup(async (url) => {
@@ -222,27 +234,30 @@ test("the wall reads as loading only while it loads, not when it is empty or fai
     await held;
     return json({ items: [] });
   });
-  expect(screen.getByTestId("wall").getAttribute("aria-busy")).toBe("true");
+  expect(grid().getByLabelText("Library").getAttribute("aria-busy")).toBe("true");
+  expect(screen.getByLabelText("Posters").getAttribute("aria-busy")).toBe("true");
 
   answer();
-  await screen.findByText(/nothing to show yet/i);
-  expect(screen.getByTestId("wall").getAttribute("aria-busy")).toBe("false");
+  await grid().findByText(/nothing to show yet/i);
+  expect(grid().getByLabelText("Library").getAttribute("aria-busy")).toBe("false");
+  expect(screen.getByLabelText("Posters").getAttribute("aria-busy")).toBe("false");
 });
 
 test("a failed wall stops reading as loading", async () => {
   setup((url) => (url.pathname === "/api/wall" ? json({ error: "down" }, 502) : json({ checks: [] })));
   await screen.findByRole("alert");
-  expect(screen.getByTestId("wall").getAttribute("aria-busy")).toBe("false");
+  expect(grid().getByLabelText("Library").getAttribute("aria-busy")).toBe("false");
+  expect(screen.getByLabelText("Posters").getAttribute("aria-busy")).toBe("false");
 });
 
 test("a poster that fails to load falls back to the title instead of a broken image", async () => {
   setup((url) => (url.pathname === "/api/wall" ? json(wall) : json({ results: [dune] })));
-  const [tile] = await screen.findAllByRole("button", { name: /house/i });
+  const [tile] = await grid().findAllByRole("button", { name: /house/i });
 
   fireEvent.error(tile.querySelector("img")!);
 
   expect(tile.querySelector("img")).toBeNull();
-  expect(within(tile).getByText("House")).toBeTruthy();
+  expect(tile.querySelector(".art-fallback")?.textContent).toContain("House");
 });
 
 test("Try again reloads the wall after an error", async () => {
@@ -264,7 +279,7 @@ test("a new query never shows the old query's results while its own answer is pe
     if (url.searchParams.get("q") === "dune") return json({ results: [dune] });
     return new Promise<Response>(() => {});
   });
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
   type("dune");
   await screen.findByRole("list", { name: /results/i });
 
@@ -280,7 +295,7 @@ test("a new query never shows the old query's error while its own answer is pend
     if (url.searchParams.get("q") === "dune") return json({ error: "TMDB did not answer" }, 502);
     return new Promise<Response>(() => {});
   });
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
   type("dune");
   await screen.findByRole("alert");
 
@@ -290,39 +305,17 @@ test("a new query never shows the old query's error while its own answer is pend
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("a tile whose image failed tries the new image when its slot shows another title", async () => {
+test("a library tile whose image failed tries the new image when its title gets another poster", async () => {
   const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
-  const { rerender } = render(<WallView api={api} items={[house, hail]} width={1200} height={800} />);
-  const [tile] = screen.getAllByRole("button");
+  const { rerender } = render(<Library api={api} items={[house, hail]} />);
+  const [tile] = screen.getAllByRole("button", { name: /\(20\d\d\)/ });
   fireEvent.error(tile.querySelector("img")!);
   expect(tile.querySelector("img")).toBeNull();
 
-  rerender(<WallView api={api} items={[dune, hail]} width={1200} height={800} />);
+  rerender(<Library api={api} items={[{ ...house, posterPath: "/api/images/poster/series-22" }, hail]} />);
 
-  const again = screen.getAllByRole("button")[0];
-  expect(again.querySelector("img")?.getAttribute("src")).toContain("movie-1");
-});
-
-test("a wall given a top inset sits below it and lays its tiles out in the height that is left", () => {
-  const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
-  render(<WallView api={api} items={[house, hail]} width={1200} height={800} top={68} />);
-
-  expect(screen.getByTestId("wall").style.top).toBe("68px");
-  const bottoms = screen.getAllByRole("button").map((b) => parseFloat(b.style.top) + parseFloat(b.style.height));
-  expect(Math.max(...bottoms)).toBeCloseTo(800 - 68, 0);
-});
-
-test("a wall given an edge inset keeps that margin on the sides and bottom", () => {
-  const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
-  render(<WallView api={api} items={[house, hail]} width={1200} height={800} top={68} edge={11} />);
-
-  const el = screen.getByTestId("wall");
-  expect([el.style.left, el.style.right, el.style.bottom]).toEqual(["11px", "11px", "11px"]);
-  const tiles = screen.getAllByRole("button");
-  const rights = tiles.map((b) => parseFloat(b.style.left) + parseFloat(b.style.width));
-  const bottoms = tiles.map((b) => parseFloat(b.style.top) + parseFloat(b.style.height));
-  expect(Math.max(...rights)).toBeCloseTo(1200 - 22, 0);
-  expect(Math.max(...bottoms)).toBeCloseTo(800 - 68 - 11, 0);
+  const again = screen.getAllByRole("button", { name: /\(20\d\d\)/ })[0];
+  expect(again.querySelector("img")?.getAttribute("src")).toContain("series-22");
 });
 
 const dunePage = { ...dune, overview: "Paul Atreides leads the Fremen." };
@@ -344,7 +337,7 @@ function popupApi(extra: Handler = () => json({ error: "nope" }, 404)): Handler 
   };
 }
 
-const openTile = async (name: RegExp) => fireEvent.click((await screen.findAllByRole("button", { name }))[0]);
+const openTile = async (name: RegExp) => fireEvent.click((await grid().findAllByRole("button", { name }))[0]);
 const dialog = () => screen.getByRole("dialog");
 
 test("clicking a wall tile opens the popup with poster, year, kind and summary, and adds nothing", async () => {
@@ -364,7 +357,7 @@ test("clicking a wall tile opens the popup with poster, year, kind and summary, 
 
 test("clicking a search result opens the popup and adds nothing", async () => {
   const { writes } = setup(popupApi());
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
   type("dune");
   const results = await screen.findByRole("list", { name: /results/i });
 
@@ -472,7 +465,7 @@ test("an added title reads as in the library on its tile and when its popup is r
 
 test("Esc closes the popup first and keeps the search; the backdrop and Close also close it", async () => {
   setup(popupApi());
-  await screen.findAllByRole("button", { name: /house/i });
+  await grid().findAllByRole("button", { name: /house/i });
   type("dune");
   const results = await screen.findByRole("list", { name: /results/i });
   const opener = within(results).getByRole("button", { name: /dune/i });

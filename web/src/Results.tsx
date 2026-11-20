@@ -1,7 +1,6 @@
 import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
-import { Art } from "./Art";
-import { BadgePill } from "./BadgePill";
+import { Cell } from "./Cell";
 
 interface Props {
   api: Api;
@@ -11,19 +10,15 @@ interface Props {
 
 export function Results({ api, results, onSelect }: Props) {
   return (
-    <ul className="grid" aria-label="Results">
-      {results.map((t) => (
-        <li key={t.id}>
-          <button type="button" className="card" onClick={() => onSelect?.(t)}>
-            <span className="card-art">
-              <Art src={api.imageUrl(t.posterPath)} title={t.title} year={t.year} />
-              <BadgePill badge={t.inLibrary ? t.badge : undefined} />
-            </span>
-            <span className="card-name">{t.title}</span>
-            <span className="card-meta">{`${t.year} · ${t.kind}`}</span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="found">
+      <p className="found-count">{results.length === 1 ? "1 result" : `${results.length} results`}</p>
+      <ul className="grid" aria-label="Results">
+        {results.map((t) => (
+          <li key={t.id}>
+            <Cell api={api} title={t} markOwned onSelect={onSelect} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -2,28 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Badge, LiveEvent, Title, TitleSummary } from "./api/types";
 import { Activity } from "./Activity";
+import { Front } from "./Front";
 import { Health } from "./Health";
+import { Library } from "./Library";
 import { Popup } from "./Popup";
 import { Results } from "./Results";
-import { goTo, useRoute } from "./route";
+import { leaveTo, pushTo, useRoute } from "./route";
 import { TitleDetail } from "./TitleDetail";
 import { useLive } from "./useLive";
 import { useViewport } from "./useViewport";
-import { Wall } from "./Wall";
 
 // Waiting this long after the last keystroke keeps one TMDB search per
 // pause instead of one per letter.
 const TYPING_PAUSE_MS = 200;
 
 const TOAST_MS = 5000;
-
-// The wall's frame follows --edge in styles.css (16px, 12px at the phone breakpoint): the
-// header pills sit that far in, the wall starts a gap below their 40px height, and each
-// tile's own half-gap padding is taken off so the visible art lines up with the pills.
-const TILE_PAD = 5;
-const edgeOf = (width: number) => (width <= 640 ? 12 : 16);
-const wallTop = (width: number) => edgeOf(width) + 40 + 12 - TILE_PAD;
-const wallEdge = (width: number) => edgeOf(width) - TILE_PAD;
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; message: string };
 
@@ -36,7 +29,6 @@ function isAbort(e: unknown) {
 }
 
 export function App({ api }: { api: Api }) {
-  const { width, height } = useViewport();
   const [query, setQuery] = useState("");
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
@@ -48,13 +40,30 @@ export function App({ api }: { api: Api }) {
   const [live, setLive] = useState<Record<string, Badge | null>>({});
   const [toast, setToast] = useState<{ n: number; text: string } | null>(null);
   const bar = useRef<HTMLInputElement>(null);
+  const gridScreen = useRef<HTMLDivElement>(null);
+  const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
   const route = useRoute();
-  const onPage = route.name !== "wall";
-  // Failure here is quiet by design: the pill shows no dot when Health cannot be read.
+  const { width, height } = useViewport();
+  const atFront = route.name === "wall";
+  const onPage = route.name === "activity" || route.name === "health" || route.name === "title";
+  // Failure here is quiet by design: the Health link shows no dot when Health cannot be read.
   const [attention, setAttention] = useState(false);
-  const toWall = useCallback(() => goTo({ name: "wall" }), []);
+  const enter = useCallback((seed = "") => {
+    setQuery(seed);
+    pushTo({ name: "grid" }, "grid");
+  }, []);
+  const leave = useCallback(() => leaveTo({ name: "wall" }, "grid"), []);
+  const retryWall = useCallback(() => {
+    setWall({ status: "loading" });
+    setWallTry((n) => n + 1);
+  }, []);
+  const closePage = useCallback(() => leaveTo({ name: "grid" }, "page"), []);
+  const openPage = (name: "activity" | "health") => (e: React.MouseEvent) => {
+    e.preventDefault();
+    pushTo({ name }, "page");
+  };
 
-  const q = query.trim();
+  const q = atFront ? "" : query.trim();
   const searching = q !== "";
 
   useEffect(() => {
@@ -67,14 +76,14 @@ export function App({ api }: { api: Api }) {
   }, [api, wallTry]);
 
   useEffect(() => {
-    if (onPage) return;
+    if (onPage || atFront) return;
     const ctl = new AbortController();
     api.health(ctl.signal).then(
       (h) => !ctl.signal.aborted && setAttention(h.checks.some((c) => c.status === "error")),
       () => !ctl.signal.aborted && setAttention(false),
     );
     return () => ctl.abort();
-  }, [api, onPage]);
+  }, [api, onPage, atFront]);
 
   useEffect(() => {
     if (!q) return;
@@ -105,13 +114,42 @@ export function App({ api }: { api: Api }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (onPage) toWall();
-      else if (selected) setSelected(null);
-      else clear();
+      if (selected) setSelected(null);
+      else if (onPage) closePage();
+      else if (atFront) return;
+      else if (searching) clear();
+      else leave();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clear, selected, onPage, toWall]);
+  }, [clear, selected, onPage, atFront, searching, closePage, leave]);
+
+  useEffect(() => {
+    if (!atFront || selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      const onControl = t instanceof HTMLElement && /^(BUTTON|A|INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+      if (onControl && (e.key === "Enter" || e.key === " ")) return;
+      if (e.key !== "Enter" && e.key.length !== 1) return;
+      e.preventDefault();
+      enter(e.key === "Enter" || e.key.trim() === "" || e.key === "/" ? "" : e.key);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [atFront, selected, enter]);
+
+  // A control left focused in the grid would swallow the keys that walk in from the wall.
+  useEffect(() => {
+    if (atFront && gridScreen.current?.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+  }, [atFront]);
+
+  // The search field takes focus as soon as the grid is showing, so letters typed right after the first
+  // one (which opened it) land in the field.
+  useEffect(() => {
+    if (atFront || touch || onPage) return;
+    bar.current?.focus();
+  }, [atFront, onPage, touch]);
 
   // The wall is the library first, so a title that joins it is fetched for once the wall is up.
   const wallIds = useRef<Set<string> | null>(null);
@@ -166,77 +204,105 @@ export function App({ api }: { api: Api }) {
   }, [joinWall]);
   const notify = useCallback((text: string) => setToast((prev) => ({ n: (prev?.n ?? 0) + 1, text })), []);
 
-  const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-
   return (
-    <div className="app" data-mode={onPage ? "page" : searching ? "search" : "wall"}>
-      <Wall api={api} inert={searching || !!open || onPage} items={wallTitles} width={width} height={height} top={wallTop(width)} edge={wallEdge(width)} onSelect={setSelected} />
-
-      {!searching && !onPage && wall.status === "error" && (
-        <div className="notice" role="alert">
-          <p>{wall.message}</p>
-          <button type="button" onClick={() => {
-              setWall({ status: "loading" });
-              setWallTry((n) => n + 1);
-            }}>
-            Try again
-          </button>
-        </div>
-      )}
-      {!searching && !onPage && wall.status === "ok" && wall.data.length === 0 && (
-        <div className="notice">
-          <p>Nothing to show yet. Search for a title to start.</p>
-        </div>
-      )}
-
-      <nav className="nav" aria-label="Pages" inert={!!open || onPage || searching}>
-        <a className="nav-link" href="#/activity">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 12h4l3 8 4-16 3 8h4" />
-          </svg>
-          Activity
-        </a>
-        <a
-          className="nav-link"
-          href="#/health"
-          aria-label={attention ? "Health: something needs attention" : "Health"}
-          title={attention ? "Health: something needs attention" : "Health"}
-        >
-          {attention && <i aria-hidden="true" />}
-          Health
-        </a>
-      </nav>
-
-      <div className="bar" inert={!!open || onPage}>
-        <svg className="bar-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="11" cy="11" r="7" />
-          <path d="M20 20l-4-4" />
-        </svg>
-        <input
-          ref={bar}
-          role="searchbox"
-          type="text"
-          aria-label="Search movies and series"
-          placeholder="search"
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          enterKeyHint="search"
-          autoFocus={!touch}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <div className="results" aria-hidden={!searching || onPage} inert={!searching || !!open || onPage}>
-        {searching && results.status === "error" && (
-          <div className="notice inline" role="alert">
-            <p>{results.message}</p>
+    <div className="app" data-screen={atFront ? "front" : "grid"} data-mode={onPage ? "page" : searching ? "search" : "library"}>
+      <div className="front" inert={!atFront || !!open}>
+        <Front api={api} items={wallTitles} width={width} height={height} onEnter={() => enter()} onSelect={setSelected} />
+        {atFront && wall.status === "error" && (
+          <div className="notice" role="alert">
+            <p>{wall.message}</p>
+            <button type="button" onClick={retryWall}>
+              Try again
+            </button>
           </div>
         )}
-        {searching && results.status === "loading" && <p className="hint">Searching…</p>}
-        {searching && results.status === "ok" && results.data.length === 0 && <p className="hint">Nothing found.</p>}
-        {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} onSelect={setSelected} />}
+        {atFront && wall.status === "ok" && wall.data.length === 0 && (
+          <div className="notice">
+            <p>Nothing to show yet.</p>
+            <button type="button" onClick={() => enter()}>
+              Add a title
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div ref={gridScreen} className="grid-screen" inert={atFront}>
+        <header className="top" inert={!!open || onPage}>
+          <span className="mark">marquee</span>
+          <div className="search">
+            <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-4-4" />
+            </svg>
+            <input
+              ref={bar}
+              role="searchbox"
+              type="text"
+              aria-label="Search movies and series"
+              placeholder="search"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              enterKeyHint="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <button type="button" className="search-clear" aria-label="Clear search" onClick={clear}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7 7l10 10M17 7L7 17" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <nav className="nav" aria-label="Pages">
+            <a className="nav-link" href="#/activity" onClick={openPage("activity")}>
+              Activity
+            </a>
+            <a
+              className="nav-link"
+              href="#/health"
+              onClick={openPage("health")}
+              aria-label={attention ? "Health: something needs attention" : "Health"}
+              title={attention ? "Health: something needs attention" : "Health"}
+            >
+              {attention && <i aria-hidden="true" />}
+              Health
+            </a>
+          </nav>
+        </header>
+
+        <div className="stage library-stage" aria-hidden={searching} inert={searching || !!open || onPage}>
+          <div className="stage-in">
+            <Library api={api} items={wallTitles} onSelect={setSelected} />
+            {!atFront && !searching && !onPage && wall.status === "error" && (
+              <div className="notice" role="alert">
+                <p>{wall.message}</p>
+                <button type="button" onClick={retryWall}>
+                  Try again
+                </button>
+              </div>
+            )}
+            {!atFront && !searching && !onPage && wall.status === "ok" && wall.data.length === 0 && (
+              <div className="notice">
+                <p>Nothing to show yet. Search for a title to start.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="stage results-stage" aria-hidden={!searching || onPage} inert={!searching || !!open || onPage}>
+          <div className="stage-in">
+            {searching && results.status === "error" && (
+              <div className="notice" role="alert">
+                <p>{results.message}</p>
+              </div>
+            )}
+            {searching && results.status === "loading" && <p className="hint">Searching…</p>}
+            {searching && results.status === "ok" && results.data.length === 0 && <p className="hint">Nothing found.</p>}
+            {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} onSelect={setSelected} />}
+          </div>
+        </div>
       </div>
 
       {open && (
@@ -254,18 +320,18 @@ export function App({ api }: { api: Api }) {
           key={route.id}
           api={api}
           id={route.id}
-          onClose={toWall}
+          onClose={closePage}
           onChanged={keep}
           onRemoved={(t: Title) => {
             keep({ ...t, inLibrary: false, monitored: undefined, badge: undefined });
-            toWall();
+            closePage();
             notify(`Removed “${t.title}” from marquee. Its files are still on disk.`);
           }}
           onToast={notify}
         />
       )}
-      {route.name === "health" && <Health api={api} onClose={toWall} />}
-      {route.name === "activity" && <Activity api={api} onClose={toWall} onChanged={keep} onToast={notify} />}
+      {route.name === "health" && <Health api={api} onClose={closePage} />}
+      {route.name === "activity" && <Activity api={api} onClose={closePage} onChanged={keep} onToast={notify} />}
       {toast && (
         <div className="toast" role="status">
           {toast.text}

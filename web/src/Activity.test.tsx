@@ -193,9 +193,9 @@ test("an empty Activity says nothing is happening; a failing API says so with a 
   expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
 });
 
-test("the wall links to Activity and a library popup links to the title's detail", async () => {
+test("the grid links to Activity and a library popup links to the title's detail", async () => {
   const wall = { items: [{ source: "library", title: lib({ id: "series-4", title: "House", kind: "series", tmdbId: 4 }) }] };
-  setupApp(() => json(wall), "");
+  setupApp(() => json(wall), "#/grid");
   const link = await screen.findByRole("link", { name: "Activity" });
   expect(link.getAttribute("href")).toBe("#/activity");
 

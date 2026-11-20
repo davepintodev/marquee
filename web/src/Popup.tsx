@@ -5,7 +5,7 @@ import { AddMenu, addChoices, type AddChoice } from "./AddMenu";
 import { Art } from "./Art";
 import { BadgePill } from "./BadgePill";
 import { InteractiveSearch } from "./InteractiveSearch";
-import { goTo, hrefOf } from "./route";
+import { hrefOf, pushTo } from "./route";
 
 interface Props {
   api: Api;
@@ -54,7 +54,7 @@ export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Pr
           onToast(choice === "select" ? `Added “${title.title}”, nothing monitored yet. Tick what you want here.` : `Added “${title.title}”, ${said}.`);
           if (choice === "select") {
             onDetails();
-            goTo({ name: "title", id: added.id });
+            pushTo({ name: "title", id: added.id }, "page");
           }
         } else {
           onToast(`Added “${title.title}”. marquee will keep looking until it has it.`);
@@ -112,7 +112,15 @@ export function Popup({ api, title, onClose, onChanged, onToast, onDetails }: Pr
                 {isSeries && !title.inLibrary && <AddMenu busy={busy} onChoose={press} />}
               </div>
               {title.inLibrary && (
-                <a className="btn-secondary" href={hrefOf({ name: "title", id: title.id })} onClick={onDetails}>
+                <a
+                  className="btn-secondary"
+                  href={hrefOf({ name: "title", id: title.id })}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onDetails();
+                    pushTo({ name: "title", id: title.id }, "page");
+                  }}
+                >
                   Details
                 </a>
               )}

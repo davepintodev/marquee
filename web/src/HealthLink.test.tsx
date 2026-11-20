@@ -27,8 +27,8 @@ afterEach(() => {
   window.location.hash = "";
 });
 
-test("the wall has a plain-text Health pill, styled like Activity, that opens the Health page", async () => {
-  setupApp(serve(() => json(health("ok", "ok"))), "");
+test("the grid header has a plain-text Health link, styled like Activity, that opens the Health page", async () => {
+  setupApp(serve(() => json(health("ok", "ok"))), "#/grid");
 
   const link = await screen.findByRole("link", { name: "Health" });
   expect(link.getAttribute("href")).toBe("#/health");
@@ -42,8 +42,8 @@ test("the wall has a plain-text Health pill, styled like Activity, that opens th
   await screen.findByRole("list", { name: /checks/i });
 });
 
-test("the pill has no dot while every check passes, and a warning alone is not a failure", async () => {
-  setupApp(serve(() => json(health("ok", "warning"))), "");
+test("the link has no dot while every check passes, and a warning alone is not a failure", async () => {
+  setupApp(serve(() => json(health("ok", "warning"))), "#/grid");
 
   const link = await screen.findByRole("link", { name: "Health" });
   await new Promise((r) => setTimeout(r, 20));
@@ -51,8 +51,8 @@ test("the pill has no dot while every check passes, and a warning alone is not a
   expect(link.getAttribute("aria-label")).toBe("Health");
 });
 
-test("the pill shows a problem dot before the word and says something needs attention when a check fails", async () => {
-  setupApp(serve(() => json(health("ok", "error"))), "");
+test("the link shows a problem dot before the word and says something needs attention when a check fails", async () => {
+  setupApp(serve(() => json(health("ok", "error"))), "#/grid");
 
   const link = await screen.findByRole("link", { name: /health.*needs attention/i });
   const dot = link.querySelector("i");
@@ -62,21 +62,23 @@ test("the pill shows a problem dot before the word and says something needs atte
   expect(link.textContent).toBe("Health");
 });
 
-test("the pill has no dot while Health is loading and when the request fails", async () => {
+test("the link has no dot while Health is loading and when the request fails", async () => {
   let release!: (r: Response) => void;
   const pending = new Promise<Response>((r) => (release = r));
-  setupApp(serve(() => pending), "");
+  const { calls } = setupApp(serve(() => pending), "#/grid");
   const link = await screen.findByRole("link", { name: "Health" });
+  await waitFor(() => expect(calls.some((u) => u.pathname === "/api/health")).toBe(true));
   expect(link.querySelector("i")).toBeNull();
   release(json({ error: "down" }, 500));
   await new Promise((r) => setTimeout(r, 20));
   expect(screen.getByRole("link", { name: "Health" }).querySelector("i")).toBeNull();
+  expect(screen.getByRole("link", { name: "Health" }).getAttribute("aria-label")).toBe("Health");
   expect(screen.getByRole("searchbox")).toBeTruthy();
 });
 
 test("coming back from the Health page checks again", async () => {
   let failing = true;
-  setupApp(serve(() => json(failing ? health("error") : health("ok"))), "");
+  setupApp(serve(() => json(failing ? health("error") : health("ok"))), "#/grid");
   await screen.findByRole("link", { name: /needs attention/i });
 
   fireEvent.click(screen.getByRole("link", { name: /needs attention/i }));

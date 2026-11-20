@@ -153,7 +153,7 @@ test("an episode and the title can be unmonitored, and the page shows the answer
   ]);
 });
 
-test("removing a title asks first, says the files stay, and goes back to the wall", async () => {
+test("removing a title asks first, says the files stay, and goes back to the grid", async () => {
   const { writes } = setupApp(
     serve(house(), (url, init) => (init.method === "DELETE" && url.pathname === "/api/titles/series-2" ? new Response(null, { status: 204 }) : undefined)),
     "#/title/series-2",
@@ -168,7 +168,7 @@ test("removing a title asks first, says the files stay, and goes back to the wal
   fireEvent.click(screen.getByRole("button", { name: "Remove from marquee" }));
   fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
-  await waitFor(() => expect(window.location.hash).toBe("#/"));
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
   expect(writes).toEqual([{ method: "DELETE", path: "/api/titles/series-2", body: undefined }]);
   expect(await screen.findByRole("status")).toBeTruthy();
 });
@@ -226,11 +226,11 @@ test("download progress for this title moves the episode without a reload", asyn
   expect(calls.length).toBe(before);
 });
 
-test("Esc and the close button go back to the wall", async () => {
+test("Esc and the close button go back to the grid", async () => {
   setupApp(serve(house()), "#/title/series-2");
   await screen.findByRole("heading", { name: "House", level: 1 });
   fireEvent.keyDown(window, { key: "Escape" });
-  await waitFor(() => expect(window.location.hash).toBe("#/"));
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
   expect(screen.queryByRole("heading", { name: "House", level: 1 })).toBeNull();
 });
 
