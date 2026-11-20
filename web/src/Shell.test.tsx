@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Shell } from "./Shell";
 
@@ -69,6 +69,8 @@ test("a token marquee refuses is forgotten and asked for again, with the reason"
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringMatching(/not accepted/i));
   await waitFor(() => expect(field().value).toBe(""));
   expect(localStorage.getItem("marquee.token")).toBeNull();
+  expect(document.activeElement).toBe(field());
+  expect(screen.queryByRole("searchbox")).toBeNull();
 
   unlock(TOKEN);
   await screen.findByRole("searchbox");
@@ -125,7 +127,7 @@ test("every page, by path or by hash, asks for the token on a 401 and comes back
     expect(screen.queryByRole("main")).toBeNull();
     unlock(TOKEN);
     if (heading) await screen.findByRole("heading", { name: heading });
-    else await waitFor(() => expect(screen.queryByLabelText(/api token/i)).toBeNull());
+    else await waitFor(() => expect(screen.queryByLabelText(/api token/i)).toBeNull(), { timeout: 3000 });
     expect(window.location.hash).toBe(hash || "#/health");
     view.unmount();
     window.location.hash = "";
@@ -138,4 +140,137 @@ test("/health keeps working as a path: it opens the Health page with the wall be
   await screen.findByRole("heading", { name: "Health" });
   expect(window.location.hash).toBe("#/health");
   window.location.hash = "";
+});
+
+// A marquee that holds back its answer to the token until the test lets it go.
+function slowMarquee(token = TOKEN) {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const f = vi.fn(async (input: Request) => {
+    const auth = input.headers.get("Authorization");
+    if (auth === null) return json({ error: "this marquee needs its API token" }, 401);
+    await gate;
+    return auth === `Bearer ${token}` ? json({ items: [] }) : json({ error: "no" }, 401);
+  });
+  return { fetch: f as unknown as typeof fetch, release };
+}
+
+const pass = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+const screenEl = () => document.querySelector<HTMLElement>(".screen");
+const appWrap = () => document.querySelector<HTMLElement>(".shell-app");
+
+function reduceMotion() {
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("prefers-reduced-motion"), media: q, addEventListener() {}, removeEventListener() {} }));
+}
+
+test("a right token holds the lock until marquee accepts it, then hands over, then leaves nothing behind", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const m = slowMarquee();
+    render(<Shell baseUrl={BASE} fetch={m.fetch} path="/" />);
+    await screen.findByLabelText(/api token/i);
+    unlock(TOKEN);
+
+    // The app is mounting underneath, but nobody can see or reach it yet.
+    await screen.findByRole("searchbox");
+    expect(screenEl()!.getAttribute("data-phase")).toBe("checking");
+    expect(screen.getByRole("button", { name: "unlocking…" })).toBeTruthy();
+    expect(appWrap()!.hasAttribute("inert")).toBe(true);
+
+    m.release();
+    await waitFor(() => expect(screenEl()!.getAttribute("data-phase")).toBe("open"));
+    expect(screen.getByRole("button", { name: "unlocked" })).toBeTruthy();
+    expect(appWrap()!.hasAttribute("data-handover")).toBe(true);
+    expect(appWrap()!.hasAttribute("inert")).toBe(true);
+
+    await pass(1000);
+    expect(screenEl()).not.toBeNull();
+    await pass(700);
+
+    expect(screenEl()).toBeNull();
+    expect(document.querySelector(".utile")).toBeNull();
+    expect(appWrap()!.hasAttribute("inert")).toBe(false);
+    expect(appWrap()!.hasAttribute("data-handover")).toBe(false);
+    expect(screen.getByRole("searchbox")).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a wrong token stays locked: no hand-over starts, the error reads, the field keeps focus", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const m = slowMarquee();
+    render(<Shell baseUrl={BASE} fetch={m.fetch} path="/" />);
+    await screen.findByLabelText(/api token/i);
+    unlock("wrong");
+    await screen.findByRole("searchbox");
+    expect(screenEl()!.getAttribute("data-phase")).toBe("checking");
+
+    m.release();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screenEl()!.getAttribute("data-phase")).toBe("ask");
+    expect(document.activeElement).toBe(field());
+    expect(field().readOnly).toBe(false);
+    expect(screen.queryByRole("searchbox")).toBeNull();
+
+    await pass(3000);
+    expect(screenEl()).not.toBeNull();
+    expect(screen.getByRole("alert")).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("with reduced motion the hand-over is a short fade", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  reduceMotion();
+  try {
+    const m = slowMarquee();
+    render(<Shell baseUrl={BASE} fetch={m.fetch} path="/" />);
+    await screen.findByLabelText(/api token/i);
+    unlock(TOKEN);
+    await screen.findByRole("searchbox");
+    m.release();
+    await waitFor(() => expect(screenEl()!.getAttribute("data-phase")).toBe("open"));
+
+    await pass(400);
+
+    expect(screenEl()).toBeNull();
+    expect(appWrap()!.hasAttribute("inert")).toBe(false);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("a marquee that never answers does not hold the screen shut for ever", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    const f = vi.fn(async (input: Request) => (input.headers.get("Authorization") === null ? json({ error: "token" }, 401) : new Promise<Response>(() => {}))) as unknown as typeof fetch;
+    render(<Shell baseUrl={BASE} fetch={f} path="/" />);
+    await screen.findByLabelText(/api token/i);
+    unlock(TOKEN);
+    await screen.findByRole("searchbox");
+    await pass(5000);
+    expect(screenEl()!.getAttribute("data-phase")).toBe("checking");
+
+    await pass(1500);
+    expect(screenEl()!.getAttribute("data-phase")).toBe("open");
+    await pass(1600);
+
+    expect(screenEl()).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("Esc on the lock screen leaves it locked", async () => {
+  const m = marquee();
+  render(<Shell baseUrl={BASE} fetch={m.fetch} path="/" />);
+  await screen.findByLabelText(/api token/i);
+  fireEvent.keyDown(window, { key: "Escape" });
+  fireEvent.keyDown(field(), { key: "Escape" });
+  expect(screen.getByLabelText(/api token/i)).toBeTruthy();
+  expect(screen.queryByRole("searchbox")).toBeNull();
 });

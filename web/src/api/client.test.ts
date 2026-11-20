@@ -169,6 +169,20 @@ test("a 401 tells the caller the token is needed and still fails the call", asyn
   expect(onUnauthorized).toHaveBeenCalledTimes(1);
 });
 
+test("a caller is told when a request that carried the token was accepted, and not for one that carried none", async () => {
+  const fetchStub = vi.fn(async () => ok({ items: [] }));
+  const onAuthorized = vi.fn();
+  let token: string | null = null;
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch, getToken: () => token, onAuthorized });
+
+  await api.wall();
+  expect(onAuthorized).not.toHaveBeenCalled();
+
+  token = "t0ken";
+  await api.wall();
+  expect(onAuthorized).toHaveBeenCalledTimes(1);
+});
+
 test("health reads the contract's shape", async () => {
   const health = { status: "ok", dryRun: false, checks: [], libraryProblems: [] };
   const fetchStub = vi.fn(async (r: Request) => (new URL(r.url).pathname === "/api/health" ? ok(health) : ok({})));
