@@ -25,6 +25,7 @@ type TMDB interface {
 	Trending(ctx context.Context) ([]metadata.Summary, error)
 	Summary(ctx context.Context, kind string, id int) (metadata.Summary, error)
 	Details(ctx context.Context, kind string, id int) (metadata.Details, error)
+	About(ctx context.Context, kind string, id int) (metadata.About, error)
 }
 
 // Transfers is the part of the download manager the API uses; an
@@ -38,6 +39,8 @@ type Deps struct {
 	Catalog   *catalog.Store
 	Transfers Transfers
 	TMDB    TMDB
+	// OMDb is nil when no OMDb key is set, which leaves the scores to TMDB's own.
+	OMDb   Scorer
 	Source  Source
 	Images  *metadata.Images
 	Log     *slog.Logger
@@ -62,7 +65,8 @@ type Deps struct {
 
 type api struct {
 	Deps
-	adds keylock.Locks
+	adds   keylock.Locks
+	abouts keylock.Locks
 	hub  *hub
 }
 
@@ -97,6 +101,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/titles/{id}/releases/{releaseId}/grab", a.grabRelease)
 	mux.HandleFunc("POST /api/history/{historyId}/retry", a.retry)
 	mux.HandleFunc("GET /api/images/{kind}/{titleId}", a.image)
+	mux.HandleFunc("GET /api/titles/{id}/about", a.about)
+	mux.HandleFunc("GET /api/people/{personId}/image", a.personImage)
 	mux.HandleFunc("GET /api/events", a.events)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		fail(w, http.StatusNotFound, "not found")

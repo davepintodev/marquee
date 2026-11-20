@@ -458,6 +458,61 @@ paths:
         "500": { $ref: "#/components/responses/InternalError" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/titles/{id}/about:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    get:
+      tags: [discovery]
+      operationId: getTitleAbout
+      summary: Scores, cast and similar titles, to fill the details screen of any title.
+      description: >-
+        Answers for a title in the library and for one that is not, so the
+        screen has something worth reading before a series is added. Scores
+        are whatever sources marquee can reach: TMDB's, and IMDb's and Rotten
+        Tomatoes' only when an OMDb key is configured (MARQUEE_OMDB_KEY) and
+        OMDb answers. The answer is kept for a day; when TMDB cannot be
+        reached, an older copy is served if there is one.
+      responses:
+        "200":
+          description: What is known about the title.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TitleAbout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/people/{personId}/image:
+    parameters:
+      - name: personId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [discovery]
+      operationId: getPersonImage
+      security:
+        - {}
+        - bearerAuth: []
+        - cookieAuth: []
+      summary: A cast member's photo (2:3). Fetched and cached by marquee like a poster.
+      description: Only linked from a cast member that has a photo.
+      responses:
+        "200":
+          description: The photo.
+          content:
+            image/jpeg:
+              schema: { type: string, contentEncoding: base64 }
+            image/png:
+              schema: { type: string, contentEncoding: base64 }
+            image/webp:
+              schema: { type: string, contentEncoding: base64 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/health:
     get:
       tags: [system]
@@ -480,7 +535,7 @@ components:
         Optional API token (MARQUEE_API_TOKEN). With no token configured the
         API is open and clients send no Authorization header; with one, every
         operation answers 401 without `Authorization: Bearer <token>`, except
-        that `getImage` and `streamEvents` also accept the session cookie
+        that `getImage`, `getPersonImage` and `streamEvents` also accept the session cookie
         (`cookieAuth`).
 
 
@@ -495,13 +550,13 @@ components:
       in: cookie
       name: marquee_session
       description: >
-        Set by marquee in answer to a valid bearer token, for the two
+        Set by marquee in answer to a valid bearer token, for the
         operations a browser loads without being able to send a header: an
         `<img src>` and an `EventSource`. HttpOnly, `SameSite=Strict`, path
         `/api/`, one year, not `Secure` (marquee serves plain HTTP on a LAN).
         Its value is derived from the token, never the token itself, and a
         changed token ends every session. It is accepted only on `GET` of
-        `getImage` and `streamEvents`; every other operation, and any other
+        `getImage`, `getPersonImage` and `streamEvents`; every other operation, and any other
         method, still needs the bearer header, because `SameSite` ignores
         ports and another web app on the same host could otherwise send the
         cookie. A token in the URL was rejected: it lands in logs and in the
@@ -626,6 +681,45 @@ components:
         badge:
           $ref: "#/components/schemas/Badge"
           description: Present when inLibrary.
+    Rating:
+      type: object
+      description: One score for a title, in the scale its source uses.
+      required: [source, score, scale]
+      properties:
+        source: { type: string, enum: [tmdb, imdb, rotten_tomatoes] }
+        score: { type: number, minimum: 0, description: "8.4 on a scale of 10, or 91 on a scale of 100." }
+        scale: { type: integer, enum: [10, 100] }
+        votes: { type: integer, minimum: 0, description: Present when the source says how many voted. }
+    CastMember:
+      type: object
+      required: [personId, name, character]
+      properties:
+        personId: { type: integer, minimum: 1 }
+        name: { type: string }
+        character: { type: string, description: Empty when TMDB lists none. }
+        profilePath: { type: string, description: Same-origin URL path of the photo. Absent when TMDB has none. }
+    TitleAbout:
+      type: object
+      required: [ratings, genres, cast, similar]
+      properties:
+        ratings:
+          type: array
+          description: TMDB's score first, then any other source marquee reaches. Empty when there is none.
+          items: { $ref: "#/components/schemas/Rating" }
+        genres:
+          type: array
+          items: { type: string }
+        runtimeMinutes: { type: integer, minimum: 1, description: An episode for a series. }
+        status: { type: string, examples: [Ended] }
+        language: { type: string, examples: [English] }
+        cast:
+          type: array
+          description: Billing order, at most 20.
+          items: { $ref: "#/components/schemas/CastMember" }
+        similar:
+          type: array
+          description: At most 6 titles, each as it would show on the wall.
+          items: { $ref: "#/components/schemas/TitleSummary" }
     WallItem:
       type: object
       required: [source, title]

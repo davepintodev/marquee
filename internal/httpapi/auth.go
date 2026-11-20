@@ -21,9 +21,9 @@ const (
 //
 // A browser's <img> and EventSource cannot send a header. A request that
 // does carry the token is therefore also handed a session cookie, and the
-// cookie alone is enough for GET /api/events and GET /api/images/ and for
-// nothing else. A query-string token would end up in access logs and the
-// browser history; the cookie is HttpOnly and SameSite=Strict.
+// cookie alone is enough for GET /api/events, GET /api/images/ and a
+// person's image, and for nothing else. A query-string token would end up in
+// access logs and the browser history; the cookie is HttpOnly and SameSite=Strict.
 func RequireToken(token config.Secret, next http.Handler) http.Handler {
 	if token == "" {
 		return next
@@ -77,5 +77,6 @@ func sessionMayRead(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	return r.URL.Path == "/api/events" || strings.HasPrefix(r.URL.Path, "/api/images/")
+	p := r.URL.Path
+	return p == "/api/events" || strings.HasPrefix(p, "/api/images/") || (strings.HasPrefix(p, "/api/people/") && strings.HasSuffix(p, "/image"))
 }

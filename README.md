@@ -63,6 +63,7 @@ Settings come from environment variables, or from a JSON file named by `MARQUEE_
 | `MARQUEE_DATA_DIR` | yes | Where the database lives. Created if missing. |
 | `MARQUEE_DRY_RUN` | no | `true` searches and chooses but never downloads, never writes to the library or temp folder and never calls Jellyfin. Activity shows "would grab" for each decision. Default `false`; the example sets it to `true`. |
 | `MARQUEE_JELLYFIN_URL`, `MARQUEE_JELLYFIN_KEY` | no | Refresh Jellyfin after an import. |
+| `MARQUEE_OMDB_KEY` | no | A free [OMDb API key](https://www.omdbapi.com/apikey.aspx). With it a title page shows IMDb and Rotten Tomatoes marks beside TMDB's; without it only TMDB's. Treated as a secret. |
 | `MARQUEE_API_TOKEN` | no | Require this bearer token on the API; each browser asks for it once. Set it if anyone else can reach the port. Treated as a secret. |
 | `MARQUEE_LISTEN` | no | Address to listen on. Default `:8080`. |
 

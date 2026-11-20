@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -390,10 +391,15 @@ func TestAddHonoursTheMonitorChoice(t *testing.T) {
 
 func TestAddPicksTheSeasonForFirstAndLatest(t *testing.T) {
 	_, router := loadSpec(t)
-	for monitor, want := range map[string]string{
-		"first_season":  "s01e01,s01e02",
-		"latest_season": "s04e01,s04e02,s04e03,s04e04",
-	} {
+	// The fixture series has eight seasons of twenty-two episodes.
+	season := func(n int) string {
+		var ids []string
+		for e := 1; e <= 22; e++ {
+			ids = append(ids, fmt.Sprintf("s%02de%02d", n, e))
+		}
+		return strings.Join(ids, ",")
+	}
+	for monitor, want := range map[string]string{"first_season": season(1), "latest_season": season(8)} {
 		t.Run(monitor, func(t *testing.T) {
 			srv := startFakeTick(t, time.Hour)
 			exchange(t, srv, router, "DELETE", "/api/titles/series-1408", "", 204)

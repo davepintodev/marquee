@@ -5,10 +5,9 @@ import { Activity } from "./Activity";
 import { Front } from "./Front";
 import { Health } from "./Health";
 import { Library } from "./Library";
-import { Popup } from "./Popup";
 import { Results } from "./Results";
-import { leaveTo, pushTo, useRoute } from "./route";
-import { TitleDetail } from "./TitleDetail";
+import { leaveTitle, leaveTo, parseRoute, pushTo, useRoute } from "./route";
+import { TitleScreen } from "./TitleScreen";
 import { useLive } from "./useLive";
 import { useViewport } from "./useViewport";
 
@@ -34,8 +33,13 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
   const [answer, setAnswer] = useState<{ query: string; load: Load<TitleSummary[]> }>({ query: "", load: { status: "loading" } });
+  // The title the owner last clicked: the title screen opens on it and uses it when the service does not know the title yet.
   const [selected, setSelected] = useState<TitleSummary | null>(null);
-  // Titles changed from the popup: the wall and results lists were fetched before.
+  const openTitle = useCallback((t: TitleSummary) => {
+    setSelected(t);
+    pushTo({ name: "title", id: t.id }, "page");
+  }, []);
+  // Titles changed from the title screen: the wall and results lists were fetched before.
   const [changed, setChanged] = useState<Record<string, TitleSummary>>({});
   // Badges the event stream has reported since the lists were fetched; null means the title left the library.
   const [live, setLive] = useState<Record<string, Badge | null>>({});
@@ -58,7 +62,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     setWall({ status: "loading" });
     setWallTry((n) => n + 1);
   }, []);
-  const closePage = useCallback(() => leaveTo({ name: "grid" }, "page"), []);
+  const closePage = useCallback(() => (parseRoute(window.location.hash).name === "title" ? leaveTitle() : leaveTo({ name: "grid" }, "page")), []);
   const openPage = (name: "activity" | "health") => (e: React.MouseEvent) => {
     e.preventDefault();
     pushTo({ name }, "page");
@@ -116,18 +120,17 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     if (!keys) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      if (selected) setSelected(null);
-      else if (onPage) closePage();
+      if (onPage) closePage();
       else if (atFront) return;
       else if (searching) clear();
       else leave();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [keys, clear, selected, onPage, atFront, searching, closePage, leave]);
+  }, [keys, clear, onPage, atFront, searching, closePage, leave]);
 
   useEffect(() => {
-    if (!keys || !atFront || selected) return;
+    if (!keys || !atFront || onPage) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target;
@@ -139,7 +142,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [keys, atFront, selected, enter]);
+  }, [keys, atFront, onPage, enter]);
 
   // A control left focused in the grid would swallow the keys that walk in from the wall.
   useEffect(() => {
@@ -152,6 +155,17 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     if (atFront || touch || onPage) return;
     bar.current?.focus();
   }, [atFront, onPage, touch]);
+
+  // Focus returns to the opener when it can take it, but a poster on the wall cannot (the wall is inert in the grid),
+  // so a title's page closing hands it to the same title's tile, when the grid shows one.
+  const pageOf = useRef("");
+  const onTitle = route.name === "title" ? route.id : "";
+  useEffect(() => {
+    const left = pageOf.current;
+    pageOf.current = onTitle;
+    if (!left || onTitle || atFront) return;
+    gridScreen.current?.querySelector<HTMLElement>(`.stage:not([inert]) [data-tid="${CSS.escape(left)}"]`)?.focus({ preventScroll: true });
+  }, [onTitle, atFront]);
 
   // The wall is the library first, so a title that joins it is fetched for once the wall is up.
   const wallIds = useRef<Set<string> | null>(null);
@@ -192,7 +206,6 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map(current) : wall.status === "error" ? [] : null), [wall, current]);
   const results: Load<TitleSummary[]> =
     answer.query !== q ? { status: "loading" } : answer.load.status === "ok" ? { status: "ok", data: answer.load.data.map(current) } : answer.load;
-  const open = selected && !onPage ? current(selected) : null;
 
   // What the owner just saw from the service is newer than any event before it.
   const keep = useCallback((t: TitleSummary) => {
@@ -208,8 +221,8 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
 
   return (
     <div className="app" data-screen={atFront ? "front" : "grid"} data-mode={onPage ? "page" : searching ? "search" : "library"}>
-      <div className="front" inert={!atFront || !!open}>
-        <Front api={api} items={wallTitles} width={width} height={height} onEnter={() => enter()} onSelect={setSelected} />
+      <div className="front" inert={!atFront}>
+        <Front api={api} items={wallTitles} width={width} height={height} onEnter={() => enter()} onSelect={openTitle} />
         {atFront && wall.status === "error" && (
           <div className="notice" role="alert">
             <p>{wall.message}</p>
@@ -229,7 +242,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
       </div>
 
       <div ref={gridScreen} className="grid-screen" inert={atFront}>
-        <header className="top" inert={!!open || onPage}>
+        <header className="top" inert={onPage}>
           <span className="mark">marquee</span>
           <div className="search">
             <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -274,9 +287,9 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
           </nav>
         </header>
 
-        <div className="stage library-stage" aria-hidden={searching} inert={searching || !!open || onPage}>
+        <div className="stage library-stage" aria-hidden={searching} inert={searching || onPage}>
           <div className="stage-in">
-            <Library api={api} items={wallTitles} onSelect={setSelected} />
+            <Library api={api} items={wallTitles} onSelect={openTitle} />
             {!atFront && !searching && !onPage && wall.status === "error" && (
               <div className="notice" role="alert">
                 <p>{wall.message}</p>
@@ -293,7 +306,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
           </div>
         </div>
 
-        <div className="stage results-stage" aria-hidden={!searching || onPage} inert={!searching || !!open || onPage}>
+        <div className="stage results-stage" aria-hidden={!searching || onPage} inert={!searching || onPage}>
           <div className="stage-in">
             {searching && results.status === "error" && (
               <div className="notice" role="alert">
@@ -302,26 +315,17 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
             )}
             {searching && results.status === "loading" && <p className="hint">Searching…</p>}
             {searching && results.status === "ok" && results.data.length === 0 && <p className="hint">Nothing found.</p>}
-            {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} onSelect={setSelected} />}
+            {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} onSelect={openTitle} />}
           </div>
         </div>
       </div>
 
-      {open && (
-        <Popup
-          api={api}
-          title={open}
-          onClose={() => setSelected(null)}
-          onChanged={keep}
-          onToast={notify}
-          onDetails={() => setSelected(null)}
-        />
-      )}
       {route.name === "title" && (
-        <TitleDetail
+        <TitleScreen
           key={route.id}
           api={api}
           id={route.id}
+          seed={selected?.id === route.id ? current(selected) : undefined}
           onClose={closePage}
           onChanged={keep}
           onRemoved={(t: Title) => {
@@ -330,6 +334,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
             notify(`Removed “${t.title}” from marquee. Its files are still on disk.`);
           }}
           onToast={notify}
+          onOpenTitle={openTitle}
         />
       )}
       {route.name === "health" && <Health api={api} onClose={closePage} onForget={onForget} />}

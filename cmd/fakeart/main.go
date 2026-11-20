@@ -1,4 +1,4 @@
-// Command fakeart downloads real posters and backdrops for the fake's
+// Command fakeart downloads real posters, backdrops and cast photos for the fake's
 // fixture titles into a local folder; point MARQUEE_FAKE_ART_DIR at it.
 // The art is TMDB's, so it stays on this machine and out of the repository.
 package main
@@ -36,7 +36,12 @@ func run(ctx context.Context, getenv func(string) string, args []string, stdout,
 		return 2
 	}
 	tmdb.Key = config.Secret(key)
-	if err := fakeart.Fetch(ctx, metadata.New(tmdb), fake.Titles(), args[0], stdout); err != nil {
+	client := metadata.New(tmdb)
+	err := fakeart.Fetch(ctx, client, fake.Titles(), args[0], stdout)
+	if err == nil || !errors.Is(err, metadata.ErrRejected) {
+		err = errors.Join(err, fakeart.FetchPeople(ctx, client, fake.CastList(), args[0], stdout))
+	}
+	if err != nil {
 		if errors.Is(err, metadata.ErrRejected) {
 			err = errors.New("TMDB refused MARQUEE_TMDB_KEY")
 		}

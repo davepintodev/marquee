@@ -13,7 +13,7 @@ interface Props {
 export function Cell({ api, title: t, markOwned, onSelect }: Props) {
   const label = t.badge ? `${t.title} (${t.year}), ${t.badge.label}` : `${t.title} (${t.year})`;
   return (
-    <button type="button" className="cell" aria-label={label} title={label} onClick={() => onSelect?.(t)}>
+    <button type="button" className="cell" data-tid={t.id} aria-label={label} title={label} onClick={() => onSelect?.(t)}>
       <span className="cell-art">
         <Art src={api.imageUrl(t.posterPath)} title={t.title} year={t.year} />
         <Meter title={t} />

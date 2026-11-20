@@ -185,7 +185,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
     <Page heading="Activity" onClose={onClose} className="page-activity">
       <p className="board-sum">{summary}</p>
       {error && (
-        <p className="popup-error" role="alert">
+        <p className="fail-line" role="alert">
           {error}
         </p>
       )}

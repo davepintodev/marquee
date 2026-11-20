@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Download, Health, HistoryEntry, LiveEvent, MonitorChoice, ProgressEvent, Releases, Title, TitleEvent, TitleSummary, Wall } from "./types";
+import type { Download, Health, HistoryEntry, LiveEvent, MonitorChoice, ProgressEvent, Releases, Title, TitleAbout, TitleEvent, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -18,6 +18,8 @@ export interface Api {
   addTitle(kind: TitleSummary["kind"], tmdbId: number, monitor?: MonitorChoice, signal?: AbortSignal): Promise<Title>;
   searchNow(id: string, signal?: AbortSignal): Promise<Title>;
   title(id: string, signal?: AbortSignal): Promise<Title>;
+  // Scores, cast and similar titles: extras, so a caller treats any failure as "nothing to show".
+  about(id: string, signal?: AbortSignal): Promise<TitleAbout>;
   library(signal?: AbortSignal): Promise<TitleSummary[]>;
   setMonitored(id: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
   removeTitle(id: string, signal?: AbortSignal): Promise<void>;
@@ -166,6 +168,9 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
     },
     title(id, signal) {
       return call(() => client.GET("/api/titles/{id}", { params: { path: { id } }, signal }), isTitle);
+    },
+    about(id, signal) {
+      return call(() => client.GET("/api/titles/{id}/about", { params: { path: { id } }, signal }), (d) => Array.isArray(d.cast) && Array.isArray(d.ratings));
     },
     async library(signal) {
       const data = await call(() => client.GET("/api/titles", { signal }), (d) => Array.isArray(d.titles));

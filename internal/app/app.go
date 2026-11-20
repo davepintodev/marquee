@@ -22,6 +22,7 @@ import (
 	"github.com/davepintodev/marquee/internal/httpapi"
 	"github.com/davepintodev/marquee/internal/importer"
 	"github.com/davepintodev/marquee/internal/metadata"
+	"github.com/davepintodev/marquee/internal/omdb"
 	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/scheduler"
 	"github.com/davepintodev/marquee/internal/server"
@@ -38,6 +39,9 @@ type Options struct {
 	TMDBTimeout time.Duration
 	// TMDBImageTimeout bounds one whole image download; zero is thirty seconds.
 	TMDBImageTimeout time.Duration
+	// OMDbBase replaces OMDb's address and OMDbTimeout bounds a wait on it; zero values are production.
+	OMDbBase    string
+	OMDbTimeout time.Duration
 	// AIOStreamsTimeout bounds one AIOStreams search; zero is ninety seconds.
 	AIOStreamsTimeout time.Duration
 	// Sleep waits out a TMDB rate limit; nil really sleeps.
@@ -187,8 +191,12 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		if cfg.JellyfinURL != "" {
 			jellyfin = importer.NewJellyfin(cfg.JellyfinURL, cfg.JellyfinKey, opts.HealthTimeout)
 		}
+		var scores httpapi.Scorer
+		if cfg.OMDbKey != "" {
+			scores = omdb.New(omdb.Options{Base: opts.OMDbBase, Key: cfg.OMDbKey, Timeout: opts.OMDbTimeout})
+		}
 		api = httpapi.New(httpapi.Deps{
-			Catalog: store, Transfers: transfers, TMDB: tmdb, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
+			Catalog: store, Transfers: transfers, TMDB: tmdb, OMDb: scores, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
 			Paths: cfg.Paths(), Jellyfin: jellyfin, HealthTimeout: opts.HealthTimeout,
 			Images: metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 			EventsEvery: opts.EventsEvery, Stop: streamsStop,

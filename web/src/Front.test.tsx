@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { json, setupApp, BASE, type Handler } from "./testkit";
+import { FakeEventSource, json, setupApp, BASE, type Handler } from "./testkit";
 import type { TitleSummary } from "./api/types";
 import { mostColourful, type Tint } from "./tint";
 
@@ -36,6 +36,8 @@ const wall = { items: [house, hail, dune].map((t) => ({ source: t.inLibrary ? "l
 const serve =
   (items: unknown = wall, extra: Handler = () => json({ results: [dune] })): Handler =>
   (url, init) => (url.pathname === "/api/wall" ? (items instanceof Response ? items : json(items)) : extra(url, init));
+
+const onlyPages = serve(wall, (url) => (url.pathname.startsWith("/api/titles/") ? json({ error: "no such title in the library" }, 404) : json({ results: [dune] })));
 
 const front = () => document.querySelector<HTMLElement>(".front")!;
 const app = () => document.querySelector<HTMLElement>(".app")!;
@@ -198,8 +200,8 @@ test("keys with Ctrl, Meta or Alt, and keys that are not characters, leave the w
   expect(window.location.hash).toBe("");
 });
 
-test("Enter or Space on a focused poster belongs to the poster: it opens the popup, not the app", async () => {
-  await wallUp();
+test("Enter or Space on a focused poster belongs to the poster: it opens the title's page, not the app", async () => {
+  await wallUp(onlyPages);
   const tile = posters()[0];
   tile.focus();
 
@@ -208,8 +210,8 @@ test("Enter or Space on a focused poster belongs to the poster: it opens the pop
   onWall();
   fireEvent.click(tile);
 
-  expect(screen.getByRole("dialog")).toBeTruthy();
-  onWall();
+  await screen.findByRole("main");
+  expect(window.location.hash).toBe(`#/title/${tile.dataset.tid}`);
 });
 
 test("Esc on the wall does nothing", async () => {
@@ -257,16 +259,16 @@ test("opening the app by its address, Esc still goes to the wall", async () => {
   await waitFor(onWall);
 });
 
-test("Esc closes the top layer first: the popup, then the search, then the app", async () => {
-  await wallUp();
+test("Esc closes the top layer first: the title's page, then the search, then the app", async () => {
+  await wallUp(onlyPages);
   fireEvent.click(words());
   fireEvent.change(searchbox(), { target: { value: "dune" } });
   const results = await screen.findByRole("list", { name: /results/i });
   fireEvent.click(within(results).getByRole("button", { name: /dune/i }));
-  expect(screen.getByRole("dialog")).toBeTruthy();
+  await screen.findByRole("heading", { name: "Dune", level: 1 });
 
   fireEvent.keyDown(window, { key: "Escape" });
-  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(screen.queryByRole("heading", { name: "Dune", level: 1 })).toBeNull());
   expect((searchbox() as HTMLInputElement).value).toBe("dune");
   inApp();
 
@@ -294,60 +296,95 @@ test("Esc closes a page first and lands back in the app; a second Esc goes to th
   await waitFor(onWall);
 });
 
-test("clicking a poster on the wall opens its popup over the wall, and Esc closes only the popup", async () => {
-  await wallUp();
+test("clicking a poster on the wall opens the title's own page over the app, and the wall is inert behind it", async () => {
+  await wallUp(onlyPages);
 
   fireEvent.click(posters().find((t) => /^Dune/.test(t.getAttribute("aria-label")!))!);
-  expect(within(screen.getByRole("dialog")).getByRole("heading", { name: "Dune" })).toBeTruthy();
-  expect(front().hasAttribute("inert")).toBe(true);
 
-  fireEvent.keyDown(window, { key: "Escape" });
-
+  expect(await screen.findByRole("heading", { name: "Dune", level: 1 })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
-  onWall();
-  expect(front().hasAttribute("inert")).toBe(false);
+  expect(window.location.hash).toBe("#/title/movie-1");
+  expect(front().hasAttribute("inert")).toBe(true);
 });
 
 const houseDetail = { ...house, seasons: [], historySummary: "Nothing tried yet." };
 const withDetail = serve(wall, (url) => (url.pathname === "/api/titles/series-2" ? json(houseDetail) : json({ error: "nope" }, 404)));
 
-test("Details opened from the wall closes back to the wall, and the browser's back does not return to the title", async () => {
+test("a title opened from the wall goes back to the library grid, and the browser's back then reaches the wall, not the title", async () => {
   await wallUp(withDetail);
   fireEvent.click(posters().find((t) => /^House/.test(t.getAttribute("aria-label")!))!);
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("link", { name: "Details" }));
   await screen.findByRole("heading", { name: "House", level: 1 });
   expect(window.location.hash).toBe("#/title/series-2");
-
-  fireEvent.keyDown(window, { key: "Escape" });
-  await waitFor(onWall);
-
-  act(() => window.history.back());
-  await new Promise((r) => setTimeout(r, 20));
-  expect(window.location.hash).not.toMatch(/^#\/title/);
-});
-
-test("Details opened from the app closes back to the app", async () => {
-  await wallUp(withDetail);
-  fireEvent.click(words());
-  inApp();
-  fireEvent.click(within(document.querySelector<HTMLElement>(".library-stage")!).getByRole("button", { name: /^House/ }));
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("link", { name: "Details" }));
-  await screen.findByRole("heading", { name: "House", level: 1 });
 
   fireEvent.keyDown(window, { key: "Escape" });
   await waitFor(() => expect(window.location.hash).toBe("#/grid"));
   inApp();
   expect(screen.queryByRole("heading", { name: "House", level: 1 })).toBeNull();
+
+  act(() => window.history.back());
+  await waitFor(onWall);
+  expect(window.location.hash).not.toMatch(/^#\/title/);
 });
 
-test("typing while a popup is open on the wall does not leave the wall", async () => {
-  await wallUp();
+test("a title opened from the wall with the keyboard hands focus to the grid's own tile when Back is pressed", async () => {
+  const grid = serve(wall, (url) => (url.pathname === "/api/titles/series-2" ? json(houseDetail) : json({ error: "nope" }, 404)));
+  await wallUp(grid);
+  const poster = posters().find((t) => /^House/.test(t.getAttribute("aria-label")!))!;
+  poster.focus();
+  fireEvent.keyDown(poster, { key: "Enter" });
+  fireEvent.click(poster);
+  await screen.findByRole("heading", { name: "House", level: 1 });
+
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
+  const tile = within(document.querySelector<HTMLElement>(".library-stage")!).getByRole("button", { name: /^House/ });
+  await waitFor(() => expect(document.activeElement).toBe(tile));
+});
+
+test("progress for the opened title does not fetch it again, and the progress just drawn stays", async () => {
+  const detail = { ...hail, seasons: [], historySummary: "", history: [] };
+  const { calls } = await wallUp(serve(wall, (url) => (url.pathname === "/api/titles/movie-3" ? json(detail) : json({ error: "nope" }, 404))));
+  fireEvent.click(posters().find((t) => /^Project Hail Mary/.test(t.getAttribute("aria-label")!))!);
+  await screen.findByRole("heading", { name: "Project Hail Mary", level: 1 });
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  const loads = () => calls.filter((u) => u.pathname === "/api/titles/movie-3").length;
+  const before = loads();
+
+  for (const percent of [10, 20, 30]) {
+    FakeEventSource.open()[0].emit("progress", { downloadId: "d", titleId: "movie-3", state: "downloading", percent, bytesDone: percent, bytesTotal: 100 });
+  }
+
+  expect(await screen.findByText("Downloading 30%", { selector: "b" })).toBeTruthy();
+  await new Promise((r) => setTimeout(r, 30));
+  expect(loads()).toBe(before);
+  expect(screen.getByText("Downloading 30%", { selector: "b" })).toBeTruthy();
+});
+
+test("a title opened from the library grid goes back to the grid", async () => {
+  await wallUp(withDetail);
+  fireEvent.click(words());
+  inApp();
+  fireEvent.click(within(document.querySelector<HTMLElement>(".library-stage")!).getByRole("button", { name: /^House/ }));
+  await screen.findByRole("heading", { name: "House", level: 1 });
+
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
+  inApp();
+  expect(screen.queryByRole("heading", { name: "House", level: 1 })).toBeNull();
+});
+
+test("typing while a title's page is open does not start a search or leave the page", async () => {
+  await wallUp(onlyPages);
   fireEvent.click(posters()[0]);
+  await screen.findByRole("main");
+  const hash = window.location.hash;
 
   fireEvent.keyDown(window, { key: "d" });
 
-  expect(screen.getByRole("dialog")).toBeTruthy();
-  onWall();
+  expect(window.location.hash).toBe(hash);
+  expect(screen.getByRole("main")).toBeTruthy();
 });
 
 const hueOf = (slot: HTMLElement) => parseFloat(slot.style.getPropertyValue("--th"));

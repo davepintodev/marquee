@@ -40,21 +40,24 @@ func (s *Secret) UnmarshalJSON(b []byte) error { return json.Unmarshal(b, (*stri
 type Config struct {
 	AIOStreamsManifestURL Secret
 	TMDBKey               Secret
-	MoviesPath            string
-	SeriesPath            string
-	TempPath              string
-	DataDir               string
-	JellyfinURL           string
-	JellyfinKey           Secret
-	Listen                string
-	APIToken              Secret
-	DryRun                bool
+	// OMDbKey is optional: without it the details screen has TMDB's score only.
+	OMDbKey     Secret
+	MoviesPath  string
+	SeriesPath  string
+	TempPath    string
+	DataDir     string
+	JellyfinURL string
+	JellyfinKey Secret
+	Listen      string
+	APIToken    Secret
+	DryRun      bool
 }
 
 func (c Config) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.Any("aiostreams_manifest_url", c.AIOStreamsManifestURL),
 		slog.Any("tmdb_key", c.TMDBKey),
+		slog.Any("omdb_key", c.OMDbKey),
 		slog.String("movies_path", c.MoviesPath),
 		slog.String("series_path", c.SeriesPath),
 		slog.String("temp_path", c.TempPath),
@@ -70,6 +73,7 @@ func (c Config) LogValue() slog.Value {
 type fileConfig struct {
 	AIOStreamsManifestURL string `json:"aiostreams_manifest_url"`
 	TMDBKey               string `json:"tmdb_key"`
+	OMDbKey               string `json:"omdb_key"`
 	MoviesPath            string `json:"movies_path"`
 	SeriesPath            string `json:"series_path"`
 	TempPath              string `json:"temp_path"`
@@ -113,6 +117,7 @@ func Load(getenv func(string) string) (Config, error) {
 	c := Config{
 		AIOStreamsManifestURL: Secret(pick("MARQUEE_AIOSTREAMS_MANIFEST_URL", f.AIOStreamsManifestURL)),
 		TMDBKey:               Secret(pick("MARQUEE_TMDB_KEY", f.TMDBKey)),
+		OMDbKey:               Secret(pick("MARQUEE_OMDB_KEY", f.OMDbKey)),
 		MoviesPath:            pick("MARQUEE_MOVIES_PATH", f.MoviesPath),
 		SeriesPath:            pick("MARQUEE_SERIES_PATH", f.SeriesPath),
 		TempPath:              pick("MARQUEE_TEMP_PATH", f.TempPath),

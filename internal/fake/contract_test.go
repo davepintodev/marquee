@@ -63,6 +63,8 @@ var calls = map[string]call{
 	"streamEvents":      {"GET", "/api/events", "", 200},
 	"getImage":          {"GET", "/api/images/poster/movie-438631", "", 200},
 	"getHealth":         {"GET", "/api/health", "", 200},
+	"getTitleAbout":     {"GET", "/api/titles/series-95396/about", "", 200},
+	"getPersonImage":    {"GET", "/api/people/9/image", "", 404},
 }
 
 func do(t *testing.T, srv *httptest.Server, c call, path string) *http.Response {
@@ -210,7 +212,7 @@ func TestMissingResourcesAnswerWithTheContractsError(t *testing.T) {
 	swap := strings.NewReplacer(
 		"series-1408", "series-1", "movie-693134", "movie-1", "movie-13187", "movie-1",
 		"movie-329865", "movie-1", "movie-335984", "movie-1", "movie-438631", "movie-1",
-		"h-failed-stalled", "h-none", "rel-movie-1", "rel-none",
+		"h-failed-stalled", "h-none", "rel-movie-1", "rel-none", "series-95396", "series-1", "people/9", "people/8",
 	)
 	for path, item := range doc.Paths.Map() {
 		for _, op := range item.Operations() {
@@ -320,7 +322,7 @@ func TestFixturesShowEveryBadgeState(t *testing.T) {
 	}
 	want := map[string]string{
 		"downloaded": "Downloaded", "searching": "Searching", "downloading": "Downloading 43%",
-		"stalled": "Stalled", "missing": "Missing", "partial_season": "Season 4 · 3 missing",
+		"stalled": "Stalled", "missing": "Missing", "partial_season": "Season 8 · 19 missing",
 	}
 	for state, label := range want {
 		if !labels[state][label] {

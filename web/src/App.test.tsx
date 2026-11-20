@@ -322,177 +322,189 @@ const dunePage = { ...dune, overview: "Paul Atreides leads the Fremen." };
 const houseOut = { ...house, seasons: [], historySummary: "Nothing tried yet." };
 const duneAdded = { ...dunePage, inLibrary: true, monitored: true, badge: { state: "searching" as const, label: "Searching" }, seasons: [], historySummary: "Nothing tried yet." };
 
-const popupWall: Wall = {
+const pageWall: Wall = {
   items: [
     { source: "library", title: house },
     { source: "trending", title: dunePage },
   ],
 };
 
-function popupApi(extra: Handler = () => json({ error: "nope" }, 404)): Handler {
+const notFound = () => json({ error: "no such title in the library" }, 404);
+
+function pageApi(extra: Handler = notFound): Handler {
   return (url, init) => {
-    if (url.pathname === "/api/wall") return json(popupWall);
+    if (url.pathname === "/api/wall") return json(pageWall);
     if (url.pathname === "/api/search") return json({ results: [dunePage, house] });
     return extra(url, init);
   };
 }
 
-const openTile = async (name: RegExp) => fireEvent.click((await grid().findAllByRole("button", { name }))[0]);
-const dialog = () => screen.getByRole("dialog");
+const isAdd = (url: URL, init: Request) => init.method === "POST" && url.pathname === "/api/titles";
+const addAnswering = (answer: () => Response | Promise<Response>): Handler => (url, init) => (isAdd(url, init) ? answer() : notFound());
 
-test("clicking a wall tile opens the popup with poster, year, kind and summary, and adds nothing", async () => {
-  const { writes } = setup(popupApi());
+const openTile = async (name: RegExp) => fireEvent.click((await grid().findAllByRole("button", { name }))[0]);
+const page = () => within(screen.getByRole("main"));
+
+test("clicking a wall tile opens the title's page with poster, year, kind and summary, and adds nothing", async () => {
+  const { writes } = setup(pageApi());
 
   await openTile(/^Dune \(2021\)/);
 
-  const d = within(dialog());
-  expect(d.getByRole("heading", { name: "Dune" })).toBeTruthy();
-  expect(d.getByText("2021 · movie")).toBeTruthy();
-  expect(d.getByText("Paul Atreides leads the Fremen.")).toBeTruthy();
-  expect(dialog().querySelector("img")!.getAttribute("src")).toBe(`${BASE}/api/images/poster/movie-1`);
-  expect(d.getByRole("button", { name: "Add & monitor" })).toBeTruthy();
-  expect(d.getByRole("button", { name: "Interactive search" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Dune", level: 1 })).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(window.location.hash).toBe("#/title/movie-1");
+  expect(page().getByText("2021 · Movie")).toBeTruthy();
+  expect(page().getByText("Paul Atreides leads the Fremen.")).toBeTruthy();
+  expect(screen.getByRole("main").querySelector(".ts-poster img")!.getAttribute("src")).toBe(`${BASE}/api/images/poster/movie-1`);
+  expect(page().getByRole("button", { name: "Add & monitor" })).toBeTruthy();
+  expect(page().getByRole("heading", { name: "Releases" })).toBeTruthy();
   expect(writes).toEqual([]);
 });
 
-test("clicking a search result opens the popup and adds nothing", async () => {
-  const { writes } = setup(popupApi());
+test("clicking a search result opens the title's page and adds nothing", async () => {
+  const { writes } = setup(pageApi());
   await grid().findAllByRole("button", { name: /house/i });
   type("dune");
   const results = await screen.findByRole("list", { name: /results/i });
 
   fireEvent.click(within(results).getByRole("button", { name: /dune/i }));
 
-  expect(within(dialog()).getByRole("heading", { name: "Dune" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Dune", level: 1 })).toBeTruthy();
   expect(writes).toEqual([]);
 });
 
-test("Add & monitor adds the title, confirms with a toast and turns into Search now", async () => {
-  const { writes } = setup(popupApi((url, init) => (init.method === "POST" && url.pathname === "/api/titles" ? json(duneAdded, 201) : json({ error: "nope" }, 404))));
+test("Add & monitor adds the title, confirms with a toast and the page becomes the library title's", async () => {
+  const { writes } = setup(pageApi(addAnswering(() => json(duneAdded, 201))));
   await openTile(/^Dune \(2021\)/);
 
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Add & monitor" }));
+  fireEvent.click(await page().findByRole("button", { name: "Add & monitor" }));
 
   expect((await screen.findByRole("status")).textContent).toMatch(/added.*dune/i);
   expect(writes).toEqual([{ method: "POST", path: "/api/titles", body: { kind: "movie", tmdbId: 1 } }]);
-  expect(within(dialog()).getByRole("button", { name: "Search now" })).toBeTruthy();
-  expect(within(dialog()).queryByRole("button", { name: "Add & monitor" })).toBeNull();
+  expect(page().getByRole("button", { name: "Search automatically" })).toBeTruthy();
+  expect(page().queryByRole("button", { name: "Add & monitor" })).toBeNull();
+  expect(page().getByRole("group", { name: "Remove from marquee" })).toBeTruthy();
 });
 
 test("pressing Add & monitor twice quickly sends one request", async () => {
   let release!: () => void;
   const hold = new Promise<void>((r) => (release = r));
   const { writes } = setup(
-    popupApi(async (url, init) => {
-      if (init.method === "POST" && url.pathname === "/api/titles") {
+    pageApi(
+      addAnswering(async () => {
         await hold;
         return json(duneAdded, 201);
-      }
-      return json({ error: "nope" }, 404);
-    }),
+      }),
+    ),
   );
   await openTile(/^Dune \(2021\)/);
-  const add = within(dialog()).getByRole("button", { name: "Add & monitor" });
+  const add = await page().findByRole("button", { name: "Add & monitor" });
 
   fireEvent.click(add);
   fireEvent.click(add);
   release();
 
-  await within(dialog()).findByRole("button", { name: "Search now" });
+  await page().findByRole("button", { name: "Search automatically" });
   expect(writes).toHaveLength(1);
 });
 
-test("a title already in the library opens with Search now, which searches it", async () => {
-  const { writes } = setup(popupApi((url, init) => (init.method === "POST" && url.pathname === "/api/titles/series-2/search" ? json(houseOut) : json({ error: "nope" }, 404))));
+test("a title already in the library opens with Search automatically, which searches it", async () => {
+  const { writes } = setup(
+    pageApi((url, init) => {
+      if (init.method === "POST" && url.pathname === "/api/titles/series-2/search") return json(houseOut);
+      if (url.pathname === "/api/titles/series-2") return json(houseOut);
+      return notFound();
+    }),
+  );
 
   await openTile(/^House \(2004\)/);
-  expect(within(dialog()).queryByRole("button", { name: "Add & monitor" })).toBeNull();
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Search now" }));
+  await screen.findByRole("heading", { name: "House", level: 1 });
+  expect(page().queryByRole("button", { name: "Add & monitor" })).toBeNull();
+  fireEvent.click(page().getByRole("button", { name: "Search automatically" }));
 
   expect((await screen.findByRole("status")).textContent).toMatch(/searching.*house/i);
   expect(writes).toEqual([{ method: "POST", path: "/api/titles/series-2/search", body: undefined }]);
 });
 
-test("Search now on a Missing library title moves its popup and tile badge to Searching", async () => {
+test("Search automatically on a Missing library title moves its tile badge to Searching once the page is left", async () => {
   const missing = { ...house, badge: { state: "missing" as const, label: "Missing" } };
   const searching = { ...missing, badge: { state: "searching" as const, label: "Searching" }, seasons: [], historySummary: "Nothing tried yet." };
   setup((url, init) => {
     if (url.pathname === "/api/wall") return json({ items: [{ source: "library", title: missing }] });
     if (init.method === "POST" && url.pathname === "/api/titles/series-2/search") return json(searching);
-    return json({ error: "nope" }, 404);
+    if (url.pathname === "/api/titles/series-2") return json({ ...missing, seasons: [], historySummary: "Nothing tried yet." });
+    return notFound();
   });
   await openTile(/^House \(2004\), Missing/);
-  expect(within(dialog()).getByText("Missing")).toBeTruthy();
+  await screen.findByRole("heading", { name: "House", level: 1 });
 
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Search now" }));
-
+  fireEvent.click(page().getByRole("button", { name: "Search automatically" }));
   await screen.findByRole("status");
-  expect(within(dialog()).getByText("Searching")).toBeTruthy();
-  expect(within(dialog()).queryByText("Missing")).toBeNull();
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Close" }));
-  expect(screen.getAllByRole("button", { name: /^House \(2004\), Searching/ }).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+  await waitFor(() => expect(screen.getAllByRole("button", { name: /^House \(2004\), Searching/ }).length).toBeGreaterThan(0));
   expect(screen.queryByRole("button", { name: /^House \(2004\), Missing/ })).toBeNull();
 });
 
-test("a failed add shows the API's message in the popup and can be tried again", async () => {
+test("a failed add shows the API's message on the page and can be tried again", async () => {
   let up = false;
-  setup(popupApi((url, init) => (init.method === "POST" && url.pathname === "/api/titles" ? (up ? json(duneAdded, 201) : json({ error: "TMDB did not answer" }, 502)) : json({ error: "nope" }, 404))));
+  setup(pageApi(addAnswering(() => (up ? json(duneAdded, 201) : json({ error: "TMDB did not answer" }, 502)))));
   await openTile(/^Dune \(2021\)/);
 
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Add & monitor" }));
+  fireEvent.click(await page().findByRole("button", { name: "Add & monitor" }));
 
-  expect((await within(dialog()).findByRole("alert")).textContent).toContain("TMDB did not answer");
+  expect((await page().findByRole("alert")).textContent).toContain("TMDB did not answer");
   expect(screen.queryByRole("status")).toBeNull();
   up = true;
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Add & monitor" }));
-  await within(dialog()).findByRole("button", { name: "Search now" });
-  expect(within(dialog()).queryByRole("alert")).toBeNull();
+  fireEvent.click(page().getByRole("button", { name: "Add & monitor" }));
+  await page().findByRole("button", { name: "Search automatically" });
+  expect(page().queryByRole("alert")).toBeNull();
 });
 
-test("an added title reads as in the library on its tile and when its popup is reopened", async () => {
-  setup(popupApi((url, init) => (init.method === "POST" && url.pathname === "/api/titles" ? json(duneAdded, 201) : json({ error: "nope" }, 404))));
+test("an added title reads as in the library on its tile and when its page is reopened", async () => {
+  let added = false;
+  setup(
+    pageApi((url, init) => {
+      if (isAdd(url, init)) {
+        added = true;
+        return json(duneAdded, 201);
+      }
+      if (url.pathname === "/api/titles/movie-1" && added) return json(duneAdded);
+      return notFound();
+    }),
+  );
   await openTile(/^Dune \(2021\)/);
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Add & monitor" }));
-  await within(dialog()).findByRole("button", { name: "Search now" });
+  fireEvent.click(await page().findByRole("button", { name: "Add & monitor" }));
+  await page().findByRole("button", { name: "Search automatically" });
 
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Close" }));
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
-  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(screen.queryByRole("main")).toBeNull());
   const tile = screen.getAllByRole("button", { name: /^Dune \(2021\), Searching/ })[0];
   fireEvent.click(tile);
-  expect(within(dialog()).getByRole("button", { name: "Search now" })).toBeTruthy();
+  expect(await page().findByRole("button", { name: "Search automatically" })).toBeTruthy();
 });
 
-test("Esc closes the popup first and keeps the search; the backdrop and Close also close it", async () => {
-  setup(popupApi());
+test("Esc closes the page first and keeps the search", async () => {
+  setup(pageApi());
   await grid().findAllByRole("button", { name: /house/i });
   type("dune");
   const results = await screen.findByRole("list", { name: /results/i });
-  const opener = within(results).getByRole("button", { name: /dune/i });
-  opener.focus();
-  fireEvent.click(opener);
+  fireEvent.click(within(results).getByRole("button", { name: /dune/i }));
+  await screen.findByRole("heading", { name: "Dune", level: 1 });
 
   fireEvent.keyDown(window, { key: "Escape" });
 
-  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(screen.queryByRole("main")).toBeNull());
   expect((bar() as HTMLInputElement).value).toBe("dune");
-  expect(document.activeElement).toBe(opener);
-
-  fireEvent.click(opener);
-  fireEvent.click(screen.getByTestId("popup-backdrop"));
-  expect(screen.queryByRole("dialog")).toBeNull();
-
-  fireEvent.click(opener);
-  fireEvent.click(within(dialog()).getByRole("button", { name: "Close" }));
-  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 test("the toast goes away by itself", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   try {
-    setup(popupApi((url, init) => (init.method === "POST" && url.pathname === "/api/titles" ? json(duneAdded, 201) : json({ error: "nope" }, 404))));
+    setup(pageApi(addAnswering(() => json(duneAdded, 201))));
     await openTile(/^Dune \(2021\)/);
-    fireEvent.click(within(dialog()).getByRole("button", { name: "Add & monitor" }));
+    fireEvent.click(await page().findByRole("button", { name: "Add & monitor" }));
     await screen.findByRole("status");
 
     await vi.advanceTimersByTimeAsync(6000);

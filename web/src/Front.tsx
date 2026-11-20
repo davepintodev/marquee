@@ -58,7 +58,7 @@ export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
         const { title: t, src } = placed[i];
         const label = t.badge ? `${t.title} (${t.year}), ${t.badge.label}` : `${t.title} (${t.year})`;
         return (
-          <button key={i} type="button" className="ptile" data-shape={s.shape} style={style} aria-label={label} title={label} onClick={() => onSelect(t)}>
+          <button key={i} type="button" className="ptile" data-tid={t.id} data-shape={s.shape} style={style} aria-label={label} title={label} onClick={() => onSelect(t)}>
             <span className="ptile-frame">
               <Art src={src} title={t.title} year={t.year} />
             </span>

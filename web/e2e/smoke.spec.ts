@@ -319,42 +319,46 @@ test("dark for a dark system, light when the system asks for it", async ({ brows
 });
 
 // Each screen adds a different trending title: the fake keeps what was added for the whole run.
-const popupTitles = [
+const pageTitles = [
   { ...screens[0], title: "Severance" },
   { ...screens[1], title: "Andor" },
 ];
 
-for (const s of popupTitles) {
-  test(`the popup opens from a result on ${s.name}, adds on Add & monitor and then reads Search now`, async ({ page }) => {
+async function noSideScroll(page: Page, width: number) {
+  const overflow = await page.evaluate(() => {
+    const el = document.querySelector(".ts, .page-layer")!;
+    return el.scrollWidth - el.clientWidth;
+  });
+  expect(overflow, `page is ${width}px wide and must not scroll sideways`).toBeLessThanOrEqual(0);
+}
+
+for (const s of pageTitles) {
+  test(`a result opens the title page on ${s.name}, adds on Add & monitor and then reads Search automatically`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
     await openApp(page);
     const bar = page.getByRole("searchbox");
     await bar.pressSequentially(s.title.toLowerCase(), { delay: 80 });
     await page.getByRole("list", { name: "Results" }).getByRole("button", { name: new RegExp(s.title) }).click();
 
-    const popup = page.getByRole("dialog");
-    await expect(popup.getByRole("heading", { name: s.title })).toBeVisible();
-    await expect(popup.getByText(/2022 · series/)).toBeVisible();
-    await expect(popup.locator("img")).toBeVisible();
-    await expect(popup.getByRole("button", { name: "Add & monitor" })).toBeVisible();
-    await expect(popup.getByRole("button", { name: "Interactive search" })).toBeVisible();
+    const title = page.getByRole("main");
+    await expect(title.getByRole("heading", { name: s.title, level: 1 })).toBeVisible();
+    await expect(title.getByText(/2022 · Series/)).toBeVisible();
+    await expect(title.locator(".ts-poster img")).toBeVisible();
+    await expect(title.getByRole("button", { name: "Add & monitor" })).toBeVisible();
+    await expect(title.getByText("Seasons and episodes show up once the series is added.")).toBeVisible();
     await page.waitForTimeout(500);
-    const box = (await popup.boundingBox())!;
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(s.width);
-    expect(box.y).toBeGreaterThanOrEqual(0);
-    expect(box.y + box.height).toBeLessThanOrEqual(s.height);
-    await page.screenshot({ path: join(shots, `popup-${s.name}.png`) });
+    await noSideScroll(page, s.width);
+    await page.screenshot({ path: join(shots, `title-${s.name}.png`) });
 
-    await popup.getByRole("button", { name: "Add & monitor" }).click();
+    await title.getByRole("button", { name: "Add & monitor" }).click();
 
     await expect(page.getByRole("status")).toContainText(s.title);
-    await expect(popup.getByRole("button", { name: "Search now" })).toBeVisible();
+    await expect(title.getByRole("button", { name: "Search automatically", exact: true })).toBeVisible();
     await page.waitForTimeout(500);
-    await page.screenshot({ path: join(shots, `popup-added-${s.name}.png`) });
+    await page.screenshot({ path: join(shots, `title-added-${s.name}.png`) });
 
     await page.keyboard.press("Escape");
-    await expect(popup).toBeHidden();
+    await expect(title).toBeHidden();
     await expect(bar).toHaveValue(s.title.toLowerCase());
   });
 }
@@ -372,77 +376,84 @@ async function tileOnScreen(page: Page, name: RegExp) {
   throw new Error(`no poster named ${name} is fully on screen`);
 }
 
-test("a wall poster opens the popup over the wall and a title already in the library reads Search now", async ({ page }) => {
+test("a wall poster opens the title page and a title already in the library reads Search automatically", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await page.goto("/");
 
   await (await tileOnScreen(page, inLibrary)).click();
 
-  const popup = page.getByRole("dialog");
-  await expect(popup.getByRole("button", { name: "Search now" })).toBeVisible();
-  await expect(popup.getByRole("button", { name: "Add & monitor" })).toHaveCount(0);
-  await expect(page.locator(".app")).toHaveAttribute("data-screen", "front");
+  const title = page.getByRole("main");
+  await expect(title.getByRole("button", { name: "Search automatically", exact: true })).toBeVisible();
+  await expect(title.getByRole("button", { name: "Add & monitor" })).toHaveCount(0);
   await page.waitForTimeout(500);
-  await page.screenshot({ path: join(shots, "popup-library-laptop.png") });
-  await page.keyboard.press("Escape");
-  await expect(popup).toBeHidden();
-  await expect(page.locator(".app")).toHaveAttribute("data-screen", "front");
+  await page.screenshot({ path: join(shots, "title-library-laptop.png") });
+  await title.getByRole("button", { name: "Back" }).click();
+  await expect(title).toBeHidden();
+  await expect(page.locator(".app")).toHaveAttribute("data-screen", "grid");
 });
 
-async function noSideScroll(page: Page, width: number) {
-  const overflow = await page.evaluate(() => document.querySelector(".page-layer")!.scrollWidth - document.querySelector(".page-layer")!.clientWidth);
-  expect(overflow, `page is ${width}px wide and must not scroll sideways`).toBeLessThanOrEqual(0);
-}
 
 for (const s of screens.slice(0, 2)) {
-  test(`a series' detail shows its seasons, episodes and history in words on ${s.name}`, async ({ page }) => {
+  test(`a series' page shows its seasons, episodes and history in words on ${s.name}`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
     await page.goto("/#/title/series-1408");
 
     await expect(page.getByRole("heading", { name: "House", level: 1 })).toBeVisible();
-    await expect(page.getByText(/^Tried 3 releases, 1 stalled, 1 fake, retrying in 6h\.$/)).toBeVisible();
-    const season4 = page.getByRole("region", { name: "Season 4" });
-    await season4.locator(".season-toggle").click();
-    await expect(season4.getByRole("listitem")).toHaveCount(4);
+    await page.getByRole("tab", { name: /^Season 4,/ }).click();
+    const season4 = page.getByRole("list", { name: "Season 4 episodes" });
+    await expect(season4.getByRole("listitem")).toHaveCount(16);
     await expect(season4.getByText("Missing").first()).toBeVisible();
-    await expect(season4.getByText("Downloaded")).toBeVisible();
-    await expect(page.locator(".page").getByText("Season 4 · 3 missing")).toHaveCount(1);
-    await expect(season4.getByText("3 missing")).toBeVisible();
-    const overview = page.locator(".detail-overview");
+    await expect(season4.getByText("Downloaded").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Season 4/ })).toContainText("missing");
+    const overview = page.locator(".ts-overview");
     await expect(overview).toBeVisible();
-    await expect(overview).toHaveCSS("font-size", "16px");
     const ob = (await overview.boundingBox())!;
     expect(ob.width, "the overview has a readable line length").toBeGreaterThan(Math.min(240, s.width - 60));
     expect(ob.x + ob.width).toBeLessThanOrEqual(s.width);
-    await page.getByRole("button", { name: /^History/ }).click();
-    await expect(page.getByRole("list", { name: "History" }).getByText("Stalled")).toBeVisible();
+
+    const tip = page.getByRole("tooltip");
+    await page.getByRole("button", { name: "About these attempts" }).click();
+    await expect(tip).toHaveAttribute("data-open", "true");
+    await expect(tip).toContainText(/Tried 3 releases/);
+    await page.keyboard.press("Escape");
+    await expect(tip).not.toHaveAttribute("data-open", "true");
+    await expect(page.getByRole("main")).toBeVisible();
+
+    await page.getByRole("button", { name: "History" }).click();
+    await expect(page.getByRole("list", { name: "History" }).getByText("Stalled").first()).toBeVisible();
     await noSideScroll(page, s.width);
     await page.waitForTimeout(500);
-    await page.screenshot({ path: join(shots, `detail-${s.name}.png`) });
-    await page.locator(".page-layer").evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await page.screenshot({ path: join(shots, `title-series-${s.name}.png`) });
+    await page.locator(".ts").evaluate((el) => el.scrollTo(0, el.scrollHeight));
     await page.waitForTimeout(300);
-    await page.screenshot({ path: join(shots, `detail-${s.name}-scrolled.png`) });
+    await page.screenshot({ path: join(shots, `title-series-${s.name}-scrolled.png`) });
   });
 }
 
-test("detail: Search now and Unmonitor on an episode change it in place, Remove asks first", async ({ page }) => {
+test("a series page: Search automatically and Unmonitor on an episode change it in place, Remove asks first", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await page.goto("/#/title/series-1408");
-  const season4 = page.getByRole("region", { name: "Season 4" });
-  await season4.locator(".season-toggle").click();
+  await page.getByRole("tab", { name: /^Season 4,/ }).click();
+  const season4 = page.getByRole("list", { name: "Season 4 episodes" });
+  const big = season4.getByRole("listitem").filter({ hasText: "Big Baby" });
 
-  await season4.getByRole("button", { name: "Search now for Big Baby" }).click();
-  await expect(season4.getByRole("listitem").nth(1).getByText("Searching")).toBeVisible();
-  await season4.getByRole("button", { name: "Unmonitor Big Baby" }).click();
-  await expect(season4.getByRole("listitem").nth(1).getByText("Unmonitored")).toBeVisible();
-  await season4.getByRole("button", { name: "Monitor Big Baby" }).click();
-  await expect(season4.getByRole("listitem").nth(1).getByText("Unmonitored")).toHaveCount(0);
+  await big.getByRole("button", { name: "Search automatically for Big Baby" }).click();
+  await expect(big.getByText("Searching").first()).toBeVisible();
+  await big.getByRole("button", { name: /^Monitored\. Stop monitoring Big Baby/ }).click();
+  await expect(big.getByRole("button", { name: /^Not monitored\. Monitor Big Baby/ })).toBeVisible();
+  await big.getByRole("button", { name: /^Not monitored\. Monitor Big Baby/ }).click();
+  await expect(big.getByRole("button", { name: /^Monitored\. Stop monitoring Big Baby/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Remove from marquee" }).click();
-  await expect(page.getByText(/files stay on disk/i)).toBeVisible();
+  const remove = page.getByRole("group", { name: "Remove from marquee" });
+  await remove.getByRole("button", { name: /^Remove/ }).click();
+  await expect(remove.getByText(/^Remove “House”\?$/)).toBeVisible();
+  const keep = remove.getByRole("button", { name: "Keep it" });
+  await expect(keep).toBeFocused();
   await page.waitForTimeout(300);
-  await page.screenshot({ path: join(shots, "detail-remove-laptop.png") });
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.screenshot({ path: join(shots, "title-remove-laptop.png") });
+  await page.keyboard.press("Escape");
+  await expect(remove.getByRole("button", { name: /^Remove…/ })).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".app")).toHaveAttribute("data-mode", "library");
 });
@@ -458,15 +469,14 @@ for (const s of retries) {
     await openApp(page);
     await page.getByRole("link", { name: "Activity" }).click();
 
-    const queue = page.getByRole("list", { name: "Queue" });
-    const history = page.getByRole("list", { name: "History" });
-    await expect(queue.getByRole("listitem").first()).toBeVisible();
+    const waiting = page.getByRole("list", { name: "Waiting" });
+    const history = page.getByRole("region", { name: "History" });
+    await expect(page.getByRole("heading", { name: "Downloading" })).toBeVisible();
     await expect(history.getByText("Fake file").first()).toBeVisible();
     await expect(history.getByText(/\.exe file, not a video/).first()).toBeVisible();
     await noSideScroll(page, s.width);
 
-    const dune = queue.getByRole("listitem").filter({ hasText: "Dune: Part Two" });
-    const progress = dune.getByRole("progressbar");
+    const progress = page.getByRole("progressbar", { name: "Dune: Part Two progress" });
     const first = await progress.getAttribute("aria-valuenow");
     await page.waitForTimeout(500);
     await page.screenshot({ path: join(shots, `activity-${s.name}.png`) });
@@ -475,7 +485,7 @@ for (const s of retries) {
     await history.getByRole("button", { name: s.retry }).click();
 
     await expect(history.getByRole("button", { name: s.retry })).toHaveCount(0);
-    await expect(queue.getByRole("listitem").filter({ hasText: s.queued }).getByText("Searching")).toBeVisible();
+    await expect(waiting.getByRole("listitem").filter({ hasText: s.queued }).getByText("Searching")).toBeVisible();
     await expect(page.getByRole("status")).toContainText(s.queued);
     await page.waitForTimeout(500);
     await page.screenshot({ path: join(shots, `activity-retried-${s.name}.png`) });
@@ -485,35 +495,36 @@ for (const s of retries) {
   });
 }
 
-test("a library popup opens the title's detail", async ({ page }) => {
+test("a library title opens its page and Back returns to the grid", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await openApp(page);
   await page.locator(".cell").first().click();
-  await page.getByRole("dialog").getByRole("link", { name: "Details" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("main")).toHaveCount(0);
+  await expect(page.locator(".app")).toHaveAttribute("data-mode", "library");
 });
 
 test("retrying a failed series episode puts it in the queue", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await page.goto("/#/activity");
-  const history = page.getByRole("list", { name: "History" });
+  const history = page.getByRole("region", { name: "History" });
 
   await history.getByRole("button", { name: "Retry House" }).click();
 
-  const queue = page.getByRole("list", { name: "Queue" });
-  await expect(queue.getByRole("listitem").filter({ hasText: "House" }).getByText(/S04E02/)).toBeVisible();
+  const waiting = page.getByRole("list", { name: "Waiting" });
+  await expect(waiting.getByRole("listitem").filter({ hasText: "House" }).getByRole("link")).toHaveAttribute("title", /S04E02/);
 });
 
-test("detail and Activity read well in the light theme", async ({ browser }) => {
+test("the title page and Activity read well in the light theme", async ({ browser }) => {
   const ctx = await browser.newContext({ colorScheme: "light", viewport: { width: screens[1].width, height: screens[1].height } });
   const page = await ctx.newPage();
   await page.goto("/#/title/series-1408");
   await expect(page.getByRole("heading", { name: "House", level: 1 })).toBeVisible();
   await page.waitForTimeout(500);
-  await page.screenshot({ path: join(shots, "detail-light.png") });
+  await page.screenshot({ path: join(shots, "title-light.png") });
   await page.goto("/#/activity");
-  await expect(page.getByRole("list", { name: "Queue" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Downloading" })).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(shots, "activity-light.png") });
   await ctx.close();
@@ -563,119 +574,115 @@ for (const s of screens.slice(0, 2)) {
   });
 }
 
-async function openInteractive(page: Page, query: string, name: RegExp) {
+async function openTitle(page: Page, query: string, name: RegExp) {
   await openApp(page);
   await page.getByRole("searchbox").pressSequentially(query, { delay: 60 });
   await page.getByRole("list", { name: "Results" }).getByRole("button", { name }).click();
-  const popup = page.getByRole("dialog");
-  // Clicking while the sheet is still sliding in makes the browser scroll the page to reach it.
+  const title = page.getByRole("main");
+  await expect(title.getByRole("heading", { level: 1 })).toBeVisible();
+  // Clicking while the page is still fading in makes the browser scroll to reach it.
   await page.waitForTimeout(500);
-  await popup.getByRole("button", { name: "Interactive search" }).click();
-  return popup;
+  return title;
 }
 
-async function insidePopup(page: Page, s: { width: number; height: number }) {
-  await page.waitForTimeout(500);
-  const box = (await page.getByRole("dialog").boundingBox())!;
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(s.width);
-  expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.y + box.height).toBeLessThanOrEqual(s.height);
+async function openReleases(page: Page, query: string, name: RegExp) {
+  const title = await openTitle(page, query, name);
+  await title.getByRole("button", { name: "Search releases" }).click();
+  return title;
 }
 
 for (const s of screens.slice(0, 2)) {
-  test(`interactive search lists a movie's ranked releases with quality, size, source and cached on ${s.name}`, async ({ page }) => {
+  test(`a movie's releases are listed in marquee's order with quality, size, source and cached on ${s.name}`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
-    const popup = await openInteractive(page, "dune", /Dune[\s\S]*2021/);
+    const title = await openReleases(page, "dune", /Dune[\s\S]*2021/);
 
-    const releases = popup.getByRole("list", { name: "Releases" });
-    const rows = releases.getByRole("listitem");
-    await expect(rows).toHaveCount(2);
-    await expect(rows.first()).toContainText("Blade.Runner.2049.2017.1080p.BluRay.x264");
-    await expect(rows.first()).toContainText("Bluray-1080p");
+    const rows = title.getByRole("list", { name: /^Releases for/ }).getByRole("listitem");
+    await expect(rows).toHaveCount(3);
+    await expect(title.getByText("in marquee’s order")).toBeVisible();
+    await expect(rows.first()).toContainText("Blade.Runner.2049.2017.1080p.BluRay.x264-SPARKS");
+    await expect(rows.first()).toContainText("1080p");
     await expect(rows.first()).toContainText("12 GB");
     await expect(rows.first()).toContainText("Torrentio");
     await expect(rows.first()).toContainText("Cached");
-    await expect(rows.nth(1)).toContainText("WEBDL-2160p");
-    await insidePopup(page, s);
+    await expect(rows.first()).toContainText("marquee’s pick");
+    await expect(rows.nth(1)).not.toContainText("marquee’s pick");
+    await title.getByRole("button", { name: "Show 6 more releases" }).click();
+    await expect(rows).toHaveCount(9);
+    await expect(title.getByRole("group", { name: "Filter by resolution" }).getByRole("button", { name: "2160p" })).toHaveText("2160p");
+    await noSideScroll(page, s.width);
     await page.waitForTimeout(500);
-    await page.screenshot({ path: join(shots, `interactive-movie-${s.name}.png`) });
+    await page.screenshot({ path: join(shots, `releases-movie-${s.name}.png`) });
 
-    await popup.getByText(/^Dropped \(\d+\)$/).click();
-    const dropped = popup.getByRole("list", { name: "Dropped" });
+    await title.getByRole("button", { name: /^Show \d+ dropped releases$/ }).click();
+    const dropped = title.getByRole("list", { name: "Dropped releases" });
     await expect(dropped.getByText("a .exe file, not a video")).toBeVisible();
-    await expect(dropped.getByRole("button")).toHaveCount(0);
-    await insidePopup(page, s);
-    await page.screenshot({ path: join(shots, `interactive-movie-dropped-${s.name}.png`) });
+    await expect(dropped.getByRole("listitem").filter({ hasText: "a .exe file" }).getByRole("button")).toHaveCount(0);
+    await expect(dropped.getByRole("button", { name: /^Pick anyway/ })).toHaveCount(2);
+    await noSideScroll(page, s.width);
+    await page.screenshot({ path: join(shots, `releases-movie-dropped-${s.name}.png`) });
 
-    await popup.getByRole("button", { name: "Back" }).click();
-    await expect(popup.getByRole("button", { name: "Add & monitor" })).toBeVisible();
-    await expect(popup.getByRole("button", { name: "Interactive search" })).toBeFocused();
+    await title.getByRole("button", { name: "2160p", exact: true }).click();
+    await expect(rows).toHaveCount(3);
   });
 }
 
-test("picking a release queues it: the toast confirms, the popup reads Search now and Activity shows the download", async ({ page }) => {
+test("picking a release queues it: the toast confirms, the row reads Queued and Activity shows the download", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
-  const popup = await openInteractive(page, "dune", /Dune[\s\S]*2021/);
+  const title = await openReleases(page, "dune", /Dune[\s\S]*2021/);
 
-  await popup.getByRole("button", { name: "Pick Blade.Runner.2049.2017.2160p.WEB-DL" }).click();
+  await title.getByRole("button", { name: "2160p", exact: true }).click();
+  await title.getByRole("button", { name: "Pick Blade.Runner.2049.2017.2160p.WEB-DL" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Queued Blade.Runner.2049.2017.2160p.WEB-DL for “Dune”");
-  await expect(popup.getByText("Queued", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Queued Blade.Runner.2049.2017.2160p.WEB-DL");
+  await expect(title.getByText("Queued", { exact: true })).toBeVisible();
   await page.waitForTimeout(400);
-  await page.screenshot({ path: join(shots, "interactive-picked-laptop.png") });
-  await popup.getByRole("button", { name: "Back" }).click();
-  await expect(popup.getByRole("button", { name: "Search now" })).toBeVisible();
+  await page.screenshot({ path: join(shots, "releases-picked-laptop.png") });
 
   await page.keyboard.press("Escape");
   await page.getByRole("link", { name: "Activity" }).click();
-  const queue = page.getByRole("list", { name: "Queue" });
-  const row = queue.getByRole("listitem").filter({ hasText: "Blade.Runner.2049.2017.2160p.WEB-DL" });
-  await expect(row).toBeVisible();
-  await expect(row).toContainText("Dune");
+  await expect(page.locator(".board-main").getByText(/^Dune$/)).toBeVisible();
   await page.waitForTimeout(400);
-  await page.screenshot({ path: join(shots, "interactive-activity-laptop.png") });
+  await page.screenshot({ path: join(shots, "releases-activity-laptop.png") });
 });
 
-test("a series not in the library says to add it first when Interactive search is pressed", async ({ page }) => {
+test("a series not in the library says to add it first and offers no episodes", async ({ page }) => {
   await page.setViewportSize({ width: screens[0].width, height: screens[0].height });
-  const popup = await openInteractive(page, "mr. robot", /Mr\. Robot[\s\S]*2015/);
+  const title = await openTitle(page, "mr. robot", /Mr\. Robot[\s\S]*2015/);
 
-  await expect(popup.getByText(/Add & monitor this series first/)).toBeVisible();
-  await expect(popup.getByRole("combobox", { name: "Episode" })).toHaveCount(0);
-  await expect(popup.getByRole("list", { name: "Releases" })).toHaveCount(0);
-  await insidePopup(page, screens[0]);
-  await page.screenshot({ path: join(shots, "interactive-series-add-first-phone.png") });
-
-  await popup.getByRole("button", { name: "Back" }).click();
-  await expect(popup.getByRole("button", { name: "Add & monitor" })).toBeVisible();
+  await expect(title.getByText("Seasons and episodes show up once the series is added.")).toBeVisible();
+  await expect(title.getByRole("tab")).toHaveCount(0);
+  await expect(title.getByRole("button", { name: "Search releases" })).toHaveCount(0);
+  await noSideScroll(page, screens[0].width);
+  await page.screenshot({ path: join(shots, "title-series-add-first-phone.png") });
+  await expect(title.getByRole("button", { name: "Add & monitor" })).toBeVisible();
 });
 
-test("a library series asks for an episode and a blocklisted release can be picked by hand on phone", async ({ page }) => {
+test("a library series lists an episode's releases and a blocklisted one can be picked by hand on phone", async ({ page }) => {
   await page.setViewportSize({ width: screens[0].width, height: screens[0].height });
-  const popup = await openInteractive(page, "camp snoopy", /Camp Snoopy[\s\S]*2024/);
+  const title = await openTitle(page, "camp snoopy", /Camp Snoopy[\s\S]*2024/);
 
-  const episode = popup.getByRole("combobox", { name: "Episode" });
-  await expect(episode).toHaveValue("s01e01");
-  await episode.selectOption("s01e02");
-  await expect(popup.getByRole("list", { name: "Releases" }).getByRole("listitem").first()).toBeVisible();
-  await insidePopup(page, screens[0]);
+  const second = title.getByRole("button", { name: /^S01E02 / });
+  await second.click();
+  await expect(second).toHaveAttribute("aria-expanded", "true");
+  const list = title.getByRole("list", { name: /^Releases for/ });
+  await expect(list.getByRole("listitem").first()).toBeVisible();
+  await noSideScroll(page, screens[0].width);
   await page.waitForTimeout(500);
-  await page.screenshot({ path: join(shots, "interactive-series-phone.png") });
+  await page.screenshot({ path: join(shots, "releases-series-phone.png") });
 
-  await popup.getByText(/^Dropped \(\d+\)$/).click();
-  const blocked = popup.getByRole("list", { name: "Dropped" }).getByRole("listitem").filter({ hasText: "failed before (stalled)" });
+  await title.getByRole("button", { name: /^Show \d+ dropped releases$/ }).click();
+  const blocked = title.getByRole("list", { name: "Dropped releases" }).getByRole("listitem").filter({ hasText: "failed before" });
   await expect(blocked).toBeVisible();
   await blocked.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: join(shots, "interactive-blocklisted-phone.png") });
-  await blocked.getByRole("button", { name: /anyway$/ }).click();
+  await page.screenshot({ path: join(shots, "releases-blocklisted-phone.png") });
+  await blocked.getByRole("button", { name: /^Pick anyway/ }).click();
 
-  await expect(page.getByRole("status")).toContainText("Queued House.S04E02.1080p.WEB-DL");
+  await expect(page.getByRole("status")).toContainText("Queued House.S01E02.480p.DVDRip.XviD");
   await expect(blocked.getByText("Queued", { exact: true })).toBeVisible();
 
   await page.keyboard.press("Escape");
+  await expect(second).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Escape");
   await page.getByRole("link", { name: "Activity" }).click();
-  const row = page.getByRole("list", { name: "Queue" }).getByRole("listitem").filter({ hasText: "House.S04E02.1080p.WEB-DL" });
-  await expect(row).toBeVisible();
-  await expect(row).toContainText(/Camp Snoopy.*S01E02/);
+  await expect(page.locator(".board-main").getByText(/Camp Snoopy/).first()).toBeVisible();
 });

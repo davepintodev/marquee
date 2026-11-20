@@ -83,6 +83,7 @@ func (f *Fake) routes() http.Handler {
 	h("PATCH /api/titles/{id}/episodes/{episodeId}", f.updateEpisode)
 	h("POST /api/titles/{id}/episodes/{episodeId}/search", f.searchNow)
 	h("GET /api/titles/{id}/releases", f.listReleases)
+	h("GET /api/titles/{id}/about", f.about)
 	h("POST /api/titles/{id}/releases/{releaseId}/grab", f.grab)
 	h("GET /api/downloads", f.listDownloads)
 	h("GET /api/history", f.listHistory)
@@ -93,6 +94,7 @@ func (f *Fake) routes() http.Handler {
 	})
 	// Outside h: a slow client reading a large file must not hold the fake's lock.
 	mux.HandleFunc("GET /api/images/{kind}/{titleId}", f.image)
+	mux.HandleFunc("GET /api/people/{personId}/image", f.personImage)
 	mux.HandleFunc("GET /api/events", f.events)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "not found") })
 	return mux
@@ -548,6 +550,9 @@ func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {
 	candidates, drops := []release{}, []dropped{}
 	for _, x := range f.releases[t.Kind] {
 		rel := release{x.ID, x.Name, x.Quality, x.SizeBytes, x.Source, x.Cached}
+		if ep := r.URL.Query().Get("episode"); len(ep) == 6 {
+			rel.Name = strings.ReplaceAll(strings.ReplaceAll(rel.Name, "S04E03", "S"+strings.ToUpper(ep[1:3])+"E"+nextEp(ep[4:])), "S04E02", strings.ToUpper(ep))
+		}
 		if x.Drop == "" {
 			candidates = append(candidates, rel)
 		} else {
@@ -752,4 +757,9 @@ func (f *Fake) events(w http.ResponseWriter, r *http.Request) {
 			fl.Flush()
 		}
 	}
+}
+
+func nextEp(n string) string {
+	v, _ := strconv.Atoi(n)
+	return fmt.Sprintf("%02d", v+1)
 }
