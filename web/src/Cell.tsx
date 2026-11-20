@@ -6,7 +6,6 @@ import { Meter, StateLine } from "./Meter";
 interface Props {
   api: Api;
   title: TitleSummary;
-  // Search results say "Downloaded" too, so a title already owned is told apart from one that is not.
   markOwned?: boolean;
   onSelect?: (title: TitleSummary) => void;
 }
@@ -17,7 +16,7 @@ export function Cell({ api, title: t, markOwned, onSelect }: Props) {
     <button type="button" className="cell" aria-label={label} title={label} onClick={() => onSelect?.(t)}>
       <span className="cell-art">
         <Art src={api.imageUrl(t.posterPath)} title={t.title} year={t.year} />
-        <Meter title={t} owned={markOwned} />
+        <Meter title={t} />
       </span>
       <span className="cell-name">{t.title}</span>
       <span className="cell-meta">{`${t.year} · ${t.kind === "movie" ? "Movie" : "Series"}`}</span>

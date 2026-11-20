@@ -6,9 +6,6 @@ export interface Tint {
 
 const SIZE = 16;
 
-// Dominant hue of an image's RGBA pixels (chroma-weighted, so a vivid sliver beats a grey field) and
-// how colourful it is overall, which sets the saturation of the words: a misty grey poster gives muted
-// words. mass is how much colour the hue rests on; a grey image has none.
 export function tintFromPixels(data: ArrayLike<number>): Tint {
   let x = 0;
   let y = 0;
@@ -32,7 +29,6 @@ export function tintFromPixels(data: ArrayLike<number>): Tint {
   return { h, s, mass };
 }
 
-// The most colourful of the tints that could be read, or null when none could.
 export function mostColourful(tints: (Tint | null)[]): Tint | null {
   return tints.reduce<Tint | null>((best, t) => (t && (!best || t.mass > best.mass) ? t : best), null);
 }

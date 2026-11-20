@@ -14,7 +14,6 @@ const screens = [
 
 const GAP = 10;
 
-// The app screen behind the front page: the library grid with its search.
 async function openApp(page: Page) {
   // A navigation that only changes the hash would keep the old page's state.
   await page.goto("about:blank");
@@ -45,7 +44,6 @@ for (const s of screens) {
     expect(Math.max(...frames.map((f) => f.y + f.h))).toBeGreaterThanOrEqual(s.height + 14);
     expect(Math.max(...frames.map((f) => f.x + f.w))).toBeLessThanOrEqual(s.width + 34);
 
-    // Every pair of neighbouring posters is exactly one gap apart, in whole pixels.
     for (const a of frames) {
       for (const b of frames) {
         const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
@@ -166,6 +164,12 @@ test("with reduced motion the words change colour at once and the arrow does not
   await wallFrames(page);
   await expect(page.locator(".slot-arrow svg")).toHaveCSS("animation-name", "none");
   await expect(page.locator(".slot-words em")).toHaveCSS("transition-duration", "1e-05s");
+  await expect(page.locator(".front")).toHaveCSS("transition-delay", "0s");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".app")).toHaveAttribute("data-screen", "grid");
+  await expect(page.locator(".front")).toHaveCSS("transition-delay", "0s");
+  await expect(page.locator(".top")).toHaveCSS("transition-delay", "0s");
+  await expect(page.locator(".tiles > li").first()).toHaveCSS("transition-delay", "0s");
   await ctx.close();
 });
 
@@ -358,7 +362,6 @@ for (const s of popupTitles) {
 
 const inLibrary = /Downloaded|missing|Searching|Downloading|Stalled/i;
 
-// A wall poster whose middle is on screen: posters at the edges bleed past it.
 async function tileOnScreen(page: Page, name: RegExp) {
   await expect(page.locator(".ptile[data-shape] img").first()).toBeVisible();
   const tiles = page.locator(".ptile").and(page.getByRole("button", { name }));

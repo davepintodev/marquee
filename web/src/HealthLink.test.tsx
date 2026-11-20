@@ -65,12 +65,14 @@ test("the link shows a problem dot before the word and says something needs atte
 test("the link has no dot while Health is loading and when the request fails", async () => {
   let release!: (r: Response) => void;
   const pending = new Promise<Response>((r) => (release = r));
-  setupApp(serve(() => pending), "");
+  const { calls } = setupApp(serve(() => pending), "#/grid");
   const link = await screen.findByRole("link", { name: "Health" });
+  await waitFor(() => expect(calls.some((u) => u.pathname === "/api/health")).toBe(true));
   expect(link.querySelector("i")).toBeNull();
   release(json({ error: "down" }, 500));
   await new Promise((r) => setTimeout(r, 20));
   expect(screen.getByRole("link", { name: "Health" }).querySelector("i")).toBeNull();
+  expect(screen.getByRole("link", { name: "Health" }).getAttribute("aria-label")).toBe("Health");
   expect(screen.getByRole("searchbox")).toBeTruthy();
 });
 

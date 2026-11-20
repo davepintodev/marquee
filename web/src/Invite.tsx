@@ -5,14 +5,10 @@ interface Props {
   onEnter: () => void;
   textStyle: CSSProperties;
   arrowStyle: CSSProperties;
-  // The posters that touch the words, for the colour at rest.
   rest: string[];
-  // The poster under (or nearest) the mouse pointer; null when it is elsewhere or there is none.
   pointerSrc: string | null;
 }
 
-// The colour answers the pointer: it is the dominant colour of the poster under it, and at rest (and on
-// touch screens) of the most colourful poster touching the words.
 function useTint(rest: string[], pointerSrc: string | null) {
   const [tint, setTint] = useState<Tint | null>(null);
   const restKey = rest.join("|");
@@ -28,7 +24,6 @@ function useTint(rest: string[], pointerSrc: string | null) {
   return tint ? ({ "--th": tint.h, "--ts": `${tint.s}%` } as CSSProperties) : {};
 }
 
-// Two empty slots in the poster wall: the words, and a plain chevron under them. Both open the app.
 export function Invite({ onEnter, textStyle, arrowStyle, rest, pointerSrc }: Props) {
   const colour = useTint(rest, pointerSrc);
   return (

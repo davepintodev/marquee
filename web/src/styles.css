@@ -611,7 +611,6 @@ button {
   animation: pulse 1.6s ease-in-out infinite;
 }
 
-/* Even 2:3 posters; each one comes in when the grid opens. */
 .tiles {
   list-style: none;
   padding: var(--space-4) 0 0;
@@ -696,7 +695,9 @@ button {
   *::before,
   *::after {
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
   }
 }
 
@@ -1647,7 +1648,6 @@ a.btn-secondary {
   }
 }
 
-/* two screens: the poster wall in front, the library grid behind it */
 .front,
 .grid-screen {
   position: absolute;
@@ -1675,8 +1675,6 @@ a.btn-secondary {
   transition-delay: 0s;
 }
 
-/* The posters bleed off every edge; the words and the arrow are two empty slots cut out of the wall. On
-   entering the app they shrink away from the words outward while the grid's posters rise in. */
 .pwall {
   position: absolute;
 }
@@ -1754,8 +1752,6 @@ a.btn-secondary {
   opacity: 0.35;
 }
 
-/* The colour answers the pointer: "tonight?" and the chevron take the dominant colour of a poster, and its
-   own vividness sets the saturation. Light mode darkens the lightness to keep the words readable. */
 .slot {
   --tl: 80%;
   --accent: hsl(var(--th, 215) var(--ts, 30%) var(--tl));

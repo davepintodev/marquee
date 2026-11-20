@@ -5,7 +5,6 @@ import { json, setupApp, BASE, type Handler } from "./testkit";
 import type { TitleSummary } from "./api/types";
 import { mostColourful, type Tint } from "./tint";
 
-// Every poster gets a hue of its own; the series (House) is the most colourful.
 const tintOfFake = vi.hoisted(() => vi.fn());
 vi.mock("./tint", async (original) => ({ ...(await original<typeof import("./tint")>()), tintOf: tintOfFake }));
 
@@ -307,6 +306,38 @@ test("clicking a poster on the wall opens its popup over the wall, and Esc close
   expect(screen.queryByRole("dialog")).toBeNull();
   onWall();
   expect(front().hasAttribute("inert")).toBe(false);
+});
+
+const houseDetail = { ...house, seasons: [], historySummary: "Nothing tried yet." };
+const withDetail = serve(wall, (url) => (url.pathname === "/api/titles/series-2" ? json(houseDetail) : json({ error: "nope" }, 404)));
+
+test("Details opened from the wall closes back to the wall, and the browser's back does not return to the title", async () => {
+  await wallUp(withDetail);
+  fireEvent.click(posters().find((t) => /^House/.test(t.getAttribute("aria-label")!))!);
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("link", { name: "Details" }));
+  await screen.findByRole("heading", { name: "House", level: 1 });
+  expect(window.location.hash).toBe("#/title/series-2");
+
+  fireEvent.keyDown(window, { key: "Escape" });
+  await waitFor(onWall);
+
+  act(() => window.history.back());
+  await new Promise((r) => setTimeout(r, 20));
+  expect(window.location.hash).not.toMatch(/^#\/title/);
+});
+
+test("Details opened from the app closes back to the app", async () => {
+  await wallUp(withDetail);
+  fireEvent.click(words());
+  inApp();
+  fireEvent.click(within(document.querySelector<HTMLElement>(".library-stage")!).getByRole("button", { name: /^House/ }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("link", { name: "Details" }));
+  await screen.findByRole("heading", { name: "House", level: 1 });
+
+  fireEvent.keyDown(window, { key: "Escape" });
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
+  inApp();
+  expect(screen.queryByRole("heading", { name: "House", level: 1 })).toBeNull();
 });
 
 test("typing while a popup is open on the wall does not leave the wall", async () => {

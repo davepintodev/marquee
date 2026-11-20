@@ -40,7 +40,6 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-// The app opens on the poster wall; these tests mostly work in the grid screen behind it.
 function setup(handler: Handler, hash = "#/grid") {
   window.location.hash = hash;
   const calls: URL[] = [];

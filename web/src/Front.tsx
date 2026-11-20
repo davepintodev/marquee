@@ -14,10 +14,6 @@ interface Props {
   onSelect: (title: TitleSummary) => void;
 }
 
-// The front page: posters bleeding off every edge, with the words and an arrow in two empty slots.
-// items is null while the wall loads; an empty list (nothing yet, or a failed load) keeps still
-// placeholders so the screen never pulses forever. With fewer titles than tiles the list repeats,
-// spread so a title is never next to itself.
 export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
   const bleed = bleedOf(width);
   const w = width + 2 * bleed;

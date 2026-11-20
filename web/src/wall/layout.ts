@@ -21,8 +21,6 @@ function reachable(n: number): boolean {
   return n === 0 || (n > 0 && CELLS.some((c) => reachable(n - CELL_WIDTH[c])));
 }
 
-// mulberry32: a deterministic generator, so a screen size always
-// gives the same wall.
 function rng(seed: number) {
   let a = seed >>> 0;
   return () => {
@@ -111,11 +109,6 @@ const sameRow = (a: Tile, b: Tile) => Math.abs(a.y - b.y) < 1 && Math.abs(a.h - 
 const centreX = (t: Tile) => t.x + t.w / 2;
 const centreY = (t: Tile) => t.y + t.h / 2;
 
-// Cuts two empty slots out of the wall, so words and an arrow sit in it as
-// tiles do. The text slot is the pair of full-height tiles nearest the middle
-// of the screen (a single one when it has no neighbour), wider ones preferred.
-// The arrow slot is the lower half of a tile on the bottom edge in line with
-// it, and the upper half stays a poster.
 export function carveWall(width: number, height: number): Carved {
   const all = layoutWall(width, height);
   if (all.length < 5) return { tiles: all, text: null, arrow: null };
@@ -155,11 +148,6 @@ export function carveWall(width: number, height: number): Carved {
   return { tiles: [...rest, keep], text, arrow };
 }
 
-// Which title goes on each tile. Titles keep their order while there are
-// enough of them; once the list has to repeat, each tile takes the least
-// used title that sits farthest from its other copies (a title used once
-// more than the least is allowed when that keeps it clear of its twin), so
-// one poster never shows up next to itself.
 export function spreadTitles(tiles: Tile[], count: number): number[] {
   if (count <= 0) return tiles.map(() => 0);
   const used = new Array<number>(count).fill(0);
@@ -186,8 +174,6 @@ export function spreadTitles(tiles: Tile[], count: number): number[] {
 
 export const GAP = 10;
 
-// How far the posters run past each screen edge: 14 to 28px, plus the half-gap
-// padding, so what shows of an edge poster is the same slice at every width.
 export const bleedOf = (width: number) => GAP / 2 + Math.round(Math.min(28, Math.max(14, width * 0.022)));
 
 export interface Box {
@@ -198,14 +184,12 @@ export interface Box {
   padding: number;
 }
 
-// Whole-pixel edges shared by neighbours, so every visible gap is exactly GAP wide.
 export function snapTile(t: Tile): Box {
   const left = Math.round(t.x);
   const top = Math.round(t.y);
   return { left, top, width: Math.round(t.x + t.w) - left, height: Math.round(t.y + t.h) - top, padding: GAP / 2 };
 }
 
-// The tile under a point, or the one nearest to it.
 export function nearestTile(tiles: Tile[], x: number, y: number): number {
   let best = -1;
   let bestDist = Infinity;
@@ -219,7 +203,6 @@ export function nearestTile(tiles: Tile[], x: number, y: number): number {
   return best;
 }
 
-// The tiles that touch a slot (within a gap) and show on screen, given the wall's bleed.
 export function tilesTouching(tiles: Tile[], slot: Tile, bleed: number, width: number, height: number): number[] {
   const m = GAP + 2;
   const touching = (t: Tile) => t.x < slot.x + slot.w + m && t.x + t.w > slot.x - m && t.y < slot.y + slot.h + m && t.y + t.h > slot.y - m;

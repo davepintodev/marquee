@@ -17,7 +17,9 @@ const FILTERS: { key: Filter; label: string; test: (t: TitleSummary) => boolean 
   { key: "missing", label: "Missing", test: (t) => t.inLibrary && isMissing(t) },
 ];
 
-// The column count follows the width.
+// Rows below the first screenful share one delay, so a long library never leaves its lower rows blank for seconds.
+const STAGGER_ROWS = 4;
+
 function colsOf(width: number) {
   const target = Math.min(280, Math.max(150, width / 6));
   return Math.max(2, Math.round((width - 32 + 16) / (target + 16)));
@@ -29,8 +31,6 @@ interface Props {
   onSelect?: (title: TitleSummary) => void;
 }
 
-// The library as an even grid of 2:3 posters, narrowed by filter chips. items is null while it loads;
-// an empty list (nothing yet, or a failed load) keeps still placeholders so the screen never pulses forever.
 export function Library({ api, items, onSelect }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
   const { width } = useViewport();
@@ -43,8 +43,7 @@ export function Library({ api, items, onSelect }: Props) {
   }, [items, filter]);
   const loaded = items !== null && items.length > 0;
 
-  // Posters come on one after another, left to right, whenever the grid is opened.
-  const slot = (i: number) => ({ ["--d" as string]: (i % cols) * 45 + Math.floor(i / cols) * 70 });
+  const slot = (i: number) => ({ ["--d" as string]: (i % cols) * 45 + Math.min(Math.floor(i / cols), STAGGER_ROWS) * 70 });
 
   return (
     <div className="library" aria-label="Library" aria-busy={items === null}>

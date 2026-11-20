@@ -13,8 +13,6 @@ const screens = [
 
 const ratio = { portrait: 2 / 3, wide: 16 / 9 };
 
-// Area of the screen covered by the union of the tiles, counted by
-// painting each tile onto a 1px grid.
 function coverage(tiles: Tile[], w: number, h: number) {
   const hit = new Uint8Array(w * h);
   let overlap = 0;
@@ -219,7 +217,7 @@ describe("nearestTile", () => {
 describe("tilesTouching", () => {
   const slot: Tile = { x: 200, y: 100, w: 200, h: 300, shape: "wide" };
   const at = (x: number, y: number): Tile => ({ x, y, w: 100, h: 100, shape: "portrait" });
-  const tiles = [at(100, 300) /* left of the slot, a gap away */, at(410, 300) /* right, within a gap */, at(250, 0) /* above */, at(0, 300) /* far left */, at(500, 300) /* far right */];
+  const tiles = [at(100, 300), at(410, 300), at(250, 0), at(0, 300), at(500, 300)];
   test("the posters within a gap of the slot", () => {
     expect(tilesTouching(tiles, slot, 0, 2000, 2000)).toEqual([0, 1, 2]);
   });

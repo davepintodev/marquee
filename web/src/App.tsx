@@ -48,7 +48,6 @@ export function App({ api }: { api: Api }) {
   const onPage = route.name === "activity" || route.name === "health" || route.name === "title";
   // Failure here is quiet by design: the Health link shows no dot when Health cannot be read.
   const [attention, setAttention] = useState(false);
-  // The grid opens as a step of its own in the history, so back and Esc both return to the wall.
   const enter = useCallback((seed = "") => {
     setQuery(seed);
     pushTo({ name: "grid" }, "grid");
@@ -125,7 +124,6 @@ export function App({ api }: { api: Api }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [clear, selected, onPage, atFront, searching, closePage, leave]);
 
-  // On the wall, Enter or a letter walks in; the letter lands in the search field.
   useEffect(() => {
     if (!atFront || selected) return;
     const onKey = (e: KeyboardEvent) => {
