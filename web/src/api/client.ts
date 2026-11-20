@@ -45,6 +45,8 @@ export interface ApiOptions {
   eventSource?: (url: string) => EventSource;
   getToken?: () => string | null;
   onUnauthorized?: (sentToken: string | null) => void;
+  // A request that carried a token was accepted.
+  onAuthorized?: () => void;
 }
 
 function isAbort(e: unknown) {
@@ -93,7 +95,7 @@ function parse<T>(e: Event): T | null {
 
 const isTitle = (d: Title) => typeof d.id === "string";
 
-export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUnauthorized }: ApiOptions): Api {
+export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUnauthorized, onAuthorized }: ApiOptions): Api {
   const base = baseUrl.replace(/\/+$/, "");
   const client = createClient<paths>({ baseUrl: base, ...(f ? { fetch: f } : {}) });
 
@@ -130,12 +132,13 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       return request;
     },
     onResponse({ request, response }) {
-      if (response.ok && request.headers.has("Authorization")) {
+      const sent = request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null;
+      if (response.ok && sent !== null && sent === (getToken?.() ?? null)) {
         unlocked = true;
+        onAuthorized?.();
         if (listeners.size > 0) shared ??= open();
       }
       if (response.status === 401) {
-        const sent = request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null;
         // An answer to a token no longer held says nothing about the session of the new one.
         if (sent === (getToken?.() ?? null)) {
           unlocked = false;

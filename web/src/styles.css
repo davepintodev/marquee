@@ -1079,48 +1079,303 @@ button {
 }
 
 /* unlock */
+.shell-app {
+  display: contents;
+}
+
 .screen {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 0 16px;
+  z-index: 40;
+  overflow: hidden;
+}
+
+.screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+}
+
+.uwall {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* A tile's box carries the 5px of padding that makes the even 10px gap; its face is the padding box. */
+.utile {
+  --l: 20%;
+  position: absolute;
+  display: block;
+  opacity: 0.46;
+}
+
+.utile::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-tile);
+  background: linear-gradient(165deg, hsl(var(--th) var(--ts) var(--l)), hsl(calc(var(--th) + 24) calc(var(--ts) - 6%) calc(var(--l) - 9%)));
+}
+
+.utile[data-under="true"] {
+  opacity: 0.2;
+}
+
+@media (prefers-color-scheme: light) {
+  .utile {
+    --l: 78%;
+  }
+}
+
+.uslot {
+  --tl: 80%;
+  --accent: hsl(var(--th, 215) var(--ts, 30%) var(--tl));
+  position: absolute;
+  container-type: size;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  padding: var(--space-5);
+}
+
+@media (prefers-color-scheme: light) {
+  .uslot {
+    --tl: 28%;
+  }
+}
+
+/* Handing over to the real wall, which is already mounted underneath: each tile only gets out of the way,
+   so the end state is nothing. Tiles leave in rings, nearest the words first, each sliding a little outward. */
+@media (prefers-reduced-motion: no-preference) {
+  .screen[data-phase="open"] .uslot {
+    opacity: 0;
+    scale: 0.96;
+    transition:
+      opacity var(--dur-med) var(--ease-out),
+      scale var(--dur-med) var(--ease-out);
+  }
+
+  .screen[data-phase="open"] .utile {
+    will-change: translate, scale, opacity;
+    animation:
+      peel 0.8s cubic-bezier(0.3, 0, 0.2, 1) var(--dl) both,
+      peel-fade 0.8s linear var(--dl) both;
+  }
+
+  .screen[data-phase="open"]::before {
+    opacity: 0;
+    transition: opacity 0.8s linear 0.45s;
+  }
+
+  .shell-app[data-handover] .app {
+    animation: app-settle 1.2s var(--ease-out) backwards;
+  }
+}
+
+@keyframes peel {
+  to {
+    translate: var(--px) var(--py);
+    scale: 1.18;
+  }
+}
+
+@keyframes peel-fade {
+  30%,
+  55% {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes app-settle {
+  from {
+    scale: 0.96;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen[data-phase="open"] {
+    opacity: 0;
+    transition: opacity 0.25s linear;
+  }
 }
 
 .unlock {
   width: min(420px, 100%);
   display: grid;
-  gap: 14px;
-  padding: 22px;
-  border-radius: 16px;
-  text-align: center;
-  background: var(--glass);
-  backdrop-filter: blur(22px);
-  border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
 }
 
-.unlock input {
+.unlock-words {
+  font-size: clamp(24px, min(9cqw, 16cqh), 44px);
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  text-wrap: balance;
+  color: color-mix(in srgb, var(--accent) 14%, var(--fg));
+  transition: color 0.7s ease;
+}
+
+.unlock-words em {
+  font-style: normal;
+  color: var(--accent);
+  transition: color 0.7s ease;
+}
+
+.unlock-field {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--tile);
+  transition: border-color var(--dur-fast);
+}
+
+.unlock-field:hover {
+  border-color: var(--line-strong);
+}
+
+.unlock-field:focus-within {
+  border-color: var(--ring);
+}
+
+.unlock-field[data-bad="true"] {
+  border-color: color-mix(in srgb, var(--bad) 65%, transparent);
+}
+
+.unlock-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
   font: inherit;
-  padding: 12px 18px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
+  border: 0;
+  padding: 0;
   background: transparent;
   color: var(--fg);
   outline: none;
-  text-align: center;
 }
 
-.unlock input:focus {
-  border-color: color-mix(in srgb, var(--fg) 45%, transparent);
-}
-
-.unlock input::placeholder {
+.unlock-field input::placeholder {
   color: var(--mute);
+}
+
+.unlock-go {
+  flex: none;
+  height: 34px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--fg);
+  color: var(--bg);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    opacity var(--dur-fast),
+    scale 0.08s;
+}
+
+.unlock-go[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.screen[data-phase="checking"] .unlock-go {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.screen[data-phase="open"] .unlock-go {
+  opacity: 1;
+}
+
+.unlock-go:active:not([aria-disabled="true"]) {
+  scale: 0.96;
+}
+
+.unlock-go:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.unlock-note {
+  min-height: calc(var(--text-sm) * 1.4);
+  font-size: var(--text-sm);
+}
+
+.unlock-hint {
+  color: var(--mute);
+  text-wrap: balance;
+  transition: color var(--dur-fast);
+}
+
+.unlock-hint[data-need="true"] {
+  color: var(--fg);
+}
+
+/* Two identical keyframes, swapped on each nudge, so a second click replays the shake. */
+.unlock[data-nudge="0"] .unlock-field {
+  animation: unlock-nudge-a 0.5s var(--ease-out);
+}
+
+.unlock[data-nudge="1"] .unlock-field {
+  animation: unlock-nudge-b 0.5s var(--ease-out);
+}
+
+@keyframes unlock-nudge-a {
+  20% {
+    translate: -7px 0;
+  }
+  45% {
+    translate: 6px 0;
+  }
+  70% {
+    translate: -3px 0;
+  }
+}
+
+@keyframes unlock-nudge-b {
+  20% {
+    translate: -7px 0;
+  }
+  45% {
+    translate: 6px 0;
+  }
+  70% {
+    translate: -3px 0;
+  }
 }
 
 .unlock-error {
   color: var(--bad);
-  font-size: 14px;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  animation: unlock-in var(--dur-med) var(--ease-out);
+}
+
+@keyframes unlock-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unlock-error,
+  .unlock-field {
+    animation: none;
+  }
+
+  .unlock-words,
+  .unlock-words em {
+    transition: none;
+  }
 }
 
 /* health */
