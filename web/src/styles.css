@@ -1780,7 +1780,7 @@ a.btn-secondary {
 
 .slot-words {
   position: absolute;
-  inset: calc(max(16px, 6%) + var(--it, 0px)) calc(max(16px, 6%) + var(--ir, 0px)) calc(max(16px, 6%) + var(--ib, 0px)) calc(max(16px, 6%) + var(--il, 0px));
+  inset: max(16px, 6%);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1810,7 +1810,7 @@ a.btn-secondary {
 .slot-arrow svg {
   position: absolute;
   left: 50%;
-  top: calc(50% - (var(--bleed, 5px) - 5px) / 2);
+  top: 50%;
   translate: -50% -50%;
   width: clamp(44px, min(46cqw, 62cqh), 84px);
   aspect-ratio: 1;

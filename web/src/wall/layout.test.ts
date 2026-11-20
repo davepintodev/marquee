@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { bleedOf, carveWall, GAP, layoutWall, nearestTile, snapTile, spreadTitles, tilesTouching, type Tile } from "./layout";
+import { carveWall, GAP, layoutWall, nearestTile, snapTile, spreadTitles, tilesTouching, type Tile } from "./layout";
 
 const screens = [
   { name: "phone portrait", w: 390, h: 844 },
@@ -151,15 +151,6 @@ test("no titles give every tile the first slot of the list instead of crashing",
   expect(spreadTitles(tiles, 0)).toEqual(tiles.map(() => 0));
 });
 
-test.each([
-  { width: 390, bleed: 5 + 14 },
-  { width: 640, bleed: 5 + 14 },
-  { width: 1000, bleed: 5 + 22 },
-  { width: 1440, bleed: 5 + 28 },
-  { width: 5120, bleed: 5 + 28 },
-])("the edge bleed at $width wide is $bleed, 14 to 28 past the half-gap", ({ width, bleed }) => {
-  expect(bleedOf(width)).toBe(bleed);
-});
 
 describe.each(screens)("snapped gaps at $name ($w×$h)", ({ w, h }) => {
   test("every neighbour pair is exactly one gap apart, in whole pixels", () => {

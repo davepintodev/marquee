@@ -32,17 +32,16 @@ async function wallFrames(page: Page) {
 }
 
 for (const s of screens) {
-  test(`the front is posters and the words on ${s.name}: bleeding off every edge, even 10px gaps, nothing else on it`, async ({ page }) => {
+  test(`the front is posters and the words on ${s.name}: a 10px margin at every edge, even 10px gaps, nothing else on it`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
     await page.goto("/");
     const frames = await wallFrames(page);
 
     expect(frames.length).toBeGreaterThan(4);
-    expect(Math.min(...frames.map((f) => f.x))).toBeLessThanOrEqual(-14);
-    expect(Math.min(...frames.map((f) => f.y))).toBeLessThanOrEqual(-14);
-    expect(Math.max(...frames.map((f) => f.x + f.w))).toBeGreaterThanOrEqual(s.width + 14);
-    expect(Math.max(...frames.map((f) => f.y + f.h))).toBeGreaterThanOrEqual(s.height + 14);
-    expect(Math.max(...frames.map((f) => f.x + f.w))).toBeLessThanOrEqual(s.width + 34);
+    expect(Math.min(...frames.map((f) => f.x))).toBe(GAP);
+    expect(Math.min(...frames.map((f) => f.y))).toBe(GAP);
+    expect(Math.max(...frames.map((f) => f.x + f.w))).toBe(s.width - GAP);
+    expect(Math.max(...frames.map((f) => f.y + f.h))).toBe(s.height - GAP);
 
     for (const a of frames) {
       for (const b of frames) {

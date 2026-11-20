@@ -174,7 +174,7 @@ export function spreadTitles(tiles: Tile[], count: number): number[] {
 
 export const GAP = 10;
 
-export const bleedOf = (width: number) => GAP / 2 + Math.round(Math.min(28, Math.max(14, width * 0.022)));
+export const EDGE_INSET = GAP / 2;
 
 export interface Box {
   left: number;

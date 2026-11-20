@@ -3,7 +3,7 @@ import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
 import { Art } from "./Art";
 import { Invite } from "./Invite";
-import { bleedOf, carveWall, nearestTile, snapTile, spreadTitles, tilesTouching, type Tile } from "./wall/layout";
+import { carveWall, EDGE_INSET, nearestTile, snapTile, spreadTitles, tilesTouching } from "./wall/layout";
 
 interface Props {
   api: Api;
@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
-  const bleed = bleedOf(width);
+  const bleed = -EDGE_INSET;
   const w = width + 2 * bleed;
   const h = height + 2 * bleed;
   const { tiles, text, arrow } = useMemo(() => carveWall(w, h), [w, h]);
@@ -32,15 +32,6 @@ export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
   const ox = origin.x + origin.w / 2;
   const oy = origin.y + origin.h / 2;
 
-  // Part of a slot can lie past the screen edge; the words keep inside what shows.
-  const hidden = (s: Tile): CSSProperties =>
-    ({
-      "--il": `${Math.max(0, bleed - s.x)}px`,
-      "--ir": `${Math.max(0, s.x + s.w - (bleed + width))}px`,
-      "--it": `${Math.max(0, bleed - s.y)}px`,
-      "--ib": `${Math.max(0, s.y + s.h - (bleed + height))}px`,
-    }) as CSSProperties;
-
   const rest = useMemo(() => (placed && text ? tilesTouching(tiles, text, bleed, width, height).map((i) => placed[i].src) : []), [placed, tiles, text, bleed, width, height]);
 
   const [hover, setHover] = useState<number | null>(null);
@@ -56,7 +47,7 @@ export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
       className="pwall"
       aria-label="Posters"
       aria-busy={items === null}
-      style={{ left: -bleed, top: -bleed, width: w, height: h, "--bleed": `${bleed}px` } as CSSProperties}
+      style={{ left: -bleed, top: -bleed, width: w, height: h }}
       onPointerMove={track}
       onPointerLeave={() => setHover(null)}
     >
@@ -75,7 +66,7 @@ export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
         );
       })}
       {placed && text && arrow && (
-        <Invite onEnter={onEnter} rest={rest} pointerSrc={hover !== null ? (placed[hover]?.src ?? null) : null} textStyle={{ ...snapTile(text), ...hidden(text) }} arrowStyle={snapTile(arrow)} />
+        <Invite onEnter={onEnter} rest={rest} pointerSrc={hover !== null ? (placed[hover]?.src ?? null) : null} textStyle={snapTile(text)} arrowStyle={snapTile(arrow)} />
       )}
     </div>
   );
