@@ -6,7 +6,7 @@ export function Art({ src, title, year }: { src: string; title: string; year: nu
     return (
       <span className="art-fallback">
         {title}
-        <small>{year}</small>
+        {year > 0 && <small>{year}</small>}
       </span>
     );
   }

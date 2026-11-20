@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Api } from "./api/client";
 import type { Download, HistoryEntry, LiveEvent, Title, TitleSummary } from "./api/types";
-import { HistoryList } from "./HistoryList";
+import { galleryColumns, summaryOf } from "./activity";
+import { Carousel, DownloadCard, WaitingCard, type Upcoming } from "./Gallery";
 import { Page } from "./Page";
-import { hrefOf } from "./route";
+import { Timeline } from "./Timeline";
 import { useLive } from "./useLive";
-import { bytesOf } from "./words";
 
 interface Props {
   api: Api;
@@ -47,13 +47,6 @@ type Load = { status: "loading" } | { status: "ok"; data: Data } | { status: "er
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
-
-const stateWords: Record<Download["state"], string> = {
-  queued: "Queued",
-  downloading: "Downloading",
-  verifying: "Verifying",
-  importing: "Importing",
-};
 
 function searchingEpisodes(t: Title) {
   return t.seasons.flatMap((s) => s.episodes.filter((e) => e.monitored && e.state === "searching").map((e) => e.id.toUpperCase()));
@@ -164,7 +157,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
 
   if (load.status !== "ok") {
     return (
-      <Page heading="Activity" onClose={onClose} wide>
+      <Page heading="Activity" onClose={onClose} className="page-activity">
         {load.status === "loading" && <p className="empty">Loading…</p>}
         {load.status === "error" && (
           <div className="empty" role="alert">
@@ -180,62 +173,60 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
 
   const { downloads, history } = load.data;
   const busy = new Set(downloads.map((d) => d.titleId));
-  const waiting = load.data.waiting.filter((w) => !busy.has(w.id));
+  const running = downloads.filter((d) => d.state !== "queued");
+  const upcoming: Upcoming[] = [
+    ...downloads
+      .filter((d) => d.state === "queued")
+      .map((d): Upcoming => ({ key: `download-${d.id}`, id: d.titleId, name: d.titleName, word: d.episode ? `${d.episode.toUpperCase()} queued` : "Queued", state: "queued" })),
+    ...load.data.waiting.filter((w) => !busy.has(w.id)).map((w): Upcoming => ({ key: `title-${w.id}`, id: w.id, name: w.name, word: w.label, note: w.note, state: "searching" })),
+  ];
+  const summary = summaryOf({ downloading: running.length, waiting: upcoming.length, retryable: history.filter((h) => h.retryable).length });
   return (
-    <Page heading="Activity" onClose={onClose} wide>
+    <Page heading="Activity" onClose={onClose} className="page-activity">
+      <p className="board-sum">{summary}</p>
       {error && (
         <p className="popup-error" role="alert">
           {error}
         </p>
       )}
-      <section className="section">
-        <h2>Queue</h2>
-        {downloads.length + waiting.length === 0 ? (
-          <p className="empty">Nothing is downloading.</p>
-        ) : (
-          <ul className="rows" aria-label="Queue">
-            {downloads.map((d) => (
-              <li key={d.id} className="row row-download">
-                <div className="row-main">
-                  <p className="row-title">
-                    <a href={hrefOf({ name: "title", id: d.titleId })}>{d.titleName}</a>
-                    {d.episode ? ` · ${d.episode.toUpperCase()}` : ""}
-                  </p>
-                  <p className="row-note">{d.releaseName}</p>
-                  <div className="bar-track" role="progressbar" aria-label={`${d.titleName} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={d.percent}>
-                    <div className={d.stalled ? "bar-fill stalled" : "bar-fill"} style={{ width: `${d.percent}%` }} />
-                  </div>
-                  <p className="row-note">
-                    {d.stalled ? "Stalled: no data has arrived for a while. marquee will try the next release. " : `${stateWords[d.state]}. `}
-                    {d.bytesTotal > 0 && `${bytesOf(d.bytesDone)} of ${bytesOf(d.bytesTotal)}`}
-                  </p>
-                </div>
-                <span className="percent">{`${d.percent}%`}</span>
-              </li>
-            ))}
-            {waiting.map((w) => (
-              <li key={w.id} className="row">
-                <div className="row-main">
-                  <p className="row-title">
-                    <a href={hrefOf({ name: "title", id: w.id })}>{w.name}</a>
-                  </p>
-                  <p className="row-note">{w.note}</p>
-                </div>
-                <span className="percent mute">{w.label}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="section">
-        <h2>History</h2>
-        <HistoryList entries={history} showTitle retrying={retrying} onRetry={retry} empty="Nothing has happened yet." />
-        {load.data.next && (
-          <button type="button" className="btn-small" onClick={() => loadOlder(load.data.next as string)}>
-            Show older
-          </button>
-        )}
-      </section>
+      <div className="board-cols" style={{ "--n": galleryColumns(running.length, upcoming.length) } as CSSProperties}>
+        <div className="board-main">
+          <section className="section board-section" aria-labelledby="act-downloading">
+            <h2 id="act-downloading">Downloading</h2>
+            <p className="board-hint">Files arriving right now.</p>
+            {running.length === 0 ? (
+              <p className="empty">Nothing is downloading.</p>
+            ) : (
+              <Carousel label="downloads">
+                {running.map((d) => (
+                  <DownloadCard key={d.id} api={api} d={d} />
+                ))}
+              </Carousel>
+            )}
+          </section>
+          {upcoming.length > 0 && (
+            <section className="section board-section" aria-labelledby="act-waiting">
+              <h2 id="act-waiting">Waiting</h2>
+              <p className="board-hint">Queued behind a download, or searching for a release.</p>
+              <ul className="strip" aria-label="Waiting">
+                {upcoming.map((n) => (
+                  <WaitingCard key={n.key} api={api} n={n} />
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+        <section className="section board-section" aria-labelledby="act-history">
+          <h2 id="act-history">History</h2>
+          <p className="board-hint">What finished and what failed.</p>
+          {history.length === 0 ? <p className="empty">Nothing has happened yet.</p> : <Timeline entries={history} retrying={retrying} onRetry={retry} />}
+          {load.data.next && (
+            <button type="button" className="link-btn more" onClick={() => loadOlder(load.data.next as string)}>
+              Show older
+            </button>
+          )}
+        </section>
+      </div>
     </Page>
   );
 }
