@@ -220,3 +220,20 @@ test("while an add is in flight the menu cannot start a second one", async () =>
   await page().findByRole("button", { name: "Search automatically" });
   expect(writes).toHaveLength(1);
 });
+
+test.each([
+  ["Future episodes", "future"],
+  ["Select seasons and episodes…", "none"],
+])("Try again after a failed %s add retries with the same monitor choice", async (label, monitor) => {
+  let up = false;
+  const { writes } = await open(/^Severance \(2022\)/, () => (up ? json(added(severance), 201) : json({ error: "TMDB did not answer" }, 502)));
+  fireEvent.click(toggle());
+  fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: label }));
+  await page().findByRole("alert");
+
+  up = true;
+  fireEvent.click(page().getByRole("button", { name: "Try again" }));
+
+  await page().findByRole("button", { name: "Search automatically" });
+  expect(writes.map((w) => (w.body as { monitor: string }).monitor)).toEqual([monitor, monitor]);
+});

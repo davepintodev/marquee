@@ -33,11 +33,6 @@ export const IconCheck = () => (
     <path d="M5 12.5l4.5 4.5L19 7.5" />
   </svg>
 );
-export const IconSpinner = () => (
-  <svg {...base} className="spin">
-    <path d="M12 3a9 9 0 1 0 9 9" />
-  </svg>
-);
 
 interface IbProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "title"> {
   label: string;

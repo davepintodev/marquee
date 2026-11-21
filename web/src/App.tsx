@@ -5,17 +5,17 @@ import { Activity } from "./Activity";
 import { Front } from "./Front";
 import { Health } from "./Health";
 import { Library } from "./Library";
+import { EmptyState, ErrorState } from "./State";
 import { Results, ResultsSkeleton } from "./Results";
 import { leaveTitle, leaveTo, parseRoute, pushTo, useRoute } from "./route";
 import { TitleScreen } from "./TitleScreen";
+import { Toaster, type ToastMsg, type ToastRaise } from "./Toast";
 import { useLive } from "./useLive";
 import { useViewport } from "./useViewport";
 
 // Waiting this long after the last keystroke keeps one TMDB search per
 // pause instead of one per letter.
 const TYPING_PAUSE_MS = 200;
-
-const TOAST_MS = 5000;
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; message: string };
 
@@ -32,6 +32,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   const [query, setQuery] = useState("");
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
+  const [searchTry, setSearchTry] = useState(0);
   const [answer, setAnswer] = useState<{ query: string; load: Load<TitleSummary[]> }>({ query: "", load: { status: "loading" } });
   // The title the owner last clicked: the title screen opens on it and uses it when the service does not know the title yet.
   const [selected, setSelected] = useState<TitleSummary | null>(null);
@@ -43,7 +44,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   const [changed, setChanged] = useState<Record<string, TitleSummary>>({});
   // Badges the event stream has reported since the lists were fetched; null means the title left the library.
   const [live, setLive] = useState<Record<string, Badge | null>>({});
-  const [toast, setToast] = useState<{ n: number; text: string } | null>(null);
+  const [toast, setToast] = useState<ToastMsg | null>(null);
   const bar = useRef<HTMLInputElement>(null);
   const gridScreen = useRef<HTMLDivElement>(null);
   const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
@@ -103,13 +104,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
       clearTimeout(timer);
       ctl.abort();
     };
-  }, [api, q]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), TOAST_MS);
-    return () => clearTimeout(timer);
-  }, [toast]);
+  }, [api, q, searchTry]);
 
   const clear = useCallback(() => {
     setQuery("");
@@ -217,27 +212,18 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
       return rest;
     });
   }, [joinWall]);
-  const notify = useCallback((text: string) => setToast((prev) => ({ n: (prev?.n ?? 0) + 1, text })), []);
+  const notify = useCallback<ToastRaise>((text, more) => setToast((prev) => ({ kind: "ok", ...more, text, n: (prev?.n ?? 0) + 1 })), []);
+  const dismissToast = useCallback(() => setToast(null), []);
 
   return (
     <div className="app" data-screen={atFront ? "front" : "grid"} data-mode={onPage ? "page" : searching ? "search" : "library"}>
       <div className="front" inert={!atFront}>
         <Front api={api} items={wallTitles} width={width} height={height} onEnter={() => enter()} onSelect={openTitle} />
         {atFront && wall.status === "error" && (
-          <div className="notice" role="alert">
-            <p>{wall.message}</p>
-            <button type="button" onClick={retryWall}>
-              Try again
-            </button>
-          </div>
+          <ErrorState action={{ label: "Try again", onClick: retryWall }}>{wall.message}</ErrorState>
         )}
         {atFront && wall.status === "ok" && wall.data.length === 0 && (
-          <div className="notice">
-            <p>Nothing to show yet.</p>
-            <button type="button" onClick={() => enter()}>
-              Add a title
-            </button>
-          </div>
+          <EmptyState action={{ label: "Add a title", onClick: () => enter() }}>Nothing to show yet.</EmptyState>
         )}
       </div>
 
@@ -289,32 +275,39 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
 
         <div className="stage library-stage" aria-hidden={searching} inert={searching || onPage}>
           <div className="stage-in">
-            <Library api={api} items={wallTitles} onSelect={openTitle} />
-            {!atFront && !searching && !onPage && wall.status === "error" && (
-              <div className="notice" role="alert">
-                <p>{wall.message}</p>
-                <button type="button" onClick={retryWall}>
-                  Try again
-                </button>
-              </div>
-            )}
-            {!atFront && !searching && !onPage && wall.status === "ok" && wall.data.length === 0 && (
-              <div className="notice">
-                <p>Nothing to show yet. Search for a title to start.</p>
-              </div>
-            )}
+            <Library
+              api={api}
+              items={wallTitles}
+              onSelect={openTitle}
+              active={!atFront && !onPage}
+              notice={
+                wall.status === "error" ? (
+                  <ErrorState action={{ label: "Try again", onClick: retryWall }}>{wall.message}</ErrorState>
+                ) : wall.status === "ok" && wall.data.length === 0 ? (
+                  <EmptyState>Nothing to show yet. Search for a title to start.</EmptyState>
+                ) : undefined
+              }
+            />
           </div>
         </div>
 
         <div className="stage results-stage" aria-hidden={!searching || onPage} inert={!searching || onPage}>
           <div className="stage-in">
             {searching && results.status === "error" && (
-              <div className="notice" role="alert">
-                <p>{results.message}</p>
-              </div>
+              <ErrorState
+                action={{
+                  label: "Try again",
+                  onClick: () => {
+                    setAnswer({ query: "", load: { status: "loading" } });
+                    setSearchTry((n) => n + 1);
+                  },
+                }}
+              >
+                {results.message}
+              </ErrorState>
             )}
             {searching && results.status === "loading" && <ResultsSkeleton />}
-            {searching && results.status === "ok" && results.data.length === 0 && <p className="hint">Nothing found.</p>}
+            {searching && results.status === "ok" && results.data.length === 0 && <EmptyState>Nothing found for “{q}”.</EmptyState>}
             {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} onSelect={openTitle} />}
           </div>
         </div>
@@ -339,11 +332,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
       )}
       {route.name === "health" && <Health api={api} onClose={closePage} onForget={onForget} />}
       {route.name === "activity" && <Activity api={api} onClose={closePage} onChanged={keep} onToast={notify} />}
-      {toast && (
-        <div className="toast" role="status">
-          {toast.text}
-        </div>
-      )}
+      <Toaster toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

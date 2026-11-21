@@ -100,7 +100,7 @@ test("the filter chips count and narrow the library", async () => {
   fireEvent.click(chips.getByRole("button", { name: /^missing/i }));
   expect(grid().getAllByRole("button", { name: /\(20\d\d\)/ }).map((t) => t.getAttribute("aria-label"))).toEqual(["House (2004), Season 4 · 3 missing"]);
   fireEvent.click(chips.getByRole("button", { name: /^downloading/i }));
-  expect(grid().getByText("Nothing here.")).toBeTruthy();
+  expect(grid().getByText("Nothing is downloading right now.")).toBeTruthy();
 });
 
 test("typing switches to search mode and shows the results in the same grid, with year, kind and state", async () => {
@@ -515,6 +515,82 @@ test("the toast goes away by itself", async () => {
   }
 });
 
+test("Esc on a focused toast dismisses the toast and leaves the page open", async () => {
+  setup(pageApi(addAnswering(() => json(duneAdded, 201))));
+  await openTile(/^Dune \(2021\)/);
+  fireEvent.click(await page().findByRole("button", { name: "Add & monitor" }));
+  await screen.findByRole("status");
+
+  fireEvent.keyDown(screen.getByRole("button", { name: "Dismiss" }), { key: "Escape" });
+
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  expect(window.location.hash).toBe("#/title/movie-1");
+  expect(screen.getByRole("main")).toBeTruthy();
+});
+
+test("the toast's X dismisses it", async () => {
+  setup(pageApi(addAnswering(() => json(duneAdded, 201))));
+  await openTile(/^Dune \(2021\)/);
+  fireEvent.click(await page().findByRole("button", { name: "Add & monitor" }));
+  await screen.findByRole("status");
+
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+});
+
+test("the clear button empties the search and brings the library back", async () => {
+  setup((url) => (url.pathname === "/api/wall" ? json(wall) : json({ results: [dune] })));
+  await grid().findAllByRole("button", { name: /house/i });
+  type("dune");
+  await screen.findByRole("list", { name: /results/i });
+
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+
+  expect((bar() as HTMLInputElement).value).toBe("");
+  await waitFor(() => expect(root().dataset.mode).toBe("library"));
+  expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+});
+
+test("exactly one filter is pressed, and it follows the click", async () => {
+  setup(() => json(wall));
+  await grid().findAllByRole("button", { name: /house/i });
+  const chips = within(grid().getByRole("group", { name: /filter the library/i }));
+  const pressed = () => chips.getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent);
+
+  expect(pressed()).toEqual(["All3"]);
+  fireEvent.click(chips.getByRole("button", { name: /^series/i }));
+  expect(pressed()).toEqual(["Series1"]);
+});
+
+test("the library shows a skeleton while the wall loads, then the titles", async () => {
+  let resolveWall: (r: Response) => void = () => {};
+  const pending = new Promise<Response>((r) => (resolveWall = r));
+  setup((url) => (url.pathname === "/api/wall" ? pending : json({ error: "nope" }, 404)));
+
+  const stage = document.querySelector<HTMLElement>(".library-stage")!;
+  await waitFor(() => expect(stage.querySelectorAll(".sk").length).toBeGreaterThan(0));
+  expect(within(stage).getByRole("status").textContent).toBe("Loading the library");
+  expect(stage.textContent).not.toMatch(/loading…|searching…/i);
+
+  resolveWall(json(wall));
+  await grid().findAllByRole("button", { name: /house/i });
+  expect(stage.querySelectorAll(".sk")).toHaveLength(0);
+});
+
+test("a wall that failed says why with one way to try again", async () => {
+  let fail = true;
+  setup((url) => (url.pathname === "/api/wall" ? (fail ? json({ error: "TMDB did not answer" }, 502) : json(wall)) : json({ error: "nope" }, 404)));
+  const stage = document.querySelector<HTMLElement>(".library-stage")!;
+  await waitFor(() => expect(within(stage).getByRole("alert").textContent).toContain("TMDB did not answer"));
+
+  fail = false;
+  fireEvent.click(within(stage).getByRole("button", { name: "Try again" }));
+
+  await grid().findAllByRole("button", { name: /house/i });
+  expect(within(stage).queryByRole("alert")).toBeNull();
+});
+
 test("colsOf caps grid column calculation at 1760px to match the stage max-width", () => {
   expect(colsOf(3200)).toBe(colsOf(1760));
   expect(colsOf(2400)).toBe(colsOf(1760));
@@ -534,9 +610,9 @@ test("search shows skeleton placeholders while results are loading", async () =>
 
   await waitFor(() => expect(root().dataset.mode).toBe("search"));
   const resultsStage = document.querySelector<HTMLElement>(".results-stage")!;
-  expect(resultsStage.querySelectorAll(".placeholder").length).toBeGreaterThan(0);
+  expect(resultsStage.querySelectorAll(".sk").length).toBeGreaterThan(0);
 
   resolveSearch(json({ results: [dune] }));
   await screen.findByRole("list", { name: /results/i });
-  expect(resultsStage.querySelectorAll(".placeholder")).toHaveLength(0);
+  expect(resultsStage.querySelectorAll(".sk")).toHaveLength(0);
 });

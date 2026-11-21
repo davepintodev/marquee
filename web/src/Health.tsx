@@ -6,6 +6,8 @@ import { IconChevron } from "./icons";
 import { Page } from "./Page";
 import { useHealth } from "./useHealth";
 import { useViewport } from "./useViewport";
+import { Busy, HealthSkeleton, Say } from "./Skeleton";
+import { ErrorState } from "./State";
 
 type Check = HealthData["checks"][number];
 type Status = Check["status"];
@@ -77,14 +79,16 @@ export function Health({ api, onClose, onForget }: { api: Api; onClose: () => vo
   return (
     <Page heading="Health" onClose={onClose} className="page-board">
       <div className="bd" aria-busy={load.status === "loading" || (load.status === "ok" && load.busy)}>
-        {load.status === "loading" && <p className="bd-wait">Checking…</p>}
+        {load.status === "loading" && (
+          <>
+            <Say>Checking</Say>
+            <HealthSkeleton />
+          </>
+        )}
         {load.status === "error" && (
-          <div className="bd-error" role="alert">
-            <p>{load.message}</p>
-            <button type="button" className="bd-act" onClick={again}>
-              Try again
-            </button>
-          </div>
+          <ErrorState fit="page" action={{ label: "Try again", onClick: again }}>
+            {load.message}
+          </ErrorState>
         )}
         {load.status === "ok" && <Board data={load.data} busy={load.busy} again={again} onForget={onForget} />}
       </div>
@@ -124,7 +128,7 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
               if (busy) return;
               again();
             }}>
-            {busy ? "Checking…" : "Check again"}
+            {busy ? <Busy say="Checking" width={76} /> : "Check again"}
           </button>
         </div>
       </header>

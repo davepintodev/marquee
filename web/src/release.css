@@ -76,7 +76,6 @@
 }
 
 .rl-chip:focus-visible,
-.rl-note button:focus-visible,
 .rl summary:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -96,71 +95,6 @@
 .rl-why {
   color: var(--mute);
   font-size: var(--text-xs);
-}
-
-.rl-note {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-3);
-  padding: var(--space-5) var(--space-4);
-  border-radius: var(--radius-box);
-  border: 1px dashed var(--line);
-  color: var(--mute);
-  text-wrap: balance;
-}
-
-.rl-note p {
-  max-width: 60ch;
-  text-wrap: pretty;
-}
-
-.rl-note button {
-  color: var(--fg);
-}
-
-.rl-note strong {
-  color: var(--fg);
-  font-weight: 600;
-}
-
-.rl-skel {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.rl-skel i {
-  height: 62px;
-  border-radius: var(--radius-box);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--fg) 4%, transparent), color-mix(in srgb, var(--fg) 9%, transparent), color-mix(in srgb, var(--fg) 4%, transparent));
-  background-size: 200% 100%;
-  animation: rl-shimmer 1.4s linear infinite;
-}
-
-.rl-skel i:nth-child(2) {
-  animation-delay: 0.15s;
-  opacity: 0.8;
-}
-
-.rl-skel i:nth-child(3) {
-  animation-delay: 0.3s;
-  opacity: 0.6;
-}
-
-@keyframes rl-shimmer {
-  to {
-    background-position: -200% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rl-skel i {
-    animation: none;
-  }
-}
-
-.rl-status {
-  color: var(--mute);
-  font-size: var(--text-sm);
 }
 
 .rt-head,

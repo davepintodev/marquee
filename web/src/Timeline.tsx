@@ -2,6 +2,7 @@ import type { HistoryEntry } from "./api/types";
 import { byDay } from "./activity";
 import { hrefOf } from "./route";
 import { ago, reasonLabel } from "./words";
+import { Busy } from "./Skeleton";
 
 interface Props {
   entries: HistoryEntry[];
@@ -39,7 +40,7 @@ export function Timeline({ entries, retrying, onRetry }: Props) {
                 </div>
                 {h.retryable && (
                   <button type="button" className="link-btn" aria-label={`Retry ${h.titleName}`} aria-disabled={retrying === h.id} onClick={() => onRetry(h)}>
-                    Retry
+                    {retrying === h.id ? <Busy say="Searching" /> : "Retry"}
                   </button>
                 )}
               </li>

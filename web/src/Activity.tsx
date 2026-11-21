@@ -6,12 +6,16 @@ import { Carousel, DownloadCard, WaitingCard, type Upcoming } from "./Gallery";
 import { Page } from "./Page";
 import { Timeline } from "./Timeline";
 import { useLive } from "./useLive";
+import { Notice } from "./Notice";
+import { EmptyState, ErrorState } from "./State";
+import type { ToastRaise } from "./Toast";
+import { ActivitySkeleton } from "./Skeleton";
 
 interface Props {
   api: Api;
   onClose: () => void;
   onChanged: (title: TitleSummary) => void;
-  onToast: (text: string) => void;
+  onToast: ToastRaise;
 }
 
 interface Waiting {
@@ -129,7 +133,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
       const data = await fetchAll();
       setLoad((l) => ({ status: "ok", data: merged(l.status === "ok" ? l.data : undefined, data) }));
     } catch (e) {
-      setError(messageOf(e));
+      onToast(messageOf(e), { kind: "error", action: { label: "Try again", onClick: () => retry(h) } });
     } finally {
       working.current = false;
       setRetrying(null);
@@ -158,14 +162,20 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
   if (load.status !== "ok") {
     return (
       <Page heading="Activity" onClose={onClose} className="page-activity">
-        {load.status === "loading" && <p className="empty">Loading…</p>}
+        {load.status === "loading" && <ActivitySkeleton />}
         {load.status === "error" && (
-          <div className="empty" role="alert">
-            <p>{load.message}</p>
-            <button type="button" className="btn-small" onClick={() => { setLoad({ status: "loading" }); setAttempt((n) => n + 1); }}>
-              Try again
-            </button>
-          </div>
+          <ErrorState
+            fit="page"
+            action={{
+              label: "Try again",
+              onClick: () => {
+                setLoad({ status: "loading" });
+                setAttempt((n) => n + 1);
+              },
+            }}
+          >
+            {load.message}
+          </ErrorState>
         )}
       </Page>
     );
@@ -180,22 +190,25 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
       .map((d): Upcoming => ({ key: `download-${d.id}`, id: d.titleId, name: d.titleName, word: d.episode ? `${d.episode.toUpperCase()} queued` : "Queued", state: "queued" })),
     ...load.data.waiting.filter((w) => !busy.has(w.id)).map((w): Upcoming => ({ key: `title-${w.id}`, id: w.id, name: w.name, word: w.label, note: w.note, state: "searching" })),
   ];
+  if (downloads.length === 0 && upcoming.length === 0 && history.length === 0) {
+    return (
+      <Page heading="Activity" onClose={onClose} className="page-activity">
+        <EmptyState fit="page">Nothing is happening yet. Downloads, searches and what they found will show up here.</EmptyState>
+      </Page>
+    );
+  }
   const summary = summaryOf({ downloading: running.length, waiting: upcoming.length, retryable: history.filter((h) => h.retryable).length });
   return (
     <Page heading="Activity" onClose={onClose} className="page-activity">
       <p className="board-sum">{summary}</p>
-      {error && (
-        <p className="fail-line" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Notice tone="error">{error}</Notice>}
       <div className="board-cols" style={{ "--n": galleryColumns(running.length, upcoming.length) } as CSSProperties}>
         <div className="board-main">
           <section className="section board-section" aria-labelledby="act-downloading">
             <h2 id="act-downloading">Downloading</h2>
             <p className="board-hint">Files arriving right now.</p>
             {running.length === 0 ? (
-              <p className="empty">Nothing is downloading.</p>
+              <Notice tone="quiet">Nothing is downloading.</Notice>
             ) : (
               <Carousel label="downloads">
                 {running.map((d) => (
@@ -219,7 +232,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
         <section className="section board-section" aria-labelledby="act-history">
           <h2 id="act-history">History</h2>
           <p className="board-hint">What finished and what failed.</p>
-          {history.length === 0 ? <p className="empty">Nothing has happened yet.</p> : <Timeline entries={history} retrying={retrying} onRetry={retry} />}
+          {history.length === 0 ? <Notice tone="quiet">Nothing has happened yet.</Notice> : <Timeline entries={history} retrying={retrying} onRetry={retry} />}
           {load.data.next && (
             <button type="button" className="link-btn more" onClick={() => loadOlder(load.data.next as string)}>
               Show older

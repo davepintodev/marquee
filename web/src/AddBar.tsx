@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Title, TitleSummary } from "./api/types";
 import { AddMenu, addChoices, type AddChoice } from "./AddMenu";
+import { Notice } from "./Notice";
 
 interface Props {
   api: Api;
@@ -13,6 +14,7 @@ interface Props {
 
 export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
   const working = useRef(false);
+  const lastChoice = useRef<AddChoice>("all");
   const primary = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +23,7 @@ export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
   const press = async (choice: AddChoice = "all") => {
     if (working.current) return;
     working.current = true;
+    lastChoice.current = choice;
     setBusy(true);
     setError(null);
     try {
@@ -46,9 +49,9 @@ export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
   return (
     <>
       {error && (
-        <p className="fail-line" role="alert">
+        <Notice tone="error" action={{ label: "Try again", onClick: () => press(lastChoice.current) }}>
           {error}
-        </p>
+        </Notice>
       )}
       <div className="add-split">
         <button ref={primary} type="button" className="btn-primary" aria-disabled={busy} onClick={() => press()}>

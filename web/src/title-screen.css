@@ -692,7 +692,7 @@
   .ts-rates,
 .ts-overview,
 .ts-actions,
-.ts-info > .fail-line {
+.ts-info > .notice {
     grid-column: 1 / -1;
   }
 
@@ -1283,4 +1283,8 @@
 
 .ts-rates li {
   align-items: center;
+}
+
+.ts-bar + .ts-body {
+  padding-top: calc(var(--space-6) + 56px);
 }

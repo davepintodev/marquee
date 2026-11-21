@@ -54,7 +54,7 @@ export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
       {tiles.map((s, i) => {
         const r = Math.round(Math.hypot(s.x + s.w / 2 - ox, s.y + s.h / 2 - oy) * 0.5);
         const style = { ...snapTile(s), "--r": r } as CSSProperties;
-        if (!placed) return <div key={i} className="ptile pplaceholder" style={style} />;
+        if (!placed) return items === null ? <div key={i} className="ptile pplaceholder" style={style} /> : null;
         const { title: t, src } = placed[i];
         const label = t.badge ? `${t.title} (${t.year}), ${t.badge.label}` : `${t.title} (${t.year})`;
         return (

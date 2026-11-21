@@ -1,5 +1,7 @@
 import type { HistoryEntry } from "./api/types";
 import { ago, reasonLabel } from "./words";
+import { Notice } from "./Notice";
+import { Busy } from "./Skeleton";
 
 interface Props {
   entries: HistoryEntry[];
@@ -10,7 +12,7 @@ interface Props {
 
 // No pills: a failure is a gutter dot and the reason in bold; Retry uses the same underlined text button as Activity.
 export function HistoryList({ entries, retrying, onRetry, empty }: Props) {
-  if (entries.length === 0) return <p className="empty">{empty}</p>;
+  if (entries.length === 0) return <Notice tone="quiet">{empty}</Notice>;
   return (
     <ul className="hx" aria-label="History">
       {entries.map((h) => (
@@ -30,7 +32,7 @@ export function HistoryList({ entries, retrying, onRetry, empty }: Props) {
           </p>
           {h.retryable && (
             <button type="button" className="link-btn hx-retry" aria-label={`Retry ${h.episode ? h.episode.toUpperCase() : h.titleName}`} aria-disabled={retrying === h.id} onClick={() => onRetry(h)}>
-              Retry
+              {retrying === h.id ? <Busy say="Searching" /> : "Retry"}
             </button>
           )}
         </li>

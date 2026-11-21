@@ -103,11 +103,9 @@ test("the summary line counts what runs, waits and can be retried", async () => 
   expect(await screen.findByText("2 downloading · 2 waiting · 1 can be retried")).toBeTruthy();
 });
 
-test("with nothing going on the summary says so and each section is empty in words", async () => {
+test("with nothing going on the page says so in one centred sentence", async () => {
   setupApp(serve({ downloads: [], history: [], titles: [] }), "#/activity");
-  expect(await screen.findByText("All quiet.")).toBeTruthy();
-  expect(within(section("Downloading")).getByText("Nothing is downloading.")).toBeTruthy();
-  expect(within(section("History")).getByText("Nothing has happened yet.")).toBeTruthy();
+  expect(await screen.findByText(/Nothing is happening yet/)).toBeTruthy();
 });
 
 test("history is grouped by day with the time, the failure's reason in words and a retry only where one is offered", async () => {
@@ -183,7 +181,7 @@ test("progress for a download the page has not seen refetches the queue; a finis
 test("a reconnected stream refetches what it may have missed", async () => {
   const world: World = { downloads: [], history: [], titles: [] };
   setupApp(serve(world), "#/activity");
-  await screen.findByText("Nothing has happened yet.");
+  await screen.findByText(/Nothing is happening yet/);
   await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
   const es = FakeEventSource.open()[0];
   es.open();
@@ -217,6 +215,52 @@ test("Retry on a failed item pushes it back into the queue", async () => {
   expect(within(history).queryByRole("button", { name: /retry/i })).toBeNull();
   expect(writes).toEqual([{ method: "POST", path: "/api/history/h-stalled/retry", body: undefined }]);
   expect((await screen.findByRole("status")).textContent).toMatch(/Arrival/);
+});
+
+test("a retry that fails raises an error toast whose action tries again", async () => {
+  const world: World = { downloads: [], history: [failed], titles: [] };
+  let attempts = 0;
+  setupApp(
+    serve(world, (url, init) => {
+      if (init.method === "POST" && url.pathname === "/api/history/h-stalled/retry") {
+        attempts += 1;
+        return attempts === 1 ? json({ error: "AIOStreams did not answer" }, 502) : json({ id: "movie-2" });
+      }
+    }),
+    "#/activity",
+  );
+  const history = await screen.findByRole("region", { name: "History" });
+
+  fireEvent.click(within(history).getByRole("button", { name: "Retry Arrival" }));
+
+  expect((await screen.findByRole("alert")).textContent).toContain("AIOStreams did not answer");
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await waitFor(() => expect(attempts).toBe(2));
+  expect((await screen.findByRole("status")).textContent).toMatch(/Arrival/);
+});
+
+test("the page shows a skeleton of the board while it loads, then the board", async () => {
+  let release: (r: Response) => void = () => {};
+  const pending = new Promise<Response>((r) => (release = r));
+  setupApp((url, init) => (url.pathname === "/api/downloads" ? pending : serve({ downloads: [dune], history: [imported], titles: [] })(url, init)), "#/activity");
+
+  expect((await screen.findByRole("status")).textContent).toBe("Loading activity");
+  expect(document.querySelectorAll(".sk").length).toBeGreaterThan(0);
+
+  release(json({ downloads: [dune] }));
+  await screen.findByRole("region", { name: "Downloading" });
+  expect(document.querySelectorAll(".sk")).toHaveLength(0);
+});
+
+test("a page that failed to load says why with one way to try again", async () => {
+  let fail = true;
+  setupApp((url, init) => (fail && url.pathname === "/api/downloads" ? json({ error: "marquee is starting" }, 503) : serve({ downloads: [dune], history: [], titles: [] })(url, init)), "#/activity");
+  expect((await screen.findByRole("alert")).textContent).toContain("marquee is starting");
+
+  fail = false;
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+  await screen.findByRole("region", { name: "Downloading" });
 });
 
 test("retrying a series episode puts that episode in the queue, though the title badge says nothing about it", async () => {
