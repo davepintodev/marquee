@@ -57,7 +57,3 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-
-.ts-bar + .ts-body {
-  padding-top: calc(var(--space-6) + 56px);
-}

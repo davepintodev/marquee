@@ -1284,3 +1284,7 @@
 .ts-rates li {
   align-items: center;
 }
+
+.ts-bar + .ts-body {
+  padding-top: calc(var(--space-6) + 56px);
+}

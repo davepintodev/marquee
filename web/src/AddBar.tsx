@@ -14,6 +14,7 @@ interface Props {
 
 export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
   const working = useRef(false);
+  const lastChoice = useRef<AddChoice>("all");
   const primary = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,7 @@ export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
   const press = async (choice: AddChoice = "all") => {
     if (working.current) return;
     working.current = true;
+    lastChoice.current = choice;
     setBusy(true);
     setError(null);
     try {
@@ -47,7 +49,7 @@ export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
   return (
     <>
       {error && (
-        <Notice tone="error" action={{ label: "Try again", onClick: () => press() }}>
+        <Notice tone="error" action={{ label: "Try again", onClick: () => press(lastChoice.current) }}>
           {error}
         </Notice>
       )}

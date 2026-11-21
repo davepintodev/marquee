@@ -69,10 +69,6 @@
   background: color-mix(in srgb, currentColor 22%, transparent);
 }
 
-[data-still] .sk {
-  animation: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sk,
   .pwall[aria-busy="true"] .pplaceholder::after {

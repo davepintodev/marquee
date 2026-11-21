@@ -1104,15 +1104,6 @@ a.btn-secondary {
   cursor: progress;
 }
 
-.empty {
-  color: var(--mute);
-  padding: 8px 0;
-}
-
-.empty .btn-small {
-  margin-top: 10px;
-}
-
 @media (max-width: 640px) {
   .page-layer {
     padding: 0;

@@ -87,6 +87,22 @@ test("hovering holds the timer; leaving lets it run", async () => {
   expect(onDismiss).toHaveBeenCalledTimes(1);
 });
 
+test("leaving with the pointer keeps the toast while keyboard focus is still inside it", async () => {
+  const onDismiss = vi.fn();
+  render(<Toaster toast={msg({ kind: "error", text: "Could not add it.", action: { label: "Try again", onClick: () => {} } })} onDismiss={onDismiss} />);
+  const toast = screen.getByRole("alert");
+
+  fireEvent.pointerEnter(toast);
+  act(() => screen.getByRole("button", { name: "Try again" }).focus());
+  fireEvent.pointerLeave(toast);
+  await settle(20000);
+  expect(onDismiss).not.toHaveBeenCalled();
+
+  act(() => screen.getByRole("button", { name: "Try again" }).blur());
+  await settle(9000);
+  expect(onDismiss).toHaveBeenCalledTimes(1);
+});
+
 test("a newer toast replaces the old one with its own timer", async () => {
   const onDismiss = vi.fn();
   const { rerender } = render(<Toaster toast={msg()} onDismiss={onDismiss} />);

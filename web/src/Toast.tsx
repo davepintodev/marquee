@@ -16,7 +16,9 @@ const LONG_MS = 8000;
 const LEAVE_MS = 180;
 
 function ToastItem({ toast: t, onDismiss }: { toast: ToastMsg; onDismiss: () => void }) {
-  const [held, setHeld] = useState(false);
+  const [pointer, setPointer] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const held = pointer || focus;
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
@@ -37,10 +39,12 @@ function ToastItem({ toast: t, onDismiss }: { toast: ToastMsg; onDismiss: () => 
       data-kind={t.kind}
       data-leaving={leaving || undefined}
       role={t.kind === "error" ? "alert" : "status"}
-      onPointerEnter={() => setHeld(true)}
-      onPointerLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
-      onBlur={() => setHeld(false)}
+      onPointerEnter={() => setPointer(true)}
+      onPointerLeave={() => setPointer(false)}
+      onFocus={() => setFocus(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setFocus(false);
+      }}
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();
