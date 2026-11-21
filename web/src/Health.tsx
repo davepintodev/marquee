@@ -105,9 +105,10 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
   const pathId = useId();
   const libId = useId();
   // Matches `.bd-wrap` `@container (min-width: 56rem)` inside `.page-layer`'s 2 * 16px edge padding so
-  // `aria-controls` never points at `.bd-detail` while CSS hides it on narrow screens.
+  // `aria-controls` never points at `.bd-detail` while CSS hides it on narrow screens; the rem follows the root font size.
   const { width } = useViewport();
-  const wide = width >= 928;
+  const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const wide = width >= 56 * rootPx + 32;
   const problems = data.libraryProblems;
   const totals = data.libraryTotals;
   const columns = line.map((s) => `minmax(0, ${s.gate ? 1.4 : s.check.status === "error" ? 1.3 : 1}fr)`).join(" ");

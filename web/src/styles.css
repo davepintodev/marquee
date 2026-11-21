@@ -2019,8 +2019,8 @@ a.btn-secondary {
   }
 }
 
-/* the fold: a plain-text control with a trailing rotating chevron; :where() keeps zero specificity so screen overrides win regardless of import order */
-:where(.fold-btn) {
+/* the fold: a plain-text control with a trailing rotating chevron; button:where() has a type selector's specificity, so it beats the `button { font: inherit }` reset by order and still loses to any screen class override */
+button:where(.fold-btn) {
   all: unset;
   box-sizing: border-box;
   display: inline-flex;
@@ -2037,15 +2037,15 @@ a.btn-secondary {
     transform 0.08s var(--ease-out);
 }
 
-:where(.fold-btn):hover {
+button:where(.fold-btn):hover {
   color: var(--fg);
 }
 
-:where(.fold-btn):active {
+button:where(.fold-btn):active {
   transform: scale(0.97);
 }
 
-:where(.fold-btn):focus-visible {
+button:where(.fold-btn):focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: var(--radius-control);
@@ -2766,7 +2766,7 @@ a.btn-secondary {
   }
 
   .page-activity .popup-close {
-    top: 14px;
+    top: calc(14px + env(safe-area-inset-top));
     right: 8px;
   }
 

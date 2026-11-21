@@ -92,26 +92,30 @@ test("a Jellyfin-only problem or a plain warning does not block the headline", a
 });
 
 test("the fold controls point at their region only while it is on screen, and never at a hidden detail list on narrow screens", async () => {
-  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
-  setup([() => json(sick)]);
-  await line();
-  const details = screen.getByRole("button", { name: /show details/i });
-  expect(details.getAttribute("aria-controls")).toBeNull();
-  expect(details.querySelector(".fold-chev")).toBeTruthy();
-  fireEvent.click(details);
-  const wideId = screen.getByRole("button", { name: /hide details/i }).getAttribute("aria-controls");
-  expect(wideId && document.getElementById(wideId)?.classList.contains("bd-detail")).toBe(true);
-  cleanup();
+  const original = window.innerWidth;
+  try {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+    setup([() => json(sick)]);
+    await line();
+    const details = screen.getByRole("button", { name: /show details/i });
+    expect(details.getAttribute("aria-controls")).toBeNull();
+    expect(details.querySelector(".fold-chev")).toBeTruthy();
+    fireEvent.click(details);
+    const wideId = screen.getByRole("button", { name: /hide details/i }).getAttribute("aria-controls");
+    expect(wideId && document.getElementById(wideId)?.classList.contains("bd-detail")).toBe(true);
+    cleanup();
 
-  Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
-  setup([() => json(sick)]);
-  await line();
-  fireEvent.click(screen.getByRole("button", { name: /show details/i }));
-  const narrowId = screen.getByRole("button", { name: /hide details/i }).getAttribute("aria-controls");
-  const target = narrowId ? document.getElementById(narrowId) : null;
-  expect(target?.classList.contains("bd-detail")).not.toBe(true);
-  expect(target?.classList.contains("bd-line")).toBe(true);
-  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    setup([() => json(sick)]);
+    await line();
+    fireEvent.click(screen.getByRole("button", { name: /show details/i }));
+    const narrowId = screen.getByRole("button", { name: /hide details/i }).getAttribute("aria-controls");
+    const target = narrowId ? document.getElementById(narrowId) : null;
+    expect(target?.classList.contains("bd-detail")).not.toBe(true);
+    expect(target?.classList.contains("bd-line")).toBe(true);
+  } finally {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: original });
+  }
 });
 
 test("the checks are a path in the order a title travels, folded to a name and one state word each", async () => {
