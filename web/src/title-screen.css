@@ -692,7 +692,7 @@
   .ts-rates,
 .ts-overview,
 .ts-actions,
-.ts-info > .fail-line {
+.ts-info > .notice {
     grid-column: 1 / -1;
   }
 

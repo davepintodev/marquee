@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Title, TitleSummary } from "./api/types";
 import { AddMenu, addChoices, type AddChoice } from "./AddMenu";
+import { Notice } from "./Notice";
 
 interface Props {
   api: Api;
@@ -46,9 +47,9 @@ export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
   return (
     <>
       {error && (
-        <p className="fail-line" role="alert">
+        <Notice tone="error" action={{ label: "Try again", onClick: () => press() }}>
           {error}
-        </p>
+        </Notice>
       )}
       <div className="add-split">
         <button ref={primary} type="button" className="btn-primary" aria-disabled={busy} onClick={() => press()}>

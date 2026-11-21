@@ -6,7 +6,9 @@ import { AddBar } from "./AddBar";
 import { Art } from "./Art";
 import { codeOf, countsOf, factsOf, nextWanted, seasonName, seasonShort } from "./episodes";
 import { HistoryList } from "./HistoryList";
-import { IconBookmark, IconButton, IconChevron, IconSearch, IconSpinner } from "./icons";
+import { IconBookmark, IconButton, IconChevron, IconSearch } from "./icons";
+import { Say, Sk, TitleSkeleton } from "./Skeleton";
+import { ErrorState } from "./State";
 import { MonitorMark } from "./MonitorMark";
 import { ProgressLine } from "./Progress";
 import { ReleaseList } from "./ReleaseList";
@@ -17,6 +19,7 @@ import { inHours, stateLabel } from "./words";
 import "./icons.css";
 import "./title-screen.css";
 import "./title-details.css";
+import { Notice } from "./Notice";
 
 interface Props {
   api: Api;
@@ -114,24 +117,34 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
                 {/* Empty blocks of the loaded screen's height, so its text does not jump up when the rest arrives. */}
                 <div className="ts-rates" data-wait="true" aria-hidden="true" />
                 {seed.overview && <p className="ts-overview">{seed.overview}</p>}
-                <div className="ts-actions ts-ghost" aria-hidden="true" />
-                <div className="ts-factlist ts-ghost" aria-hidden="true" />
+                <div className="ts-actions ts-ghost sk" aria-hidden="true" />
+                <div className="ts-factlist ts-ghost sk" aria-hidden="true" />
               </div>
             </div>
           </div>
         )}
         <div className="ts-body">
           {load.status !== "error" ? (
-            <p className="rl-status" role="status">
-              Loading…
-            </p>
-          ) : (
-            <div className="rl-note" role="alert">
-              <p>{load.message}</p>
-              <button type="button" className="btn-small" onClick={reload}>
-                Try again
-              </button>
+            <div className="sk-stack" aria-busy="true">
+              <Say>Loading</Say>
+              {!seed && (
+                <div className="sk-title" aria-hidden="true">
+                  <Sk shape="poster" />
+                  <div>
+                    <Sk shape="head" width="min(420px, 90%)" />
+                    <Sk shape="line" width={120} />
+                    <Sk shape="line" width="min(560px, 100%)" />
+                    <Sk shape="line" width="min(480px, 80%)" />
+                    <Sk shape="row" width="min(280px, 100%)" style={{ height: 48 }} />
+                  </div>
+                </div>
+              )}
+              <TitleSkeleton />
             </div>
+          ) : (
+            <ErrorState fit="page" action={{ label: "Try again", onClick: reload }}>
+              {load.message}
+            </ErrorState>
           )}
         </div>
       </div>
@@ -163,16 +176,12 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
             </p>
             <Ratings about={about} />
             {t.overview && <p className="ts-overview">{t.overview}</p>}
-            {error && (
-              <p className="fail-line" role="alert">
-                {error}
-              </p>
-            )}
+            {error && <Notice tone="error">{error}</Notice>}
             <div className="ts-actions">
               {inLib ? (
                 <>
                   <button type="button" className="btn-primary with-icon" aria-disabled={busy === "search"} onClick={() => run("search", () => api.searchNow(t.id), `Searching for “${t.title}” now.`)}>
-                    {busy === "search" ? <IconSpinner /> : <IconSearch />}
+                    {busy === "search" ? <Sk shape="dot" /> : <IconSearch />}
                     Search automatically
                   </button>
                   <IconButton
@@ -266,9 +275,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
 
         {isSeries && inLib && !chosen && (
           <section className="ts-sec">
-            <div className="rl-note">
-              <p>This series has no episodes listed yet.</p>
-            </div>
+            <Notice tone="quiet">This series has no episodes listed yet.</Notice>
           </section>
         )}
 
@@ -387,7 +394,7 @@ function EpisodeRow({
             aria-busy={spinning}
             onClick={() => !spinning && !downloading && onAuto()}
           >
-            {spinning ? <IconSpinner /> : <IconSearch />}
+            {spinning ? <Sk shape="dot" /> : <IconSearch />}
           </IconButton>
         ) : (
           <span className="ts-find-ph" aria-hidden="true" />

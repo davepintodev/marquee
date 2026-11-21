@@ -4,6 +4,9 @@ import type { Release, Releases, TitleSummary } from "./api/types";
 import { IconChevron } from "./icons";
 import { bytesOf } from "./words";
 import "./release.css";
+import { Notice } from "./Notice";
+import { ReleasesSkeleton } from "./Skeleton";
+import { EmptyState, ErrorState } from "./State";
 
 type Load = { status: "loading" } | { status: "ok"; data: Releases } | { status: "error"; message: string };
 
@@ -139,36 +142,19 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
 
   if (!go) {
     return (
-      <div className="rl-note">
-        <p>
-          Search AIOStreams for <strong>{what}</strong> and choose the file yourself.
-        </p>
-        <button type="button" className="btn-secondary" onClick={() => setStarted(key)}>
-          Search releases
-        </button>
-      </div>
+      <EmptyState fit="inline" tone="info" action={{ label: "Search releases", onClick: () => setStarted(key) }}>
+        Search AIOStreams for <strong>{what}</strong> and choose the file yourself.
+      </EmptyState>
     );
   }
   if (load.status === "loading") {
-    return (
-      <div className="rl" aria-busy="true">
-        <p className="rl-status" role="status">{`Asking AIOStreams for ${what}…`}</p>
-        <div className="rl-skel" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </div>
-      </div>
-    );
+    return <ReleasesSkeleton say={`Asking AIOStreams for ${what}`} />;
   }
   if (load.status === "error") {
     return (
-      <div className="rl-note" role="alert">
-        <p>{load.message}</p>
-        <button type="button" className="btn-small" onClick={() => setAttempt((n) => n + 1)}>
-          Try again
-        </button>
-      </div>
+      <ErrorState fit="inline" action={{ label: "Try again", onClick: () => setAttempt((n) => n + 1) }}>
+        {load.message}
+      </ErrorState>
     );
   }
 
@@ -197,11 +183,7 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
           )}
         </div>
       )}
-      {error && (
-        <p className="fail-line" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Notice tone="error">{error}</Notice>}
       {candidates.length > 0 ? (
         <div className="rl-main">
           {head}
@@ -216,22 +198,17 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
           )}
         </div>
       ) : (
-        <div className="rl-note">
-          <p>
-            {dropped.length > 0 ? (
-              <>
-                Every release for <strong>{what}</strong> was dropped. They are listed below if you want one anyway.
-              </>
-            ) : (
-              <>
-                AIOStreams has nothing for <strong>{what}</strong> in {titleName} right now.
-              </>
-            )}
-          </p>
-          <button type="button" className="btn-small" onClick={() => setAttempt((n) => n + 1)}>
-            Search again
-          </button>
-        </div>
+        <EmptyState fit="inline" action={{ label: "Search again", onClick: () => setAttempt((n) => n + 1) }}>
+          {dropped.length > 0 ? (
+            <>
+              Every release for <strong>{what}</strong> was dropped. They are listed below if you want one anyway.
+            </>
+          ) : (
+            <>
+              AIOStreams has nothing for <strong>{what}</strong> in {titleName} right now.
+            </>
+          )}
+        </EmptyState>
       )}
       {dropped.length > 0 && (
         <div className="rl-skipped">

@@ -3,6 +3,7 @@ import type { TitleSummary } from "./api/types";
 import { Cell } from "./Cell";
 import { colsOf } from "./Library";
 import { useViewport } from "./useViewport";
+import { Say, Sk } from "./Skeleton";
 
 interface Props {
   api: Api;
@@ -32,12 +33,13 @@ export function ResultsSkeleton() {
   const cols = colsOf(width);
   return (
     <div className="found" aria-busy="true">
-      <p className="found-count" role="status">
-        Searching…
-      </p>
+      <Say>Searching</Say>
+      <div className="found-count">
+        <Sk shape="line" width={84} />
+      </div>
       <ul className="grid" aria-hidden="true" style={{ ["--cols" as string]: cols }}>
         {Array.from({ length: cols * 2 }, (_, i) => (
-          <li key={i} className="placeholder" />
+          <li key={i} className="sk sk-poster" />
         ))}
       </ul>
     </div>

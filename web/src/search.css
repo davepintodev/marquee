@@ -1,0 +1,198 @@
+
+.search {
+  grid-area: search;
+  position: relative;
+}
+
+.search input {
+  width: 100%;
+  height: 48px;
+  padding: 0 44px 0 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+
+.search input::placeholder {
+  color: var(--mute);
+}
+
+.search::after,
+.search::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.search::after {
+  height: 1px;
+  background: var(--line);
+  transition: background var(--dur-fast);
+}
+
+.search:hover::after {
+  background: var(--line-strong);
+}
+
+.search::before {
+  z-index: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ring);
+  transform: scaleX(0);
+  transition: transform var(--dur-med) var(--ease-out);
+}
+
+.search:focus-within::before {
+  transform: scaleX(1);
+}
+
+.search-icon {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: var(--mute);
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition: stroke var(--dur-fast);
+}
+
+.search:focus-within .search-icon {
+  stroke: var(--fg);
+}
+
+.search-clear {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  cursor: pointer;
+  transition: transform 0.08s var(--ease-out);
+}
+
+.search-clear svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--mute);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke var(--dur-fast);
+}
+
+.search-clear:hover svg {
+  stroke: var(--fg);
+}
+
+.search-clear:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.search-clear:focus-visible,
+.chip:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.chips {
+  transition: opacity 0.4s var(--ease-out) 0.5s;
+  position: sticky;
+  top: calc(var(--space-1) * -1);
+  z-index: 2;
+  display: flex;
+  justify-content: flex-start;
+  gap: 0 var(--space-5);
+  margin: 0 calc(var(--edge) * -1);
+  padding: 0 var(--edge);
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--bg);
+  box-shadow: inset 0 -1px 0 var(--line-subtle);
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mute);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    transform 0.08s var(--ease-out);
+}
+
+.chip span {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.chip:hover,
+.chip[aria-pressed="true"] {
+  color: var(--fg);
+}
+
+.chip:active {
+  transform: scale(0.97);
+}
+
+.chips-bar {
+  position: absolute;
+  left: var(--bar-x, 0);
+  bottom: 0;
+  width: var(--bar-w, 0);
+  height: 2px;
+  border-radius: 2px;
+  background: var(--fg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chips[data-bar] .chips-bar {
+  opacity: 1;
+}
+
+.chips[data-slide] .chips-bar {
+  transition:
+    left var(--dur-med) var(--ease-out),
+    width var(--dur-med) var(--ease-out);
+}
+
+@media (max-width: 640px) {
+  .search input {
+    height: 44px;
+  }
+
+  .chips {
+    gap: 0 var(--space-4);
+  }
+}

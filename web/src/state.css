@@ -1,0 +1,122 @@
+.state {
+  --dot: var(--mute);
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: var(--space-3);
+  padding: var(--space-5) clamp(var(--space-5), 8vw, var(--space-6));
+  text-align: center;
+  animation: fade var(--dur-med) var(--ease-out) both;
+}
+
+.state[data-tone="bad"] {
+  --dot: var(--bad);
+}
+
+.state[data-tone="info"] {
+  --dot: var(--info);
+}
+
+.state[data-fit="area"] {
+  min-height: 100%;
+  padding-bottom: clamp(var(--space-5), 9vh, 96px);
+}
+
+.state[data-fit="page"] {
+  min-height: clamp(320px, 62dvh, 720px);
+}
+
+.state[data-fit="inline"] {
+  padding-block: clamp(var(--space-5), 6vh, var(--space-6));
+}
+
+.state[data-fit="inline"] .state-art {
+  width: clamp(104px, 16vw, 132px);
+}
+
+.state-art {
+  width: clamp(120px, 20vw, 168px);
+  height: auto;
+  margin-bottom: var(--space-1);
+  fill: color-mix(in srgb, var(--fg) 3%, transparent);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.state-art {
+  overflow: visible;
+}
+
+.state-art .st-edge {
+  fill: none;
+}
+
+.state-art .st-slot {
+  fill: none;
+  stroke-dasharray: 2.5 4;
+}
+
+.state[data-kind="empty"] .st-body {
+  fill: none;
+}
+
+.state-msg {
+  max-width: min(46ch, 100%);
+  font-size: var(--text-md);
+  line-height: 1.45;
+  text-wrap: balance;
+}
+
+.state[data-kind="empty"] .state-msg {
+  color: var(--mute);
+}
+
+.state-msg strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.state-msg i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  background: var(--dot);
+  vertical-align: 0.1em;
+}
+
+.state-act {
+  min-height: 40px;
+  padding: 0 var(--space-1);
+}
+
+.state-act:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.front > .state {
+  position: absolute;
+  inset: 0;
+}
+
+.stage-in:has(.state[data-fit="area"]),
+.library:has(> .state[data-fit="area"]) {
+  height: 100%;
+}
+
+.library:has(> .state[data-fit="area"]) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.library > .state {
+  grid-row: 2;
+  min-height: 0;
+}
+
+.library > .state:only-child {
+  grid-row: 1 / -1;
+}
