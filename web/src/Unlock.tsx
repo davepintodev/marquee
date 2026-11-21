@@ -16,7 +16,7 @@ interface Props {
   onSubmit: (token: string) => void;
 }
 
-const BUTTON: Record<UnlockPhase, string> = { ask: "unlock", checking: "unlocking…", open: "unlocked" };
+const BUTTON: Record<UnlockPhase, string> = { ask: "Unlock", checking: "Unlocking…", open: "Unlocked" };
 
 const NUDGE_MS = 3000;
 const MODIFIERS = new Set(["Shift", "CapsLock", "Control", "Alt", "Meta"]);
@@ -123,7 +123,7 @@ export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
       >
         <div className="unlock" data-nudge={nudges === 0 || calm() ? undefined : nudges % 2}>
           <h1 className="unlock-words">
-            this marquee is <em>locked</em>
+            This marquee is <em>locked</em>
           </h1>
           <div className="unlock-field" data-bad={rejected && editedFor !== attempt && asking}>
             <label className="sr" htmlFor={fieldId}>
@@ -133,7 +133,7 @@ export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
               ref={input}
               id={fieldId}
               type="password"
-              placeholder="api token"
+              placeholder="API token"
               autoComplete="off"
               autoCapitalize="off"
               spellCheck={false}
@@ -153,11 +153,11 @@ export function Unlock({ rejected, attempt, phase, onSubmit }: Props) {
           <div className="unlock-note">
             {rejected && asking && !need ? (
               <p className="unlock-error" role="alert" key={attempt}>
-                that token was not accepted. check it and try again.
+                That token was not accepted. Check it and try again.
               </p>
             ) : (
               <p className="unlock-hint" role="status" data-need={need}>
-                {need ? "unlock to continue." : "enter its api token. once per device."}
+                {need ? "Unlock to continue." : "Enter its API token. Once per device."}
               </p>
             )}
           </div>

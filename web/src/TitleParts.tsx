@@ -1,19 +1,21 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { Title } from "./api/types";
-import { IconBack, IconTrash } from "./icons";
+import { IconBack, IconChevron, IconTrash } from "./icons";
 
 export function BackBar({ title, solid, onClose, back }: { title?: string; solid: boolean; onClose: () => void; back: React.Ref<HTMLButtonElement> }) {
   return (
     <header className="ts-bar" data-solid={solid}>
-      <button ref={back} type="button" className="ts-back" onClick={onClose}>
-        <IconBack />
-        Back
-      </button>
-      {title && (
-        <span className="ts-bar-title" aria-hidden="true">
-          {title}
-        </span>
-      )}
+      <div className="ts-bar-in">
+        <button ref={back} type="button" className="ts-back" onClick={onClose}>
+          <IconBack />
+          Back
+        </button>
+        {title && (
+          <span className="ts-bar-title" aria-hidden="true">
+            {title}
+          </span>
+        )}
+      </div>
     </header>
   );
 }
@@ -80,8 +82,9 @@ export function Collapse({ label, aside, children }: { label: string; aside?: Re
     <>
       <div className="ts-sec-head ts-hist-head">
         <h2 className="collapse">
-          <button type="button" className="pm-btn" aria-expanded={open} aria-controls="detail-collapse" onClick={() => setOpen(!open)}>
+          <button type="button" className="fold-btn" aria-expanded={open} aria-controls="detail-collapse" onClick={() => setOpen(!open)}>
             {label}
+            <IconChevron open={open} />
           </button>
         </h2>
         {aside}

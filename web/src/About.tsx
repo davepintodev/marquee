@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Api } from "./api/client";
 import type { CastMember, Rating, TitleAbout, TitleSummary } from "./api/types";
 import { Art } from "./Art";
+import { IconChevron } from "./icons";
 import { LogoImdb, LogoRottenTomatoes, LogoTmdb } from "./logos";
 
 type AboutLoad = { status: "loading" } | { status: "ok"; about: TitleAbout } | { status: "none" };
@@ -121,8 +122,9 @@ export function AboutSections({ api, about, onOpen }: { api: Api; about: AboutLo
             ))}
           </ul>
           {a.cast.length > FIRST_CAST && (
-            <button type="button" className="ul-link ts-more" aria-expanded={all} onClick={() => setAll(!all)}>
+            <button type="button" className="fold-btn ts-more" aria-expanded={all} onClick={() => setAll(!all)}>
               {all ? "Show fewer" : `Show all ${a.cast.length}`}
+              <IconChevron open={all} />
             </button>
           )}
         </section>

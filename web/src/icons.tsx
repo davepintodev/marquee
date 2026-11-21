@@ -8,10 +8,9 @@ export const IconSearch = () => (
     <path d="M20 20l-4.2-4.2" />
   </svg>
 );
-export const IconRetry = () => (
-  <svg {...base}>
-    <path d="M20 12a8 8 0 1 1-2.6-5.9" />
-    <path d="M20 4v5h-5" />
+export const IconChevron = ({ open }: { open: boolean }) => (
+  <svg className="fold-chev" data-open={open} viewBox="0 0 12 12" aria-hidden="true">
+    <path d="M3 4.5l3 3 3-3" />
   </svg>
 );
 export const IconTrash = () => (

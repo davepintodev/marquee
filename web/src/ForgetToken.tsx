@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-// Forgetting the token signs this device out, so it asks first. The question opens on "no" and Esc answers it
+// Forgetting the token signs this device out, so it asks first. The question opens on "Keep it" and Esc answers it
 // without closing the page behind it.
 export function ForgetToken({ onForget }: { onForget: () => void }) {
   const [asking, setAsking] = useState(false);
@@ -33,12 +33,11 @@ export function ForgetToken({ onForget }: { onForget: () => void }) {
       }}
     >
       <span className="forget-q">Forget it?</span>
-      <button type="button" className="forget forget-yes" onClick={onForget}>
-        yes
-      </button>
-      <span aria-hidden="true">·</span>
       <button ref={keep} type="button" className="forget" onClick={() => setAsking(false)}>
-        no
+        Keep it
+      </button>
+      <button type="button" className="forget forget-yes" data-danger="true" onClick={onForget}>
+        Forget
       </button>
     </span>
   );

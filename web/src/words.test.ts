@@ -23,13 +23,18 @@ test("a future time reads as the time left, rounded like the history sentence", 
   expect(inHours(at(-5_000), NOW)).toBe("moments");
 });
 
-test("a past time reads as how long ago", () => {
+test("a past time reads as how long ago, switching to a short date after 7 days", () => {
   const before = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
   expect(ago(before(20_000), NOW)).toBe("just now");
   expect(ago(before(5 * 60_000), NOW)).toBe("5 min ago");
   expect(ago(before(3 * 3600_000), NOW)).toBe("3 h ago");
-  expect(ago(before(30 * 3600_000), NOW)).toBe("yesterday");
+  expect(ago(before(30 * 3600_000), NOW)).toBe("1 day ago");
   expect(ago(before(4 * 86400_000), NOW)).toBe("4 days ago");
+  expect(ago(before(7 * 86400_000), NOW)).toBe("7 days ago");
+  const tenDaysAgo = before(10 * 86400_000);
+  expect(ago(tenDaysAgo, NOW)).toBe(new Date(tenDaysAgo).toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+  const lastYear = "2025-10-05T12:00:00Z";
+  expect(ago(lastYear, NOW)).toBe(new Date(lastYear).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }));
 });
 
 test("sizes read in the biggest unit that keeps a number small", () => {

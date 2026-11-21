@@ -1,5 +1,4 @@
 import type { HistoryEntry } from "./api/types";
-import { IconRetry } from "./icons";
 import { ago, reasonLabel } from "./words";
 
 interface Props {
@@ -9,7 +8,7 @@ interface Props {
   empty: string;
 }
 
-// No pills: a failure is a gutter dot and the reason in bold; Retry is a quiet icon and a word.
+// No pills: a failure is a gutter dot and the reason in bold; Retry uses the same underlined text button as Activity.
 export function HistoryList({ entries, retrying, onRetry, empty }: Props) {
   if (entries.length === 0) return <p className="empty">{empty}</p>;
   return (
@@ -30,8 +29,7 @@ export function HistoryList({ entries, retrying, onRetry, empty }: Props) {
             {h.message}
           </p>
           {h.retryable && (
-            <button type="button" className="hx-retry" aria-label={`Retry ${h.episode ? h.episode.toUpperCase() : h.titleName}`} aria-disabled={retrying === h.id} onClick={() => onRetry(h)}>
-              <IconRetry />
+            <button type="button" className="link-btn hx-retry" aria-label={`Retry ${h.episode ? h.episode.toUpperCase() : h.titleName}`} aria-disabled={retrying === h.id} onClick={() => onRetry(h)}>
               Retry
             </button>
           )}

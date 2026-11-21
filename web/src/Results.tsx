@@ -1,6 +1,8 @@
 import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
 import { Cell } from "./Cell";
+import { colsOf } from "./Library";
+import { useViewport } from "./useViewport";
 
 interface Props {
   api: Api;
@@ -9,14 +11,33 @@ interface Props {
 }
 
 export function Results({ api, results, onSelect }: Props) {
+  const { width } = useViewport();
+  const cols = colsOf(width);
   return (
     <div className="found">
       <p className="found-count">{results.length === 1 ? "1 result" : `${results.length} results`}</p>
-      <ul className="grid" aria-label="Results">
+      <ul className="grid" aria-label="Results" style={{ ["--cols" as string]: cols }}>
         {results.map((t) => (
           <li key={t.id}>
             <Cell api={api} title={t} markOwned onSelect={onSelect} />
           </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function ResultsSkeleton() {
+  const { width } = useViewport();
+  const cols = colsOf(width);
+  return (
+    <div className="found" aria-busy="true">
+      <p className="found-count" role="status">
+        Searching…
+      </p>
+      <ul className="grid" aria-hidden="true" style={{ ["--cols" as string]: cols }}>
+        {Array.from({ length: cols * 2 }, (_, i) => (
+          <li key={i} className="placeholder" />
         ))}
       </ul>
     </div>

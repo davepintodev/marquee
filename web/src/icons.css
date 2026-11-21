@@ -58,6 +58,7 @@
 
 .ul-link {
   all: unset;
+  position: relative;
   box-sizing: border-box;
   cursor: pointer;
   color: var(--mute);
@@ -67,7 +68,14 @@
   background: linear-gradient(var(--ul, var(--fg)), var(--ul, var(--fg))) left bottom / 0% 1px no-repeat;
   transition:
     background-size 0.3s var(--ease-out),
-    color var(--dur-fast);
+    color var(--dur-fast),
+    transform 0.08s var(--ease-out);
+}
+
+.ul-link::after {
+  content: "";
+  position: absolute;
+  inset: -10px -4px;
 }
 
 .ul-link[data-tone="bad"] {
@@ -80,6 +88,10 @@
   color: var(--fg);
 }
 
+.ul-link:active {
+  transform: scale(0.97);
+}
+
 .ul-link:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 3px;
@@ -88,44 +100,6 @@
 .ul-link[aria-disabled="true"] {
   opacity: 0.6;
   cursor: progress;
-}
-
-.rm {
-  font-size: var(--text-sm);
-  color: var(--mute);
-}
-
-.rm[data-fx="dot"] .ul-link[data-tone="bad"] {
-  --ul: var(--fg);
-}
-
-.rm[data-fx="dot"] .ul-link[data-tone="bad"]::after {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: 7px;
-  border-radius: 50%;
-  background: var(--bad);
-  vertical-align: 1px;
-  transform: scale(0);
-  transition: transform 0.25s var(--ease-out);
-}
-
-.rm[data-fx="dot"] .ul-link[data-tone="bad"]:hover::after,
-.rm[data-fx="dot"] .ul-link[data-tone="bad"]:focus-visible::after,
-.rm[data-fx="dot"] [role="group"] .ul-link[data-tone="bad"]::after {
-  transform: scale(1);
-}
-
-.rm[data-fx="cross"] .ul-link[data-tone="bad"] {
-  --ul: var(--fg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rm[data-fx="dot"] .ul-link[data-tone="bad"]::after {
-    transition: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -144,30 +118,8 @@
   }
 }
 
-.pm-btn::before {
-  content: "";
-  flex: none;
-  width: 11px;
-  height: 11px;
-  background:
-    linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
-    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
-  transition: background-size 0.22s var(--ease-out);
-}
-
-.pm-btn[aria-expanded="true"]::before,
-details[open] > .pm-btn::before {
-  background-size:
-    100% 2px,
-    2px 0;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .spin {
     animation: none;
-  }
-
-  .pm-btn::before {
-    transition: none;
   }
 }

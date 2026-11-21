@@ -17,7 +17,7 @@ const field = () => screen.getByLabelText(/api token/i) as HTMLInputElement;
 const wall = () => document.querySelector<HTMLElement>(".uwall")!;
 const tiles = () => [...document.querySelectorAll<HTMLElement>(".utile")];
 const slot = () => document.querySelector<HTMLElement>(".uslot")!;
-const nudgeLine = () => screen.queryByText("unlock to continue.");
+const nudgeLine = () => screen.queryByText("Unlock to continue.");
 
 const px = (el: HTMLElement, p: "left" | "top" | "width" | "height") => parseFloat(el.style[p]);
 const box = (el: HTMLElement) => ({ x: px(el, "left"), y: px(el, "top"), w: px(el, "width"), h: px(el, "height") });
@@ -43,8 +43,10 @@ afterEach(() => {
 
 test("the screen says it is locked and asks for the token in a labelled password field", () => {
   show();
-  expect(screen.getByRole("heading", { name: "this marquee is locked" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "This marquee is locked" })).toBeTruthy();
   expect(field().type).toBe("password");
+  expect(field().placeholder).toBe("API token");
+  expect(screen.getByRole("status").textContent).toBe("Enter its API token. Once per device.");
   expect(document.activeElement).toBe(field());
 });
 
@@ -53,14 +55,14 @@ test("every control is reachable by keyboard: the field, then the unlock button,
   const controls = [...document.querySelectorAll<HTMLElement>("input, button, a, select, textarea, [tabindex]")];
   expect(controls.map((c) => c.tagName)).toEqual(["INPUT", "BUTTON"]);
   expect(controls.every((c) => c.tabIndex >= 0)).toBe(true);
-  expect(screen.getByRole("button", { name: "unlock" })).toBe(controls[1]);
+  expect(screen.getByRole("button", { name: "Unlock" })).toBe(controls[1]);
 });
 
 test("submitting hands over the trimmed token and empties the field", () => {
   const onSubmit = vi.fn();
   show({ onSubmit });
   fireEvent.change(field(), { target: { value: "  abc  " } });
-  fireEvent.click(screen.getByRole("button", { name: "unlock" }));
+  fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
   expect(onSubmit).toHaveBeenCalledExactlyOnceWith("abc");
   expect(field().value).toBe("");
 });
@@ -69,7 +71,7 @@ test("an empty field does not submit", () => {
   const onSubmit = vi.fn();
   show({ onSubmit });
   fireEvent.change(field(), { target: { value: "   " } });
-  fireEvent.click(screen.getByRole("button", { name: "unlock" }));
+  fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
@@ -80,7 +82,7 @@ test("a refused token reads as an alert and the field has focus again", () => {
 
   first.rerender(view({ rejected: true, attempt: 1 }));
 
-  expect(screen.getByRole("alert").textContent).toBe("that token was not accepted. check it and try again.");
+  expect(screen.getByRole("alert").textContent).toBe("That token was not accepted. Check it and try again.");
   expect(document.activeElement).toBe(field());
 });
 
@@ -99,14 +101,14 @@ test("while the token is being checked the field cannot be changed and a second 
   const onSubmit = vi.fn();
   show({ phase: "checking", onSubmit });
   expect(field().readOnly).toBe(true);
-  expect(screen.getByRole("button", { name: "unlocking…" }).getAttribute("aria-disabled")).toBe("true");
+  expect(screen.getByRole("button", { name: "Unlocking…" }).getAttribute("aria-disabled")).toBe("true");
   fireEvent.submit(field().form!);
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
 test("once accepted the button says so", () => {
   show({ phase: "open" });
-  expect(screen.getByRole("button", { name: "unlocked" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Unlocked" })).toBeTruthy();
   expect(document.querySelector(".screen")!.getAttribute("data-phase")).toBe("open");
 });
 
@@ -115,7 +117,7 @@ test("a click on the wall focuses the field and says what to do, in a calm line"
   field().blur();
   fireEvent.click(tiles()[0]);
   expect(document.activeElement).toBe(field());
-  expect(screen.getByRole("status").textContent).toBe("unlock to continue.");
+  expect(screen.getByRole("status").textContent).toBe("Unlock to continue.");
   expect(document.querySelector(".unlock")!.getAttribute("data-nudge")).not.toBeNull();
 });
 
@@ -195,7 +197,7 @@ test("any other stray key points at the field with the line", () => {
 
 test("a key meant for a control, or a shortcut, is left alone", () => {
   show();
-  const button = screen.getByRole("button", { name: "unlock" });
+  const button = screen.getByRole("button", { name: "Unlock" });
   button.focus();
   fireEvent.keyDown(button, { key: "Enter" });
   expect(document.activeElement).toBe(button);
@@ -217,7 +219,7 @@ test("Esc does nothing here: still locked, what was typed stays", () => {
   expect(field().value).toBe("half");
   expect(nudgeLine()).toBeNull();
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.getByRole("heading", { name: "this marquee is locked" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "This marquee is locked" })).toBeTruthy();
 });
 
 test("with reduced motion the click shows the line and the field does not shake", () => {
