@@ -5,7 +5,7 @@ import { Activity } from "./Activity";
 import { Front } from "./Front";
 import { Health } from "./Health";
 import { Library } from "./Library";
-import { Results } from "./Results";
+import { Results, ResultsSkeleton } from "./Results";
 import { leaveTitle, leaveTo, parseRoute, pushTo, useRoute } from "./route";
 import { TitleScreen } from "./TitleScreen";
 import { useLive } from "./useLive";
@@ -313,7 +313,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
                 <p>{results.message}</p>
               </div>
             )}
-            {searching && results.status === "loading" && <p className="hint">Searching…</p>}
+            {searching && results.status === "loading" && <ResultsSkeleton />}
             {searching && results.status === "ok" && results.data.length === 0 && <p className="hint">Nothing found.</p>}
             {searching && results.status === "ok" && results.data.length > 0 && <Results api={api} results={results.data} onSelect={openTitle} />}
           </div>

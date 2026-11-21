@@ -2,8 +2,10 @@ import { Fragment, useId, useState } from "react";
 import type { Api } from "./api/client";
 import type { Health as HealthData } from "./api/types";
 import { ForgetToken } from "./ForgetToken";
+import { IconChevron } from "./icons";
 import { Page } from "./Page";
 import { useHealth } from "./useHealth";
+import { useViewport } from "./useViewport";
 
 type Check = HealthData["checks"][number];
 type Status = Check["status"];
@@ -60,20 +62,12 @@ function Path({ value }: { value: string }) {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg className="bd-chev" data-open={open} viewBox="0 0 12 12" aria-hidden="true">
-      <path d="M3 4.5l3 3 3-3" />
-    </svg>
-  );
-}
-
 // A plain-text control that folds and unfolds one region.
 function Fold({ open, onToggle, controls, children }: { open: boolean; onToggle: () => void; controls?: string; children: string }) {
   return (
     <button type="button" className="bd-act bd-fold" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
       {children}
-      <Chevron open={open} />
+      <IconChevron open={open} />
     </button>
   );
 }
@@ -110,6 +104,11 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
   const [libOpen, setLibOpen] = useState(false);
   const pathId = useId();
   const libId = useId();
+  // Matches `.bd-wrap` `@container (min-width: 56rem)` inside `.page-layer`'s 2 * 16px edge padding so
+  // `aria-controls` never points at `.bd-detail` while CSS hides it on narrow screens; the rem follows the root font size.
+  const { width } = useViewport();
+  const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const wide = width >= 56 * rootPx + 32;
   const problems = data.libraryProblems;
   const totals = data.libraryTotals;
   const columns = line.map((s) => `minmax(0, ${s.gate ? 1.4 : s.check.status === "error" ? 1.3 : 1}fr)`).join(" ");
@@ -149,7 +148,7 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
             </li>
           ))}
         </ol>
-        <Fold open={pathOpen} onToggle={() => setPathOpen((o) => !o)} controls={pathOpen ? pathId : undefined}>
+        <Fold open={pathOpen} onToggle={() => setPathOpen((o) => !o)} controls={pathOpen ? (wide ? pathId : lineId) : undefined}>
           {pathOpen ? "Hide details" : "Show details"}
         </Fold>
         {pathOpen && (

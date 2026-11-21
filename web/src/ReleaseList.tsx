@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Release, Releases, TitleSummary } from "./api/types";
+import { IconChevron } from "./icons";
 import { bytesOf } from "./words";
 import "./release.css";
 
@@ -129,7 +130,7 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
       <span>Release</span>
       <span>Source</span>
       <span>Cache</span>
-      <button type="button" onClick={() => sortBy("size")} aria-sort={sort.by === "size" ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
+      <button type="button" className="rt-h-size" onClick={() => sortBy("size")} aria-sort={sort.by === "size" ? (sort.dir === 1 ? "ascending" : "descending") : undefined}>
         Size{sort.by === "size" ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
       </button>
       <span />
@@ -142,7 +143,7 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
         <p>
           Search AIOStreams for <strong>{what}</strong> and choose the file yourself.
         </p>
-        <button type="button" className="btn-secondary" onClick={() => setStarted(key)} autoFocus>
+        <button type="button" className="btn-secondary" onClick={() => setStarted(key)}>
           Search releases
         </button>
       </div>
@@ -208,8 +209,9 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
             {lead.map((r, i) => tableRow(r, i, { top: inOrder && i === 0, pick: "plain" }))}
           </ul>
           {later > 0 && (
-            <button type="button" className="pm-btn rl-fold" data-fold="more" aria-expanded={folds.more} aria-label={`Show ${later} more releases`} onClick={() => setFolds((f) => ({ ...f, more: !f.more }))}>
+            <button type="button" className="fold-btn rl-fold" data-fold="more" aria-expanded={folds.more} aria-label={`Show ${later} more releases`} onClick={() => setFolds((f) => ({ ...f, more: !f.more }))}>
               Show more
+              <IconChevron open={folds.more} />
             </button>
           )}
         </div>
@@ -233,8 +235,9 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
       )}
       {dropped.length > 0 && (
         <div className="rl-skipped">
-          <button type="button" className="pm-btn rl-fold" data-fold="dropped" aria-expanded={folds.dropped} aria-label={`Show ${dropped.length} dropped releases`} onClick={() => setFolds((f) => ({ ...f, dropped: !f.dropped }))}>
+          <button type="button" className="fold-btn rl-fold" data-fold="dropped" aria-expanded={folds.dropped} aria-label={`Show ${dropped.length} dropped releases`} onClick={() => setFolds((f) => ({ ...f, dropped: !f.dropped }))}>
             Dropped releases
+            <IconChevron open={folds.dropped} />
           </button>
           {folds.dropped && (
             <>

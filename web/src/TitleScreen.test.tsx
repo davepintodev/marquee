@@ -366,9 +366,36 @@ test("a failure in History is a reason in bold, a dot and no pill, and a retryab
   expect(rows[2].getAttribute("data-failed")).toBeNull();
   expect(rows[0].querySelector(".badge, .reason, .pill")).toBeNull();
 
-  fireEvent.click(within(rows[0]).getByRole("button", { name: "Retry S04E02" }));
+  const retryBtn = within(rows[0]).getByRole("button", { name: "Retry S04E02" });
+  expect(retryBtn.classList.contains("link-btn")).toBe(true);
+  expect(retryBtn.querySelector("svg")).toBeNull();
+  fireEvent.click(retryBtn);
   await screen.findByText("Searching for “House” again.");
   expect(writes).toEqual([{ method: "POST", path: "/api/history/h2/retry", body: undefined }]);
+});
+
+test("opening a movie keeps focus on Back instead of jumping to Search releases", async () => {
+  await open(dune());
+  expect(screen.getByRole("button", { name: "Search releases" })).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back" }));
+});
+
+test("Season, History, and Cast folds all use the shared trailing rotating chevron", async () => {
+  const manyCast = Array.from({ length: 14 }, (_, i) => ({ personId: i + 1, name: `Actor ${i + 1}`, character: `Role ${i + 1}` }));
+  await open(house(), (url) => (url.pathname.endsWith("/about") ? json({ ratings: [], genres: [], cast: manyCast, similar: [] }) : undefined));
+
+  const seasonBtn = screen.getByRole("button", { name: /Season 4/ });
+  expect(seasonBtn.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("true");
+
+  const histBtn = screen.getByRole("button", { name: "History" });
+  expect(histBtn.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("false");
+  fireEvent.click(histBtn);
+  expect(histBtn.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("true");
+
+  const castBtn = await screen.findByRole("button", { name: "Show all 14" });
+  expect(castBtn.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("false");
+  fireEvent.click(castBtn);
+  expect(castBtn.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("true");
 });
 
 test("the '?' beside 'next try' explains the attempts on hover, focus or tap, and Esc closes only it", async () => {

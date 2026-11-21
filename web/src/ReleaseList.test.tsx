@@ -88,14 +88,16 @@ test("a single resolution offers no filter", async () => {
   expect(screen.queryByRole("group", { name: "Filter by resolution" })).toBeNull();
 });
 
-test("the rest of the list sits under '+ Show more', which opens and closes it", async () => {
+test("the rest of the list sits under a chevron 'Show more' fold, which opens and closes it", async () => {
   await openMovie();
   const more = await screen.findByRole("button", { name: "Show 2 more releases" });
 
   expect(more.textContent).toBe("Show more");
   expect(more.getAttribute("aria-expanded")).toBe("false");
+  expect(more.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("false");
   fireEvent.click(more);
   expect(more.getAttribute("aria-expanded")).toBe("true");
+  expect(more.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("true");
   expect(namesOf(screen.getByRole("list", { name: "Releases for Dune" }))).toHaveLength(5);
   fireEvent.click(more);
   expect(namesOf(screen.getByRole("list", { name: "Releases for Dune" }))).toHaveLength(3);
@@ -127,8 +129,10 @@ test("dropped releases sit behind their own quieter fold, with the reason, and o
   const fold = screen.getByRole("button", { name: "Show 3 dropped releases" });
 
   expect(fold.textContent).toBe("Dropped releases");
+  expect(fold.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("false");
   expect(screen.queryByText("marquee will not try these.")).toBeNull();
   fireEvent.click(fold);
+  expect(fold.querySelector(".fold-chev")?.getAttribute("data-open")).toBe("true");
 
   expect(screen.getByText("marquee will not try these.")).toBeTruthy();
   const rows = within(screen.getByRole("list", { name: "Dropped releases" })).getAllByRole("listitem");

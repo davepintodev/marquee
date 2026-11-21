@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
-import { Library } from "./Library";
+import { colsOf, Library } from "./Library";
 import { createApi } from "./api/client";
 import type { Badge, TitleSummary, Wall } from "./api/types";
 
@@ -513,4 +513,30 @@ test("the toast goes away by itself", async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("colsOf caps grid column calculation at 1760px to match the stage max-width", () => {
+  expect(colsOf(3200)).toBe(colsOf(1760));
+  expect(colsOf(2400)).toBe(colsOf(1760));
+});
+
+test("search shows skeleton placeholders while results are loading", async () => {
+  let resolveSearch: (r: Response) => void = () => {};
+  const pending = new Promise<Response>((r) => (resolveSearch = r));
+  setup((url) => {
+    if (url.pathname === "/api/wall") return json(wall);
+    if (url.pathname === "/api/search") return pending;
+    return json({ checks: [] });
+  });
+  await grid().findAllByRole("button", { name: /house/i });
+
+  type("dune");
+
+  await waitFor(() => expect(root().dataset.mode).toBe("search"));
+  const resultsStage = document.querySelector<HTMLElement>(".results-stage")!;
+  expect(resultsStage.querySelectorAll(".placeholder").length).toBeGreaterThan(0);
+
+  resolveSearch(json({ results: [dune] }));
+  await screen.findByRole("list", { name: /results/i });
+  expect(resultsStage.querySelectorAll(".placeholder")).toHaveLength(0);
 });

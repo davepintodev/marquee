@@ -174,12 +174,12 @@ test("a right token holds the lock until marquee accepts it, then hands over, th
     // The app is mounting underneath, but nobody can see or reach it yet.
     await screen.findByRole("searchbox");
     expect(screenEl()!.getAttribute("data-phase")).toBe("checking");
-    expect(screen.getByRole("button", { name: "unlocking…" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unlocking…" })).toBeTruthy();
     expect(appWrap()!.hasAttribute("inert")).toBe(true);
 
     m.release();
     await waitFor(() => expect(screenEl()!.getAttribute("data-phase")).toBe("open"));
-    expect(screen.getByRole("button", { name: "unlocked" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unlocked" })).toBeTruthy();
     expect(appWrap()!.hasAttribute("data-handover")).toBe(true);
     expect(appWrap()!.hasAttribute("inert")).toBe(true);
 
@@ -336,7 +336,7 @@ test("Forget on this device on the Health page forgets the token and asks for it
   render(<Shell baseUrl={BASE} fetch={healthMarquee(TOKEN)} path="/" />);
 
   fireEvent.click(await screen.findByRole("button", { name: /forget on this device/i }));
-  fireEvent.click(screen.getByRole("button", { name: "yes" }));
+  fireEvent.click(screen.getByRole("button", { name: "Forget" }));
 
   await screen.findByLabelText(/api token/i);
   expect(localStorage.getItem("marquee.token")).toBeNull();
@@ -353,7 +353,7 @@ test("Esc answers the forget question without closing the Health page, and close
   render(<Shell baseUrl={BASE} fetch={healthMarquee(TOKEN)} path="/" />);
 
   fireEvent.click(await screen.findByRole("button", { name: /forget on this device/i }));
-  fireEvent.keyDown(screen.getByRole("button", { name: "no" }), { key: "Escape" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Keep it" }), { key: "Escape" });
   expect(screen.getByRole("heading", { name: "Health" })).toBeTruthy();
   expect(screen.queryByRole("group", { name: /forget the saved token/i })).toBeNull();
   expect(localStorage.getItem("marquee.token")).toBe(TOKEN);

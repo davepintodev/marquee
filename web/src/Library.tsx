@@ -20,9 +20,10 @@ const FILTERS: { key: Filter; label: string; test: (t: TitleSummary) => boolean 
 // Rows below the first screenful share one delay, so a long library never leaves its lower rows blank for seconds.
 const STAGGER_ROWS = 4;
 
-function colsOf(width: number) {
-  const target = Math.min(280, Math.max(150, width / 6));
-  return Math.max(2, Math.round((width - 32 + 16) / (target + 16)));
+export function colsOf(width: number) {
+  const w = Math.min(width, 1760);
+  const target = Math.min(280, Math.max(150, w / 6));
+  return Math.max(2, Math.round((w - 32 + 16) / (target + 16)));
 }
 
 interface Props {

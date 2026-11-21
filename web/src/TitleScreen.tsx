@@ -6,7 +6,7 @@ import { AddBar } from "./AddBar";
 import { Art } from "./Art";
 import { codeOf, countsOf, factsOf, nextWanted, seasonName, seasonShort } from "./episodes";
 import { HistoryList } from "./HistoryList";
-import { IconBookmark, IconButton, IconSearch, IconSpinner } from "./icons";
+import { IconBookmark, IconButton, IconChevron, IconSearch, IconSpinner } from "./icons";
 import { MonitorMark } from "./MonitorMark";
 import { ProgressLine } from "./Progress";
 import { ReleaseList } from "./ReleaseList";
@@ -442,12 +442,13 @@ function SeasonBar({
   return (
     <div className="ts-season-bar">
       <h3 className="ts-season-title">
-        <button type="button" className="pm-btn ts-season-toggle" aria-expanded={expanded} aria-controls="ts-season-list" onClick={onToggle}>
+        <button type="button" className="fold-btn ts-season-toggle" aria-expanded={expanded} aria-controls="ts-season-list" onClick={onToggle}>
           <b>{seasonName(season.number)}</b>
           <span className="ts-season-sum">
             <em>{`${c.downloaded} of ${aired}`}</em>
             {rest && ` · ${rest}`}
           </span>
+          <IconChevron open={expanded} />
         </button>
       </h3>
       <div className="ts-season-tools">
