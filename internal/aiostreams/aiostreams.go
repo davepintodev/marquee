@@ -13,6 +13,11 @@ type ParsedFile struct {
 	ReleaseGroup string `json:"releaseGroup"`
 	Seasons      []int  `json:"seasons"`
 	Episodes     []int  `json:"episodes"`
+
+	AudioTags     []string `json:"audioTags"`
+	AudioChannels []string `json:"audioChannels"`
+	VisualTags    []string `json:"visualTags"`
+	SeasonPack    bool     `json:"seasonPack"`
 }
 
 // Stream is one result of a search: one playable file. Its URL is a

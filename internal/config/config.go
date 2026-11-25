@@ -51,6 +51,12 @@ type Config struct {
 	Listen      string
 	APIToken    Secret
 	DryRun      bool
+
+	// Profiles is never empty after Load: without any in the file it holds
+	// the built-in "default". Both defaults name one of them.
+	Profiles             map[string]Profile
+	DefaultMovieProfile  string
+	DefaultSeriesProfile string
 }
 
 func (c Config) LogValue() slog.Value {
@@ -67,6 +73,9 @@ func (c Config) LogValue() slog.Value {
 		slog.String("listen", c.Listen),
 		slog.Any("api_token", c.APIToken),
 		slog.Bool("dry_run", c.DryRun),
+		slog.Int("profiles", len(c.Profiles)),
+		slog.String("default_movie_profile", c.DefaultMovieProfile),
+		slog.String("default_series_profile", c.DefaultSeriesProfile),
 	)
 }
 
@@ -83,6 +92,10 @@ type fileConfig struct {
 	Listen                string `json:"listen"`
 	APIToken              string `json:"api_token"`
 	DryRun                *bool  `json:"dry_run"`
+
+	Profiles             map[string]Profile `json:"profiles"`
+	DefaultMovieProfile  string             `json:"default_movie_profile"`
+	DefaultSeriesProfile string             `json:"default_series_profile"`
 }
 
 // Load reads the file named by MARQUEE_CONFIG (if any), lets MARQUEE_*
@@ -126,6 +139,7 @@ func Load(getenv func(string) string) (Config, error) {
 		JellyfinKey:           Secret(pick("MARQUEE_JELLYFIN_KEY", f.JellyfinKey)),
 		Listen:                pick("MARQUEE_LISTEN", f.Listen),
 		APIToken:              Secret(pick("MARQUEE_API_TOKEN", f.APIToken)),
+		Profiles:              f.Profiles,
 	}
 	if c.Listen == "" {
 		c.Listen = ":8080"
@@ -164,6 +178,11 @@ func Load(getenv func(string) string) (Config, error) {
 	u, err := url.Parse(c.AIOStreamsManifestURL.Reveal())
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return Config{}, errors.New("MARQUEE_AIOSTREAMS_MANIFEST_URL is not a valid http(s) URL")
+	}
+	if err := resolveProfiles(&c,
+		pick("MARQUEE_DEFAULT_MOVIE_PROFILE", f.DefaultMovieProfile),
+		pick("MARQUEE_DEFAULT_SERIES_PROFILE", f.DefaultSeriesProfile)); err != nil {
+		return Config{}, err
 	}
 	return c, nil
 }

@@ -91,6 +91,14 @@ func QualityName(kind, resolution, quality string) string {
 	return tvName(res)
 }
 
+// CanonicalQuality is QualityName for the profiles: one tier name per
+// quality whatever the kind, so Radarr's "Remux-1080p" stands for
+// Sonarr's "Bluray-1080p Remux" too, and the pre-release sources keep
+// their names for a series.
+func CanonicalQuality(resolution, quality string) string {
+	return QualityName(KindMovie, resolution, quality)
+}
+
 func remuxName(kind string, res int) string {
 	if kind == KindMovie {
 		return "Remux-" + strconv.Itoa(res) + "p"
