@@ -31,6 +31,20 @@ func TestTheHarnessServesTheRealServiceAndTheFakeTMDBBehindIt(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(string(body), `"id":"movie-438631"`) {
 		t.Errorf("search = %d %s", resp.StatusCode, body)
 	}
+	for path, want := range map[string]string{
+		"/api/profiles": `"defaultMovieProfile":"tv-safe"`,
+		"/api/health":   `"id":"torbox"`,
+	} {
+		r, err := http.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if r.StatusCode != 200 || !strings.Contains(string(b), want) {
+			t.Errorf("%s = %d %s, want %s", path, r.StatusCode, b, want)
+		}
+	}
 	cancel()
 	select {
 	case code := <-done:

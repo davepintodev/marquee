@@ -13,6 +13,9 @@ services:
       # import is an atomic rename.
       - <media-dir>:/media
       - <data-dir>:/data
+      # Optional, for quality profiles (see the README): a JSON file, then
+      # set MARQUEE_CONFIG below.
+      # - <config-file>:/config/marquee.json:ro
     environment:
       MARQUEE_AIOSTREAMS_MANIFEST_URL: "<aiostreams-manifest-url>"
       MARQUEE_TMDB_KEY: "<tmdb-api-key>"
@@ -27,3 +30,15 @@ services:
       # MARQUEE_JELLYFIN_KEY: "<jellyfin-api-key>"
       # MARQUEE_OMDB_KEY: "<omdb-api-key>"
       # MARQUEE_API_TOKEN: "<a-long-random-token>"
+      # MARQUEE_CONFIG: /config/marquee.json
+      #   Quality profiles live in this file: `profiles` (each with `qualities`,
+      #   `reject`, `prefer`, `size_limits`), `default_movie_profile` and
+      #   `default_series_profile`.
+      # How often the library folders are read again; 0 turns it off.
+      # MARQUEE_RESCAN_INTERVAL: "30m"
+      # TorBox fetches releases that are not cached yet, and season packs.
+      # MARQUEE_TORBOX_API_KEY: "<torbox-api-key>"
+      # MARQUEE_TORBOX_MAX_ACTIVE: "2"
+      # MARQUEE_TORBOX_STALL_TIMEOUT: "30m"
+      # MARQUEE_TORBOX_MAX_LIFETIME: "4h"
+      # MARQUEE_TORBOX_DELETE_ON_COMPLETE: "true"
