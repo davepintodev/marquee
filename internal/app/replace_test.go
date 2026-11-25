@@ -357,3 +357,24 @@ func TestGrabbingAnOwnedItemInDryRunIsRefusedForDryRunNotForReplace(t *testing.T
 		t.Errorf("the refusal names dry-run: %v", got)
 	}
 }
+
+func TestAFailedReplacementCannotBeRetried(t *testing.T) {
+	r := ownedDune(t)
+	notVideo := append([]byte("MZ\x90\x00"), make([]byte, 100<<10)...)
+	replaceJob(r, "bad.mkv", debridfake.File{Data: notVideo})
+	var entry map[string]any
+	for _, e := range r.waitHistoryKind("failed", 1) {
+		if m := e.(map[string]any); m["kind"] == "failed" {
+			entry = m
+		}
+	}
+	if entry["retryable"] != false {
+		t.Errorf("a failed replacement must not be retryable: %v", entry)
+	}
+	r.mustCall("POST", "/api/history/"+entry["id"].(string)+"/retry", "", 409)
+	for _, e := range r.history() {
+		if m := e.(map[string]any); m["kind"] == "searched" {
+			t.Errorf("a refused retry left a note: %v", m)
+		}
+	}
+}
