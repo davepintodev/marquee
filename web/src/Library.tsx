@@ -11,7 +11,8 @@ type Kind = "all" | "movies" | "series";
 type Section = "library" | "trending" | "downloading" | "missing";
 type Browsable = "library" | "trending";
 
-const isOn = (t: TitleSummary) => t.badge?.state === "downloading" || t.badge?.state === "caching" || t.badge?.state === "searching" || t.badge?.state === "stalled";
+const ON = new Set(["downloading", "caching", "wanted", "searching", "not_found", "stalled"]);
+const isOn = (t: TitleSummary) => ON.has(t.badge?.state ?? "");
 const isMissing = (t: TitleSummary) => t.badge?.state === "missing" || t.badge?.state === "partial_season";
 
 const KINDS: { key: Kind; label: string; test: (t: TitleSummary) => boolean }[] = [

@@ -10,6 +10,7 @@ import { Notice } from "./Notice";
 import { EmptyState, ErrorState } from "./State";
 import type { ToastRaise } from "./Toast";
 import { ActivitySkeleton } from "./Skeleton";
+import type { WaitState } from "./words";
 
 interface Props {
   api: Api;
@@ -23,6 +24,7 @@ interface Waiting {
   name: string;
   note: string;
   label: string;
+  state: WaitState;
 }
 
 interface Data {
@@ -54,11 +56,15 @@ const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortEr
 
 const BURST = 250;
 
+const isWaiting = (s: string | undefined): s is WaitState => s === "wanted" || s === "searching" || s === "not_found";
+
 function waitingOf(library: TitleSummary[]): Waiting[] {
   return library.flatMap((t): Waiting[] => {
     const episodes = t.searchingEpisodes ?? [];
-    if (episodes.length > 0) return [{ id: t.id, name: t.title, note: `Waiting for ${episodes.map((e) => e.toUpperCase()).join(", ")} to appear.`, label: t.badge?.state === "searching" ? t.badge.label : "Searching" }];
-    if (t.badge?.state === "searching") return [{ id: t.id, name: t.title, note: "Waiting for a release to appear.", label: t.badge.label }];
+    const state = t.badge && isWaiting(t.badge.state) ? t.badge.state : null;
+    const label = state ? (t.badge?.label ?? "Wanted") : "Wanted";
+    if (episodes.length > 0) return [{ id: t.id, name: t.title, note: `Waiting for ${episodes.map((e) => e.toUpperCase()).join(", ")} to appear.`, label, state: state ?? "wanted" }];
+    if (state) return [{ id: t.id, name: t.title, note: "Waiting for a release to appear.", label, state }];
     return [];
   });
 }
@@ -186,7 +192,7 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
     ...downloads
       .filter((d) => d.state === "queued")
       .map((d): Upcoming => ({ key: `download-${d.id}`, id: d.titleId, name: d.titleName, word: d.episode ? `${d.episode.toUpperCase()} queued` : "Queued", state: "queued" })),
-    ...load.data.waiting.filter((w) => !busy.has(w.id)).map((w): Upcoming => ({ key: `title-${w.id}`, id: w.id, name: w.name, word: w.label, note: w.note, state: "searching" })),
+    ...load.data.waiting.filter((w) => !busy.has(w.id)).map((w): Upcoming => ({ key: `title-${w.id}`, id: w.id, name: w.name, word: w.label, note: w.note, state: w.state })),
   ];
   if (downloads.length === 0 && upcoming.length === 0 && history.length === 0) {
     return (

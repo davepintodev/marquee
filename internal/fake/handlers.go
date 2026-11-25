@@ -134,7 +134,7 @@ func (f *Fake) summary(t *entry) summary {
 		s.Monitored = &t.monitored
 		for _, se := range t.Seasons {
 			for _, e := range se.Episodes {
-				if st, _ := f.epState(t, se, e); e.monitored && st == "searching" {
+				if st, _ := f.epState(t, se, e); e.monitored && (st == "searching" || waiting(st)) {
 					s.SearchingEpisodes = append(s.SearchingEpisodes, epID(se, e))
 				}
 			}
@@ -198,14 +198,14 @@ func inWords(d time.Duration) string {
 	return fmt.Sprintf("%dm", max(1, int((d+30*time.Second)/time.Minute)))
 }
 
-func searchable(state string) bool { return state == "searching" || state == "missing" }
+func searchable(state string) bool { return waiting(state) }
 
 func (f *Fake) nextSearch(t *entry) *time.Time {
 	if !t.InLibrary || !t.monitored {
 		return nil
 	}
 	if t.Kind == "movie" {
-		if searchable(t.State) && f.activeDownload(t.id(), "") == nil {
+		if searchable(movieState(t)) && f.activeDownload(t.id(), "") == nil {
 			return &t.nextSearch
 		}
 		return nil
@@ -370,7 +370,7 @@ func (f *Fake) addToLibrary(t *entry, profile, monitor string) {
 	t.InLibrary, t.monitored, t.profile = true, monitor != "none", profile
 	t.nextSearch = time.Now().Add(defaultNextSearch)
 	if t.Kind == "movie" {
-		t.State = "searching"
+		t.State = "wanted"
 	}
 	first, latest := 0, 0
 	for _, s := range t.Seasons {
@@ -395,15 +395,18 @@ func (f *Fake) addToLibrary(t *entry, profile, monitor string) {
 }
 
 // setMonitored sets an episode's monitoring and, as the real service does,
-// reads an episode with no file as searching while it is monitored and
+// reads an episode with no file as wanted while it is monitored and
 // missing while it is not; an unaired or downloaded one keeps its state.
 func setMonitored(e *episode, monitored bool) {
+	if e.monitored == monitored && e.State != "missing" {
+		return
+	}
 	e.monitored = monitored
 	switch e.State {
-	case "searching", "missing":
+	case "wanted", "not_found", "missing":
 		e.State = "missing"
 		if monitored {
-			e.State = "searching"
+			e.State = "wanted"
 		}
 	}
 }
@@ -463,13 +466,13 @@ func (f *Fake) remove(w http.ResponseWriter, r *http.Request) {
 	if t == nil {
 		return
 	}
-	t.InLibrary, t.monitored, t.profile = false, false, ""
+	t.InLibrary, t.monitored, t.profile, t.searchUntil = false, false, "", time.Time{}
 	if t.Kind == "movie" {
 		t.State = "missing"
 	}
 	for _, s := range t.Seasons {
 		for _, e := range s.Episodes {
-			e.monitored = true
+			e.monitored, e.searchUntil = true, time.Time{}
 			if e.State != "unaired" {
 				e.State = "missing"
 			}
@@ -527,12 +530,16 @@ func (f *Fake) wrongFile(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		*state = "searching"
+		*state = "wanted"
 	}
 	msg := "Wrong file: deleted the file. Pick another release."
 	if reSearch {
 		msg = "Wrong file: deleted the file. Searching for another release."
-		t.nextSearch = time.Now()
+		var asked *episode
+		if which != "" {
+			asked = f.findEpisode(t, which)
+		}
+		f.startSearch(t, asked)
 	}
 	f.addHistory("wrong_file", t, which, msg, "", false)
 	write(w, http.StatusOK, f.title(t))
@@ -604,23 +611,22 @@ func (f *Fake) searchNow(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusNotFound, "no such episode")
 			return
 		}
-		if e.State == "missing" {
-			e.State = "searching"
+		if e.State != "downloaded" && e.State != "unaired" {
+			f.startSearch(t, e)
 		}
 	} else if t.Kind == "movie" {
-		if t.State == "missing" {
-			t.State = "searching"
+		if t.State != "downloaded" {
+			f.startSearch(t, nil)
 		}
 	} else {
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
-				if e.State == "missing" {
-					e.State = "searching"
+				if e.monitored && waiting(e.State) {
+					f.startSearch(t, e)
 				}
 			}
 		}
 	}
-	t.nextSearch = time.Now().Add(defaultNextSearch)
 	f.addHistory("searched", t, epID, "Search now: skipping the backoff.", "", false)
 	write(w, http.StatusOK, f.title(t))
 }
@@ -827,11 +833,11 @@ func (f *Fake) retry(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Retryable = false
 	if h.Episode != "" {
-		if e := f.findEpisode(t, h.Episode); e != nil && e.State == "missing" {
-			e.State = "searching"
+		if e := f.findEpisode(t, h.Episode); e != nil && e.State != "downloaded" {
+			f.startSearch(t, e)
 		}
-	} else if t.State == "missing" {
-		t.State = "searching"
+	} else if t.State != "downloaded" {
+		f.startSearch(t, nil)
 	}
 	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return d.TitleID == t.id() && d.Episode == h.Episode && d.Stalled })
 	f.addHistory("searched", t, h.Episode, "Retrying after a failure.", "", false)

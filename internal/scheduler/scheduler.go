@@ -297,6 +297,7 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 		return
 	}
 	s.lastSearch = now
+	defer s.cat.Searching(t.TitleID, t.Season, t.Number)()
 	streams, err := s.src.Search(ctx, t.Kind, id)
 	if err != nil {
 		if ctx.Err() == nil {

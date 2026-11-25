@@ -31,6 +31,9 @@ type Options struct {
 	// that are not cached are candidates after the cached ones and can be
 	// grabbed, and such a grab shows as caching before it downloads.
 	TorBox bool
+	// SearchFor is how long a search started by Search now or a retry shows
+	// as searching before it ends having found nothing.
+	SearchFor time.Duration
 }
 
 type episode struct {
@@ -40,8 +43,9 @@ type episode struct {
 	State   string `json:"state"`
 	// File names the video file a downloaded episode is in; episodes of one
 	// season that name the same file share it.
-	File      string `json:"file"`
-	monitored bool
+	File        string `json:"file"`
+	monitored   bool
+	searchUntil time.Time
 }
 
 type season struct {
@@ -61,9 +65,10 @@ type entry struct {
 
 	NextSearchIn string `json:"nextSearchIn"`
 
-	monitored  bool
-	profile    string
-	nextSearch time.Time
+	monitored   bool
+	profile     string
+	nextSearch  time.Time
+	searchUntil time.Time
 }
 
 func (e *entry) id() string { return fmt.Sprintf("%s-%d", e.Kind, e.TmdbID) }
@@ -150,6 +155,9 @@ func New(opts Options) *Fake {
 	if opts.Step <= 0 {
 		opts.Step = 1
 	}
+	if opts.SearchFor <= 0 {
+		opts.SearchFor = 4 * time.Second
+	}
 	f := &Fake{
 		opts: opts, subs: map[chan event]struct{}{},
 		stop: make(chan struct{}), done: make(chan struct{}),
@@ -169,6 +177,9 @@ func New(opts Options) *Fake {
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
 				e.monitored = true
+				if t.InLibrary && e.State == "missing" {
+					e.State = "wanted"
+				}
 			}
 		}
 	}
@@ -348,6 +359,52 @@ func (f *Fake) advance() {
 	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return slices.Contains(finished, d) })
 	for _, d := range finished {
 		f.finish(d)
+	}
+	f.endSearches()
+}
+
+// endSearches ends the searches whose time is up, each having found nothing.
+func (f *Fake) endSearches() {
+	now := time.Now()
+	for _, t := range f.titles {
+		ended := endSearch(&t.searchUntil, now)
+		for _, s := range t.Seasons {
+			for _, e := range s.Episodes {
+				ended = endSearch(&e.searchUntil, now) || ended
+			}
+		}
+		if ended {
+			f.emitTitle(t)
+		}
+	}
+}
+
+func endSearch(until *time.Time, now time.Time) bool {
+	if until.IsZero() || now.Before(*until) {
+		return false
+	}
+	*until = time.Time{}
+	return true
+}
+
+func running(until time.Time) bool { return !until.IsZero() && time.Now().Before(until) }
+
+// startSearch searches for the movie, or for the episode when e is set, as
+// Search now does: it shows as searching for a while and then as having
+// found nothing, with the next try in six hours.
+func (f *Fake) startSearch(t *entry, e *episode) {
+	until := time.Now().Add(f.opts.SearchFor)
+	t.nextSearch = time.Now().Add(defaultNextSearch)
+	if e == nil {
+		t.searchUntil = until
+		if t.State != "downloaded" && t.monitored {
+			t.State = "not_found"
+		}
+		return
+	}
+	e.searchUntil = until
+	if e.monitored && waiting(e.State) {
+		e.State = "not_found"
 	}
 }
 

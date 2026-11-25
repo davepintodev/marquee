@@ -2,6 +2,8 @@ import type { Title } from "./api/types";
 import { Attempts } from "./Attempts";
 import { IconCheck } from "./icons";
 import { totalsOf } from "./episodes";
+import { Sk } from "./Skeleton";
+import { waitLine, waitOf } from "./words";
 
 function figures(t: Title) {
   const c = totalsOf(t);
@@ -20,7 +22,7 @@ export function Have({ title }: { title: Title }) {
       </p>
     );
   }
-  if (!title.badge) return null;
+  if (!title.badge || waitOf(title)) return null;
   return (
     <p className="ts-have" data-state={title.badge.state}>
       {title.badge.state === "downloaded" && <IconCheck />}
@@ -29,10 +31,29 @@ export function Have({ title }: { title: Title }) {
   );
 }
 
-export function ProgressLine({ title }: { title: Title }) {
+export function Wait({ title, onSearch, busy }: { title: Title; onSearch?: () => void; busy?: boolean }) {
+  const state = waitOf(title);
+  if (!state) return null;
+  const line = waitLine(state, title.nextSearchAt);
+  const off = busy || state === "searching";
+  return (
+    <p className="ts-wait" data-state={state}>
+      <i aria-hidden="true" />
+      {line && <span>{line}</span>}
+      {onSearch && (
+        <button type="button" className="ts-wait-now" aria-disabled={off} aria-busy={busy} onClick={() => !off && onSearch()}>
+          {busy ? <Sk shape="dot" /> : "Search now"}
+        </button>
+      )}
+    </p>
+  );
+}
+
+export function ProgressLine({ title, onSearch, busy }: { title: Title; onSearch?: () => void; busy?: boolean }) {
   return (
     <div className="ts-prog">
       <Have title={title} />
+      <Wait title={title} onSearch={onSearch} busy={busy} />
       <Attempts title={title} />
     </div>
   );

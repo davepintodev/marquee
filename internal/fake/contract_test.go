@@ -51,7 +51,7 @@ var calls = map[string]call{
 	"getTitle":             {"GET", "/api/titles/series-1408", "", 200},
 	"updateTitle":          {"PATCH", "/api/titles/movie-693134", `{"monitored":false}`, 200},
 	"removeTitle":          {"DELETE", "/api/titles/movie-13187", "", 204},
-	"searchTitleNow":       {"POST", "/api/titles/movie-329865/search", "", 200},
+	"searchTitleNow":       {"POST", "/api/titles/movie-335984/search", "", 200},
 	"markWrongFile":        {"POST", "/api/titles/movie-687163/wrong-file", `{"reSearch":false}`, 200},
 	"markEpisodeWrongFile": {"POST", "/api/titles/series-1408/episodes/s01e01/wrong-file", "", 200},
 	"rescanTitle":          {"POST", "/api/titles/movie-329865/rescan", "", 200},
@@ -326,8 +326,8 @@ func TestFixturesShowEveryBadgeState(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"downloaded": "Downloaded", "searching": "Searching", "downloading": "Downloading 43%",
-		"stalled": "Stalled", "missing": "Missing", "partial_season": "Season 8 · 19 missing",
+		"downloaded": "Downloaded", "wanted": "Wanted", "not_found": "Not found", "downloading": "Downloading 43%",
+		"stalled": "Stalled", "partial_season": "Season 8 · 19 missing",
 	}
 	for state, label := range want {
 		if !labels[state][label] {

@@ -317,7 +317,7 @@ const openEpisode = async (title: Title, extra?: Parameters<typeof titleApi>[1])
 
 test("an episode that is not downloaded has no Wrong file", async () => {
   await open(house(), releasesAnswer);
-  fireEvent.click(screen.getByRole("button", { name: /^S04E02 Big Baby, Missing/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^S04E02 Big Baby, Not found/ }));
   await screen.findByRole("list", { name: /Releases for/ });
   expect(screen.queryByRole("button", { name: "Wrong file" })).toBeNull();
 });

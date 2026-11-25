@@ -32,12 +32,12 @@ test("a series opens on its season with each episode's state, and 'N missing' on
   expect(screen.getByText("2004 · Series · 2 seasons · 6 episodes")).toBeTruthy();
   expect(screen.getByText("A diagnostician.")).toBeTruthy();
   const row = screen.getByRole("heading", { name: /Season 4/ });
-  expect(row.textContent).toBe("Season 41 of 4 · 2 missing · 1 not aired");
+  expect(row.textContent).toBe("Season 41 of 4 · 1 missing · 1 not aired");
   const rows = episodeList();
   expect(rows).toHaveLength(5);
   expect(within(rows[0]).getByText("Downloaded")).toBeTruthy();
-  expect(within(rows[1]).getByText("Missing")).toBeTruthy();
-  expect(within(rows[1]).getByText(/next search in 6h/i)).toBeTruthy();
+  expect(within(rows[1]).getByText("Not found")).toBeTruthy();
+  expect(within(rows[1]).getByText(/nothing found · next try in 6h/i)).toBeTruthy();
   expect(within(rows[2]).getByText("Downloading 40%")).toBeTruthy();
   expect(within(rows[3]).getByText("Stalled")).toBeTruthy();
   expect(within(rows[3]).getByText("Not monitored")).toBeTruthy();
@@ -218,6 +218,32 @@ test("Search automatically on an episode and on the title skip the backoff", asy
   expect(writes.map((w) => `${w.method} ${w.path}`)).toEqual(["POST /api/titles/series-2/episodes/s04e02/search", "POST /api/titles/series-2/search"]);
 });
 
+test("a wanted movie says when it is searched next, and Search now beside it starts a search the page follows", async () => {
+  const wanted = dune({ badge: { state: "wanted", label: "Wanted" }, nextSearchAt: "2026-11-18T14:00:00Z", history: [], historySummary: "Nothing tried yet." });
+  const { writes } = await open(wanted, (url, init) =>
+    init.method === "POST" && url.pathname === "/api/titles/movie-1/search" ? json({ ...wanted, badge: { state: "searching", label: "Searching" }, nextSearchAt: null }) : undefined,
+  );
+  const line = screen.getByText("Next search in 2h").closest(".ts-wait")!;
+  expect(line.getAttribute("data-state")).toBe("wanted");
+
+  fireEvent.click(within(line as HTMLElement).getByRole("button", { name: "Search now" }));
+  await screen.findByText("Searching now");
+  expect(writes.map((w) => `${w.method} ${w.path}`)).toEqual(["POST /api/titles/movie-1/search"]);
+  const now = screen.getByText("Searching now").closest(".ts-wait")!;
+  expect(now.getAttribute("data-state")).toBe("searching");
+  expect(within(now as HTMLElement).getByRole("button", { name: "Search now" }).getAttribute("aria-disabled")).toBe("true");
+});
+
+test("a series says Nothing found only when every waiting episode found nothing, and Searching while any episode is", async () => {
+  const base = house();
+  const eps = (states: string[]) => [{ ...base.seasons[1], episodes: base.seasons[1].episodes.map((e, i) => (i < states.length ? { ...e, monitored: true, state: states[i] as never } : e)) }];
+  await open(house({ seasons: eps(["wanted", "not_found"]) }));
+  expect(screen.getByText("Next search in 6h")).toBeTruthy();
+  cleanup();
+  await open(house({ seasons: eps(["searching", "not_found"]) }));
+  expect(screen.getByText("Searching now")).toBeTruthy();
+});
+
 test("the episode that is downloading cannot be searched, and an unaired one has no search at all", async () => {
   await open(house());
   expect(screen.getByRole("button", { name: "Downloading now You Don't Want to Know" }).getAttribute("aria-disabled")).toBe("true");
@@ -365,7 +391,7 @@ test("History is one muted line with the progress and the next try, closed until
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("list", { name: "History" })).toBeNull();
   expect(screen.getByRole("img", { name: "2 of 5 aired episodes downloaded" }).textContent).toBe("2 of 5downloaded");
-  expect(screen.getByText("next try in 6h")).toBeTruthy();
+  expect(screen.getByText("Nothing found · next try in 6h")).toBeTruthy();
 
   fireEvent.click(toggle);
   const list = screen.getByRole("list", { name: "History" });

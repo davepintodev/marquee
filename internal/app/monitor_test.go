@@ -182,7 +182,7 @@ func TestSettingASeasonMonitoredMonitorsItsEpisodesAndTheTitle(t *testing.T) {
 	if v["monitored"] != true {
 		t.Error("monitoring a season monitors the title, so it never searches while reporting itself unmonitored")
 	}
-	if b := seasonBadge(t, v, 2); b["state"] != "searching" {
+	if b := seasonBadge(t, v, 2); b["state"] != "wanted" {
 		t.Errorf("the season's badge follows: %v", b)
 	}
 	if got := r.searchedEpisodes(); !slices.Equal(got, []string{"2:1"}) {

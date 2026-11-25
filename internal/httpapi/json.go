@@ -3,6 +3,7 @@ package httpapi
 import (
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/metadata"
@@ -53,7 +54,7 @@ func fromLibrary(t catalog.Title) summaryJSON {
 	s.InLibrary, s.Monitored, s.Badge = true, &t.Monitored, badgeOf(t.Badge)
 	for _, season := range t.Seasons {
 		for _, e := range season.Episodes {
-			if e.Monitored && e.State == "searching" {
+			if e.Monitored && (e.State == "wanted" || e.State == "searching" || e.State == "not_found") {
 				s.SearchingEpisodes = append(s.SearchingEpisodes, catalog.EpisodeID(season.Number, e.Number))
 			}
 		}
@@ -80,7 +81,8 @@ type episodeJSON struct {
 	State     string `json:"state"`
 	Percent   *int   `json:"percent,omitempty"`
 	// Shared is every episode that shares this one's file, itself included.
-	Shared []string `json:"sharedEpisodes,omitempty"`
+	Shared       []string   `json:"sharedEpisodes,omitempty"`
+	NextSearchAt *time.Time `json:"nextSearchAt"`
 }
 
 type seasonJSON struct {
@@ -93,6 +95,7 @@ type titleJSON struct {
 	summaryJSON
 	Seasons        []seasonJSON  `json:"seasons"`
 	Profile        *string       `json:"profile"`
+	NextSearchAt   *time.Time    `json:"nextSearchAt"`
 	HistorySummary string        `json:"historySummary"`
 	History        []historyJSON `json:"history"`
 }
@@ -103,17 +106,26 @@ func titleOf(t catalog.Title, profile string, history []historyJSON) titleJSON {
 	if profile != "" {
 		out.Profile = &profile
 	}
+	out.NextSearchAt = timeOrNil(t.NextSearchAt)
 	for _, s := range t.Seasons {
 		sj := seasonJSON{Number: s.Number, Badge: badgeOf(s.Badge), Episodes: []episodeJSON{}}
 		for _, e := range s.Episodes {
 			sj.Episodes = append(sj.Episodes, episodeJSON{
 				ID: catalog.EpisodeID(s.Number, e.Number), Number: e.Number, Name: e.Name,
 				AirDate: e.AirDate, Monitored: e.Monitored, State: e.State, Percent: e.Percent, Shared: e.Shared,
+				NextSearchAt: timeOrNil(e.NextSearchAt),
 			})
 		}
 		out.Seasons = append(out.Seasons, sj)
 	}
 	return out
+}
+
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 func imageRefs(id string, m metadata.Summary) []catalog.ImageRef {

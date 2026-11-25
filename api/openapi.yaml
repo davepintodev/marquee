@@ -223,7 +223,7 @@ paths:
       summary: Search now, skipping the backoff.
       responses:
         "200":
-          description: The title, now searching.
+          description: The title, its movie or wanted episodes now searching.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Title" }
@@ -802,8 +802,13 @@ components:
       enum: [movie, series]
     BadgeState:
       type: string
-      description: The closed set of states a tile can show.
-      enum: [downloaded, searching, caching, downloading, stalled, missing, partial_season]
+      description: >
+        The closed set of states a tile can show. `wanted` is monitored with
+        no file, waiting for its next scheduled search; `searching` only
+        while a search is running or was asked for with Search now;
+        `not_found` is wanted after a search that found nothing usable;
+        `missing` is not monitored and has no file.
+      enum: [downloaded, wanted, searching, not_found, caching, downloading, stalled, missing, partial_season]
     Badge:
       type: object
       required: [state, label]
@@ -811,7 +816,7 @@ components:
         state: { $ref: "#/components/schemas/BadgeState" }
         label:
           type: string
-          description: Display text, such as "Downloading 43%", "Caching 42%" or "Season 4 · 3 missing".
+          description: Display text, such as "Wanted", "Not found", "Downloading 43%", "Caching 42%" or "Season 4 · 3 missing".
         percent:
           type: integer
           minimum: 0
@@ -846,7 +851,7 @@ components:
           description: Present when inLibrary.
         searchingEpisodes:
           type: array
-          description: Ids of the series' monitored episodes still waiting for a release, whatever the title's badge says. Omitted when there are none.
+          description: Ids of the series' monitored episodes still waiting for a release (wanted, searching or not found), whatever the title's badge says. Omitted when there are none.
           items: { type: string, examples: ["s04e03"] }
     Rating:
       type: object
@@ -985,7 +990,8 @@ components:
         defaultSeriesProfile: { type: string, description: The name of a profile in `profiles`. }
     EpisodeState:
       type: string
-      enum: [downloaded, searching, caching, downloading, stalled, missing, unaired]
+      description: The same words as BadgeState; `missing` is an aired episode nobody monitors.
+      enum: [downloaded, wanted, searching, not_found, caching, downloading, stalled, missing, unaired]
     Episode:
       type: object
       required: [id, number, name, airDate, monitored, state]
@@ -1007,7 +1013,10 @@ components:
             episode that shares the file, this one included, in order. Marking
             the file as the wrong one, or deleting it, affects all of them.
     NextSearchAt:
-      description: When marquee searches next. Null unless the item is monitored and searching or missing.
+      description: >
+        When marquee searches next by its schedule, now or earlier when it is
+        already due. Null unless the item is monitored and wanted or not
+        found; a title has the soonest of its episodes'.
       anyOf:
         - { type: string, format: date-time }
         - { type: "null" }

@@ -19,7 +19,7 @@ import { useEscape } from "./useEscape";
 import { useProfiles } from "./useProfiles";
 import { useTitleScreen } from "./useTitleScreen";
 import { WrongFile } from "./WrongFile";
-import { inHours, stateLabel, titleRescanSummary } from "./words";
+import { stateLabel, titleRescanSummary, waitLine } from "./words";
 import "./icons.css";
 import "./title-screen.css";
 import "./title-details.css";
@@ -163,6 +163,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
   const retry = (h: HistoryEntry) => run(h.id, () => api.retry(h.id), `Searching for “${t.title}” again.`);
   const monitored = t.monitored !== false;
   const movieHasFile = !isSeries && t.badge?.state === "downloaded";
+  const searchNow = () => run("search", () => api.searchNow(t.id), `Searching for “${t.title}” now.`);
 
   const wrongFile = async (episode: Episode | undefined, reSearch: boolean) => {
     const what = episode ? `${codeOf(chosen?.number ?? 0, episode.number)} ${episode.name}` : `“${t.title}”`;
@@ -202,7 +203,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
             <div className="ts-actions">
               {inLib ? (
                 <>
-                  <button type="button" className="btn-primary with-icon" aria-disabled={busy === "search"} onClick={() => run("search", () => api.searchNow(t.id), `Searching for “${t.title}” now.`)}>
+                  <button type="button" className="btn-primary with-icon" aria-disabled={busy === "search"} onClick={searchNow}>
                     {busy === "search" ? <Sk shape="dot" /> : <IconSearch />}
                     Search automatically
                   </button>
@@ -349,7 +350,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
 
         {inLib && (
           <section className="ts-sec">
-            <Collapse label="History" aside={<ProgressLine title={t} />}>
+            <Collapse label="History" aside={<ProgressLine title={t} busy={busy === "search"} onSearch={monitored ? searchNow : undefined} />}>
               <HistoryList entries={t.history ?? []} retrying={busy} onRetry={retry} empty="Nothing has happened yet." />
             </Collapse>
           </section>
@@ -398,6 +399,7 @@ function EpisodeRow({
   const downloading = e.state === "downloading" || e.state === "caching";
   const panel = `ts-panel-${e.id}`;
   const word = stateLabel(e);
+  const wait = e.monitored && (e.state === "wanted" || e.state === "not_found") ? waitLine(e.state, e.nextSearchAt) : null;
   const busyLabel = e.state === "caching" ? "Caching now" : downloading ? "Downloading now" : null;
   return (
     <li className="ts-ep" data-open={expanded} data-off={!e.monitored} data-done={done} data-state={e.state}>
@@ -427,7 +429,7 @@ function EpisodeRow({
             </span>
             <small>
               {dateOf(e.airDate)}
-              {e.nextSearchAt && e.monitored && ` · next search in ${inHours(e.nextSearchAt)}`}
+              {wait && ` · ${wait.charAt(0).toLowerCase()}${wait.slice(1)}`}
             </small>
           </span>
           <span className="ts-ep-end">

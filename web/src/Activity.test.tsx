@@ -298,7 +298,7 @@ test("a series waiting on episodes shows under Waiting on a fresh load, whatever
   const items = within(queue).getAllByRole("link");
   expect(items).toHaveLength(1);
   expect(items[0].getAttribute("title")).toContain("S04E02, S04E03");
-  expect(items[0].closest("[data-state]")?.getAttribute("data-state")).toBe("searching");
+  expect(items[0].closest("[data-state]")?.getAttribute("data-state")).toBe("wanted");
   expect(screen.getByText("1 waiting")).toBeTruthy();
 });
 
