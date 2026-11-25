@@ -81,11 +81,12 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
 
   useEffect(() => {
     const ctl = new AbortController();
+    const dropStale = wallIsNewer.current;
+    wallIsNewer.current = false;
     api.wall(ctl.signal).then(
       (items) => {
         if (ctl.signal.aborted) return;
-        if (wallIsNewer.current) {
-          wallIsNewer.current = false;
+        if (dropStale) {
           const ids = new Set(items.map((i) => i.title.id));
           const rest = <T,>(o: Record<string, T>) => Object.fromEntries(Object.entries(o).filter(([id]) => !ids.has(id)));
           setChanged(rest);
