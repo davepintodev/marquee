@@ -281,6 +281,11 @@ ALTER TABLE search_budget_new RENAME TO search_budget;
 `, `
 ALTER TABLE downloads ADD COLUMN caching_started_at TEXT NOT NULL DEFAULT '';
 UPDATE downloads SET caching_started_at = created_at WHERE torbox_torrent_id != 0;
+`, `
+CREATE TABLE run_mode (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  last_dry_run INTEGER NOT NULL
+);
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

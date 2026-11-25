@@ -127,6 +127,13 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			return err
 		}
 		defer func() { _ = store.Close() }()
+		reset, err := store.RecordRunMode(context.Background(), cfg.DryRun)
+		if err != nil {
+			return err
+		}
+		if reset {
+			log.Info("left dry-run: search backoffs and the daily search budget were reset")
+		}
 		var tbClient *torbox.Client
 		popts := pipeline.Options{
 			Catalog: store, JellyfinURL: cfg.JellyfinURL, JellyfinKey: cfg.JellyfinKey,

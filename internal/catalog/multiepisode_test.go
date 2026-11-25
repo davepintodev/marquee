@@ -263,7 +263,7 @@ CREATE TABLE search_budget_old (
 INSERT INTO search_budget_old (title_id, day, used) SELECT title_id, day, SUM(used) FROM search_budget GROUP BY title_id;
 DROP TABLE search_budget;
 ALTER TABLE search_budget_old RENAME TO search_budget;
-PRAGMA user_version = 14;
+DROP TABLE run_mode; PRAGMA user_version = 14;
 `
 
 func TestTheSearchBudgetMigrationKeepsEveryTitlesCountAndGivesEpisodesTheirOwn(t *testing.T) {
