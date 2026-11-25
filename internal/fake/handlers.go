@@ -82,6 +82,8 @@ func (f *Fake) routes() http.Handler {
 	h("PATCH /api/titles/{id}", f.update)
 	h("DELETE /api/titles/{id}", f.remove)
 	h("POST /api/titles/{id}/search", f.searchNow)
+	h("POST /api/titles/{id}/wrong-file", f.wrongFile)
+	h("POST /api/titles/{id}/episodes/{episodeId}/wrong-file", f.wrongFile)
 	h("POST /api/titles/{id}/rescan", f.rescanTitle)
 	h("POST /api/library/rescan", f.rescanLibrary)
 	h("PUT /api/titles/{id}/seasons/{number}", f.updateSeason)
@@ -434,6 +436,10 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *Fake) remove(w http.ResponseWriter, r *http.Request) {
+	if v := r.URL.Query().Get("deleteFiles"); v != "" && v != "true" && v != "false" {
+		fail(w, http.StatusBadRequest, "deleteFiles must be true or false")
+		return
+	}
 	t := f.libraryTitle(w, r)
 	if t == nil {
 		return
@@ -452,6 +458,56 @@ func (f *Fake) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return d.TitleID == t.id() })
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// wrongFile serves both routes: a movie's, and an episode's with its id in the path.
+func (f *Fake) wrongFile(w http.ResponseWriter, r *http.Request) {
+	t := f.libraryTitle(w, r)
+	if t == nil {
+		return
+	}
+	var req struct {
+		ReSearch *bool `json:"reSearch"`
+	}
+	if r.ContentLength != 0 && !decode(r, &req) {
+		fail(w, http.StatusBadRequest, "body must be {\"reSearch\": true|false} or empty")
+		return
+	}
+	reSearch := req.ReSearch == nil || *req.ReSearch
+	epID := r.PathValue("episodeId")
+	var state *string
+	switch {
+	case epID != "":
+		e := f.findEpisode(t, epID)
+		if e == nil {
+			fail(w, http.StatusNotFound, "no such episode")
+			return
+		}
+		state = &e.State
+	case t.Kind == "movie":
+		state = &t.State
+	default:
+		fail(w, http.StatusBadRequest, "name the episode: use the episode's wrong-file route")
+		return
+	}
+	if *state != "downloaded" {
+		fail(w, http.StatusConflict, "there is no file to delete")
+		return
+	}
+	*state = "missing"
+	t.monitored = true
+	if epID != "" {
+		setMonitored(f.findEpisode(t, epID), true)
+	} else {
+		*state = "searching"
+	}
+	msg := "Wrong file: deleted the file. Pick another release."
+	if reSearch {
+		msg = "Wrong file: deleted the file. Searching for another release."
+		t.nextSearch = time.Now()
+	}
+	f.addHistory("wrong_file", t, epID, msg, "", false)
+	write(w, http.StatusOK, f.title(t))
 }
 
 func (f *Fake) updateEpisode(w http.ResponseWriter, r *http.Request) {
@@ -613,9 +669,10 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Episode string `json:"episode"`
+		Replace bool   `json:"replace"`
 	}
 	if r.ContentLength != 0 && !decode(r, &req) {
-		fail(w, http.StatusBadRequest, "body must be {\"episode\": \"sNNeNN\"} or empty")
+		fail(w, http.StatusBadRequest, "body must be {\"episode\": \"sNNeNN\", \"replace\": true|false} or empty")
 		return
 	}
 	var rel *release
@@ -638,6 +695,10 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "episode must name an episode of this series")
 		return
 	}
+	if t.InLibrary && !req.Replace && f.hasFile(t, req.Episode) {
+		fail(w, http.StatusConflict, "this item already has a file; pass replace: true to replace it")
+		return
+	}
 	if !t.InLibrary {
 		f.addToLibrary(t, "", "all")
 	}
@@ -647,6 +708,15 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 		f.downloads = append(f.downloads, d)
 	}
 	write(w, http.StatusAccepted, f.downloadOut(d))
+}
+
+// hasFile reports whether the movie, or the episode named by ep, is downloaded.
+func (f *Fake) hasFile(t *entry, ep string) bool {
+	if t.Kind == "movie" {
+		return t.State == "downloaded"
+	}
+	e := f.findEpisode(t, ep)
+	return e != nil && e.State == "downloaded"
 }
 
 func (f *Fake) downloadOut(d *download) downloadOut {
