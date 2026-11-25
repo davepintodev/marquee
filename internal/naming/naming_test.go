@@ -5,7 +5,11 @@
 
 package naming
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+)
 
 func TestCleanFileName(t *testing.T) {
 	for _, tc := range []struct{ name, in, want string }{
@@ -129,5 +133,75 @@ func TestEpisodeFileFitsTheFileNameLimit(t *testing.T) {
 	multi := EpisodeFile("Show", 1, 1, "Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé Ünïcödé Tïtlé", "WEBDL-1080p", ".mkv")
 	if len(multi) > 255 {
 		t.Errorf("multi-byte name is %d bytes, over the limit", len(multi))
+	}
+}
+
+func TestMultiEpisodeFile(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		numbers []int
+		titles  []string
+		want    string
+	}{
+		{"single is the episode file", []int{1}, []string{"Ep1"}, "Show - S01E01 - Ep1 [WEBDL-1080p].mkv"},
+		{"two contiguous", []int{1, 2}, []string{"Ep1", "Ep2"}, "Show - S01E01-E02 - Ep1 + Ep2 [WEBDL-1080p].mkv"},
+		{"three contiguous", []int{1, 2, 3}, []string{"Ep1", "Ep2", "Ep3"}, "Show - S01E01-E03 - Ep1 + Ep2 + Ep3 [WEBDL-1080p].mkv"},
+		{"non-contiguous", []int{1, 3}, []string{"Ep1", "Ep3"}, "Show - S01E01E03 - Ep1 + Ep3 [WEBDL-1080p].mkv"},
+		{"a gap after a run", []int{1, 2, 4}, []string{"A", "B", "D"}, "Show - S01E01E02E04 - A + B + D [WEBDL-1080p].mkv"},
+		{"identical titles appear once", []int{1, 2}, []string{"Pilot", "Pilot"}, "Show - S01E01-E02 - Pilot [WEBDL-1080p].mkv"},
+		{"numbered parts stay distinct", []int{1, 2}, []string{"Pilot (1)", "Pilot (2)"}, "Show - S01E01-E02 - Pilot (1) + Pilot (2) [WEBDL-1080p].mkv"},
+		{"unsorted numbers keep their titles", []int{2, 1}, []string{"Two", "One"}, "Show - S01E01-E02 - One + Two [WEBDL-1080p].mkv"},
+		{"trailing punctuation trimmed per title", []int{1, 2}, []string{"Who Is It?", "Why."}, "Show - S01E01-E02 - Who Is It + Why [WEBDL-1080p].mkv"},
+		{"empty titles are TBA once", []int{1, 2}, []string{"", " "}, "Show - S01E01-E02 - TBA [WEBDL-1080p].mkv"},
+		{"fewer titles than numbers", []int{1, 2}, []string{"One"}, "Show - S01E01-E02 - One + TBA [WEBDL-1080p].mkv"},
+		{"duplicate numbers collapse", []int{1, 1, 2}, []string{"One", "One", "Two"}, "Show - S01E01-E02 - One + Two [WEBDL-1080p].mkv"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := MultiEpisodeFile("Show", 1, tc.numbers, tc.titles, "WEBDL-1080p", ".mkv"); got != tc.want {
+				t.Errorf("MultiEpisodeFile = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMultiEpisodeFileOfASingleEpisodeIsEpisodeFile(t *testing.T) {
+	long := strings.Repeat("Very Long Episode Title ", 20)
+	for _, title := range []string{"Autopsy", "", "Who Is It?", long} {
+		want := EpisodeFile("House", 2, 3, title, "WEBDL-1080p", ".mkv")
+		if got := MultiEpisodeFile("House", 2, []int{3}, []string{title}, "WEBDL-1080p", ".mkv"); got != want {
+			t.Errorf("single %q: %q, want %q", title, got, want)
+		}
+	}
+}
+
+func TestMultiEpisodeFileFitsTheFileNameLimit(t *testing.T) {
+	long := strings.Repeat("Very Long Episode Title ", 12)
+	for _, tc := range []struct {
+		name   string
+		titles []string
+	}{
+		{"ascii", []string{long + "One", long + "Two", long + "Three"}},
+		{"multi-byte", []string{strings.Repeat("Ünïcödé Tïtlé ", 12), strings.Repeat("Çöñtïnüé ", 20)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			numbers := make([]int, len(tc.titles))
+			for i := range numbers {
+				numbers[i] = i + 1
+			}
+			got := MultiEpisodeFile("Show", 1, numbers, tc.titles, "WEBDL-1080p", ".mkv")
+			if len(got) > 255 {
+				t.Fatalf("file name is %d bytes, over the 255-byte limit: %q", len(got), got)
+			}
+			if !utf8.ValidString(got) {
+				t.Errorf("truncation cut a character in half: %q", got)
+			}
+			const tail = "... [WEBDL-1080p].mkv"
+			if !strings.HasSuffix(got, tail) {
+				t.Errorf("truncated name should end with an ellipsis before the quality tag, got %q", got)
+			}
+			if !strings.HasPrefix(got, "Show - S01E01-E0") {
+				t.Errorf("the episode token must survive truncation: %q", got)
+			}
+		})
 	}
 }

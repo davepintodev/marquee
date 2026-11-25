@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +81,10 @@ type Job struct {
 	// Replace has the download take the place of the file the movie or
 	// episode already has, once it has been verified.
 	Replace bool
+	// Covered are the episode numbers of Season that the release's one
+	// file holds, such as 1 and 2 for S01E01E02. Episodes the series does
+	// not list are left out, and Number is always counted in.
+	Covered []int
 }
 
 // Manager runs the downloads.
@@ -105,7 +110,8 @@ type Manager struct {
 // imported or dropped.
 type claim struct {
 	titleID, fingerprint string
-	season, number       int
+	season               int
+	numbers              []int
 }
 
 // New returns a manager; call Run to start it.
@@ -169,16 +175,23 @@ func (m *Manager) Enqueue(ctx context.Context, j Job) (catalog.Download, error) 
 	} else if _, ok := episodeName(t, j.Season, j.Number); !ok {
 		return catalog.Download{}, ErrBadJob
 	}
+	var covered []int
+	if t.Kind == "series" {
+		covered = listedEpisodes(t, j.Season, j.Number, j.Covered)
+	}
 	d, err := m.cat.AddDownload(ctx, catalog.NewDownload{
 		ID: m.idSource(), TitleID: j.TitleID, Season: j.Season, Number: j.Number, Release: j.Release,
 		ReleaseName: j.ReleaseName, Resolution: j.Resolution, Quality: j.Quality, URL: j.URL, ReplaceExisting: j.Replace,
+		Covered: covered,
 	})
 	if errors.Is(err, catalog.ErrActiveDownload) {
-		existing, gerr := m.cat.ActiveDownloadFor(ctx, j.TitleID, j.Season, j.Number)
-		if gerr != nil {
-			return catalog.Download{}, err
+		// The busy episode may be one the file covers rather than the one asked for.
+		for _, n := range append([]int{j.Number}, covered...) {
+			if existing, gerr := m.cat.ActiveDownloadFor(ctx, j.TitleID, j.Season, n); gerr == nil {
+				return existing, catalog.ErrActiveDownload
+			}
 		}
-		return existing, catalog.ErrActiveDownload
+		return catalog.Download{}, err
 	}
 	if err != nil {
 		return catalog.Download{}, err
@@ -444,18 +457,19 @@ func (m *Manager) isDuplicate(ctx context.Context, d catalog.Download, t catalog
 		m.fail(ctx, d, ReasonLocalError, "the downloaded file could not be read", false)
 		return true
 	}
+	own := episodesOf(d)
 	m.claimMu.Lock()
-	season, number, found, err := m.cat.DuplicateEpisode(ctx, d.TitleID, fp, d.Season, d.Number)
+	season, number, found, err := m.cat.DuplicateEpisode(ctx, d.TitleID, fp, d.Season, own)
 	if err == nil && !found {
 		for id, c := range m.claims {
-			if id != d.ID && c.titleID == d.TitleID && c.fingerprint == fp && (c.season != d.Season || c.number != d.Number) {
-				season, number, found = c.season, c.number, true
+			if id != d.ID && c.titleID == d.TitleID && c.fingerprint == fp && (c.season != d.Season || !slices.Contains(own, c.numbers[0])) {
+				season, number, found = c.season, c.numbers[0], true
 				break
 			}
 		}
 	}
 	if err == nil && !found {
-		m.claims[d.ID] = claim{titleID: d.TitleID, fingerprint: fp, season: d.Season, number: d.Number}
+		m.claims[d.ID] = claim{titleID: d.TitleID, fingerprint: fp, season: d.Season, numbers: own}
 	}
 	m.claimMu.Unlock()
 	if err != nil {
@@ -568,7 +582,7 @@ func (m *Manager) removeReplaced(ctx context.Context, d catalog.Download, root, 
 	var err error
 	if old == now {
 		err = importer.DeleteSidecars(root, old)
-	} else if shared, serr := m.cat.SharesFile(ctx, d.TitleID, old, d.Season, d.Number); serr != nil || shared {
+	} else if shared, serr := m.cat.SharesFile(ctx, d.TitleID, old, d.Season, episodesOf(d)); serr != nil || shared {
 		err = serr
 	} else if err = importer.DeleteMediaFile(root, old); err == nil {
 		err = importer.PruneEmptyDirs(root, old)
@@ -649,10 +663,40 @@ func (m *Manager) libraryPath(t catalog.Title, d catalog.Download) string {
 		q := naming.QualityName(naming.KindMovie, d.Resolution, d.Quality)
 		return filepath.Join(m.movies, naming.MovieFolder(t.Title, t.Year), naming.MovieFile(t.Title, t.Year, q, ext))
 	}
-	name, _ := episodeName(t, d.Season, d.Number)
 	q := naming.QualityName(naming.KindSeries, d.Resolution, d.Quality)
+	numbers := episodesOf(d)
+	names := make([]string, len(numbers))
+	for i, n := range numbers {
+		names[i], _ = episodeName(t, d.Season, n)
+	}
 	return filepath.Join(m.series, naming.SeriesFolder(t.Title), naming.SeasonFolder(d.Season),
-		naming.EpisodeFile(t.Title, d.Season, d.Number, name, q, ext))
+		naming.MultiEpisodeFile(t.Title, d.Season, numbers, names, q, ext))
+}
+
+// episodesOf are the episode numbers the download's file holds: the ones
+// it covers, or the one it targets.
+func episodesOf(d catalog.Download) []int {
+	if len(d.Covered) > 0 {
+		return d.Covered
+	}
+	return []int{d.Number}
+}
+
+// listedEpisodes is what a release's file covers among the episodes the
+// series lists for the season, with the target counted in; nothing when
+// that is the target alone.
+func listedEpisodes(t catalog.Title, season, number int, wanted []int) []int {
+	covered := []int{number}
+	for _, n := range wanted {
+		if _, ok := episodeName(t, season, n); ok && !slices.Contains(covered, n) {
+			covered = append(covered, n)
+		}
+	}
+	if len(covered) < 2 {
+		return nil
+	}
+	slices.Sort(covered)
+	return covered
 }
 
 func episodeName(t catalog.Title, season, number int) (string, bool) {

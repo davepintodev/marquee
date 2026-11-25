@@ -653,3 +653,45 @@ func TestRemovingATitleTakesDeleteFilesAsTrueOrFalse(t *testing.T) {
 	exchange(t, srv, router, "DELETE", "/api/titles/movie-13187?deleteFiles=false", "", 204)
 	exchange(t, srv, router, "DELETE", "/api/titles/movie-687163?deleteFiles=true", "", 204)
 }
+
+func episodeField(t *testing.T, title map[string]any, id string) map[string]any {
+	t.Helper()
+	for _, s := range title["seasons"].([]any) {
+		for _, e := range s.(map[string]any)["episodes"].([]any) {
+			if ep := e.(map[string]any); ep["id"] == id {
+				return ep
+			}
+		}
+	}
+	t.Fatalf("no episode %s", id)
+	return nil
+}
+
+func TestAFileOfTwoEpisodesIsSharedAndAWrongFileResetsBoth(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+
+	title := exchange(t, srv, router, "GET", "/api/titles/series-213375", "", 200)
+	for _, id := range []string{"s01e01", "s01e02"} {
+		ep := episodeField(t, title, id)
+		if got := ep["sharedEpisodes"]; !reflect.DeepEqual(got, []any{"s01e01", "s01e02"}) {
+			t.Errorf("%s sharedEpisodes = %v, want both episodes of the file", id, got)
+		}
+	}
+	if ep := episodeField(t, title, "s01e03"); ep["sharedEpisodes"] != nil {
+		t.Errorf("an episode with no file shares nothing: %v", ep)
+	}
+	house := exchange(t, srv, router, "GET", "/api/titles/series-1408", "", 200)
+	if ep := episodeField(t, house, "s01e01"); ep["sharedEpisodes"] != nil {
+		t.Errorf("a file of one episode is not shared: %v", ep)
+	}
+
+	title = exchange(t, srv, router, "POST", "/api/titles/series-213375/episodes/s01e02/wrong-file", `{"reSearch":false}`, 200)
+	for _, id := range []string{"s01e01", "s01e02"} {
+		ep := episodeField(t, title, id)
+		if ep["state"] == "downloaded" || ep["sharedEpisodes"] != nil || ep["monitored"] != true {
+			t.Errorf("%s after the wrong file: %v", id, ep)
+		}
+	}
+	exchange(t, srv, router, "POST", "/api/titles/series-213375/episodes/s01e01/wrong-file", "", 409)
+}

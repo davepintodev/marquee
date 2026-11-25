@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -28,8 +29,8 @@ const (
 	// SearchGap is the least time between two searches of AIOStreams, each
 	// of which fans out to its addons and the debrid.
 	SearchGap = 5 * time.Second
-	// DailyBudget is how many scheduled searches one title gets a day; Search
-	// now and the search after a failed download are outside it.
+	// DailyBudget is how many scheduled searches one movie or episode gets a
+	// day; Search now and the search after a failed download are outside it.
 	DailyBudget = 4
 	// RefreshRetry is how long a failed TMDB refresh waits to be tried again.
 	RefreshRetry = time.Hour
@@ -197,7 +198,11 @@ func (s *Scheduler) searchOne(ctx context.Context) {
 		return
 	}
 	day := now.UTC().Format(time.DateOnly)
-	used := map[string]int{}
+	type slot struct {
+		titleID        string
+		season, number int
+	}
+	used := map[slot]int{}
 	for _, t := range targets {
 		if t.FollowUp && !t.Forced && s.failedLocally(ctx, t) {
 			// The same release would be chosen again: wait like any other title.
@@ -205,13 +210,14 @@ func (s *Scheduler) searchOne(ctx context.Context) {
 			continue
 		}
 		if !t.Forced && !t.FollowUp {
-			n, ok := used[t.TitleID]
+			k := slot{t.TitleID, t.Season, t.Number}
+			n, ok := used[k]
 			if !ok {
-				if n, err = s.cat.SearchesToday(ctx, t.TitleID, day); err != nil {
-					s.logErr(ctx, "cannot read a title's search budget", err)
+				if n, err = s.cat.SearchesToday(ctx, t.TitleID, t.Season, t.Number, day); err != nil {
+					s.logErr(ctx, "cannot read a search budget", err)
 					return
 				}
-				used[t.TitleID] = n
+				used[k] = n
 			}
 			if n >= DailyBudget {
 				continue
@@ -257,7 +263,7 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 		s.logErr(ctx, "cannot record that the source answers", s.cat.SetSourceBackoff(ctx, 0, time.Time{}))
 	}
 	if !t.Forced && !t.FollowUp {
-		s.ignoreGone(s.cat.CountSearch(ctx, t.TitleID, now.UTC().Format(time.DateOnly)))
+		s.ignoreGone(s.cat.CountSearch(ctx, t.TitleID, t.Season, t.Number, now.UTC().Format(time.DateOnly)))
 	}
 	blocked, err := s.cat.Blocklist(ctx)
 	if err != nil {
@@ -268,8 +274,15 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 	if fellBack {
 		s.log.Warn("a title names a profile the config does not define; using the default", "title", t.TitleID, "profile", t.Profile, "default", name)
 	}
+	var owned []int
+	if t.Kind == "series" {
+		if owned, err = s.cat.OwnedEpisodes(ctx, t.TitleID, t.Season); err != nil {
+			s.logErr(ctx, "cannot read the episodes on disk", err)
+			return
+		}
+	}
 	res := chooser.Choose(streams, chooser.Context{
-		Kind: t.Kind, Season: t.Season, Episode: t.Number, Profile: profile,
+		Kind: t.Kind, Season: t.Season, Episode: t.Number, OwnedEpisodes: owned, Profile: profile,
 		Blocklist: blocked, Now: now,
 	})
 	if !s.stillWanted(ctx, now, t) {
@@ -332,9 +345,15 @@ func (s *Scheduler) grab(ctx context.Context, now time.Time, t catalog.Target, c
 	}
 	if p := st.ParsedFile; p != nil {
 		job.Resolution, job.Quality = p.Resolution, p.Quality
+		job.Covered = chooser.CoveredEpisodes(st, t.Season)
 	}
-	_, err := s.tr.Enqueue(ctx, job)
+	d, err := s.tr.Enqueue(ctx, job)
 	switch {
+	case errors.Is(err, catalog.ErrActiveDownload) && d.ID != "" && d.Number != t.Number && !slices.Contains(d.Covered, t.Number):
+		// The release collides with a download of another episode it covers. A
+		// follow-up would skip backoff and the budget and search the target every gap.
+		// A zero download (the busy one ended meanwhile) is not that collision.
+		s.backOff(ctx, now, t, "")
 	case err == nil, errors.Is(err, catalog.ErrActiveDownload):
 		// The download failing leads straight to a new search, which skips the blocklisted release.
 		s.ignoreGone(s.cat.SetSchedule(ctx, t, catalog.Schedule{Attempts: t.Attempts, FollowUp: true, ClearForced: t.Forced}))

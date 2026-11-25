@@ -266,6 +266,18 @@ CREATE UNIQUE INDEX downloads_one_active ON downloads (title_id, season, number)
   WHERE state NOT IN ('done', 'failed');
 CREATE INDEX downloads_finished ON downloads (at_ms) WHERE state IN ('done', 'failed');
 CREATE INDEX downloads_finished_by_target ON downloads (title_id, season, number, at_ms) WHERE state IN ('done', 'failed');
+`, `
+CREATE TABLE search_budget_new (
+  title_id TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+  season   INTEGER NOT NULL,
+  number   INTEGER NOT NULL,
+  day      TEXT NOT NULL,
+  used     INTEGER NOT NULL,
+  PRIMARY KEY (title_id, season, number)
+) WITHOUT ROWID;
+INSERT INTO search_budget_new (title_id, season, number, day, used) SELECT title_id, 0, 0, day, used FROM search_budget;
+DROP TABLE search_budget;
+ALTER TABLE search_budget_new RENAME TO search_budget;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

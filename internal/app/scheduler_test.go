@@ -178,6 +178,8 @@ type listed struct {
 	size       int64
 	url        string
 	season, ep int
+	// eps lists every episode a multi-episode release holds; it replaces ep.
+	eps []int
 }
 
 // results is an AIOStreams answer holding the given releases, all cached.
@@ -187,6 +189,9 @@ func results(rs ...listed) []byte {
 		parsed := map[string]any{"resolution": "1080p", "quality": "WEB-DL", "seasons": []int{}, "episodes": []int{}}
 		if l.season > 0 {
 			parsed["seasons"], parsed["episodes"] = []int{l.season}, []int{l.ep}
+			if l.eps != nil {
+				parsed["episodes"] = l.eps
+			}
 		}
 		list = append(list, map[string]any{
 			"url": l.url, "filename": l.name, "folderName": strings.TrimSuffix(l.name, ".mkv"), "size": l.size,
@@ -489,39 +494,6 @@ func TestSearchesAreSpacedByTheGlobalRateLimit(t *testing.T) {
 	r.advance(5 * time.Second)
 	r.step()
 	r.wantSearches(6, "and nothing more")
-}
-
-func TestATitleHasADailySearchBudgetThatSearchNowIgnores(t *testing.T) {
-	r := newSchedRig(t, false)
-	var eps []tmdbfake.Episode
-	for n := 1; n <= 6; n++ {
-		eps = append(eps, tmdbfake.Episode{Number: n, Name: fmt.Sprintf("E%d", n), AirDate: "2020-01-01"})
-	}
-	r.tmdb.Add(tmdbfake.Title{Kind: "series", ID: 4000, Name: "Long", Date: "2020-01-01", IMDb: "tt4000000", TVDB: 4000,
-		Seasons: []tmdbfake.Season{{Number: 1, Episodes: eps}}})
-	r.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":4000}`, 201)
-
-	drain := func(passes int) {
-		for range passes {
-			r.step()
-			r.advance(5 * time.Second)
-		}
-	}
-	drain(10)
-	r.wantSearches(4, "six episodes are wanted, the title's budget is four a day")
-
-	r.mustCall("POST", "/api/titles/series-4000/search", "", 200)
-	drain(10)
-	if n := r.searched(); n != 10 {
-		t.Errorf("Search now ignores the budget: %d searches, want 10 (4 + 6 forced)", n)
-	}
-
-	r.setClock(time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC))
-	before := r.searched()
-	drain(20)
-	if got := r.searched() - before; got != 4 {
-		t.Errorf("the next day brings a new budget of four, got %d", got)
-	}
 }
 
 func TestAnEpisodeIsSearchedOnlyOnceItHasAired(t *testing.T) {

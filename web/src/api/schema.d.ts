@@ -636,6 +636,8 @@ export interface components {
             /** @description Present when state is downloading. */
             percent?: number;
             nextSearchAt?: components["schemas"]["NextSearchAt"];
+            /** @description Present when one video file holds this episode and others: every episode that shares the file, this one included, in order. Marking the file as the wrong one, or deleting it, affects all of them. */
+            sharedEpisodes?: components["schemas"]["EpisodeId"][];
         };
         /** @description When marquee searches next. Null unless the item is monitored and searching or missing. */
         NextSearchAt: string | null;

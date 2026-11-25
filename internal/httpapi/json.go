@@ -79,6 +79,8 @@ type episodeJSON struct {
 	Monitored bool   `json:"monitored"`
 	State     string `json:"state"`
 	Percent   *int   `json:"percent,omitempty"`
+	// Shared is every episode that shares this one's file, itself included.
+	Shared []string `json:"sharedEpisodes,omitempty"`
 }
 
 type seasonJSON struct {
@@ -106,7 +108,7 @@ func titleOf(t catalog.Title, profile string, history []historyJSON) titleJSON {
 		for _, e := range s.Episodes {
 			sj.Episodes = append(sj.Episodes, episodeJSON{
 				ID: catalog.EpisodeID(s.Number, e.Number), Number: e.Number, Name: e.Name,
-				AirDate: e.AirDate, Monitored: e.Monitored, State: e.State, Percent: e.Percent,
+				AirDate: e.AirDate, Monitored: e.Monitored, State: e.State, Percent: e.Percent, Shared: e.Shared,
 			})
 		}
 		out.Seasons = append(out.Seasons, sj)
