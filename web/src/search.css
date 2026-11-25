@@ -241,7 +241,7 @@
   }
 
   .chips {
-    gap: 0 var(--space-4);
+    gap: 0 var(--space-3);
   }
 
 }
