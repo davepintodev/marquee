@@ -35,10 +35,10 @@ const (
 // clock and calls Step, so every search happens exactly when the test says.
 type schedRig struct {
 	*realSvc
-	aio *aiostreamsfake.Fake
-	cdn *debridfake.Server
-	jf  *jellyfinfake.Server
-	sch *scheduler.Scheduler
+	aio     *aiostreamsfake.Fake
+	cdn     *debridfake.Server
+	jf      *jellyfinfake.Server
+	sch     *scheduler.Scheduler
 	adopted chan error
 	root    string
 	stop    func()

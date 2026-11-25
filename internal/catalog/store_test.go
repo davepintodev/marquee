@@ -218,7 +218,7 @@ func TestTheRefreshBackfillGivesOnlyAdoptedSeriesARowAndKeepsTheOthers(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(dropAtMs+`DELETE FROM series_refresh WHERE title_id = 'series-3'; PRAGMA user_version = 7`); err != nil {
+	if _, err := db.Exec(dropAtMs + `DELETE FROM series_refresh WHERE title_id = 'series-3'; PRAGMA user_version = 7`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
