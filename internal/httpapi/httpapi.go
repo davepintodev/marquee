@@ -35,6 +35,17 @@ type Transfers interface {
 	Enqueue(ctx context.Context, j pipeline.Job) (catalog.Download, error)
 	// RefreshLibrary asks the media server to look at the library again.
 	RefreshLibrary(ctx context.Context)
+	// Pause, Resume and Cancel answer catalog.ErrNotFound for no such
+	// download, catalog.ErrFinished or catalog.ErrSettling for one past
+	// stopping.
+	Pause(ctx context.Context, id string) (catalog.Download, error)
+	Resume(ctx context.Context, id string) (catalog.Download, error)
+	Cancel(ctx context.Context, id string) error
+	// PauseTitle, ResumeTitle and CancelTitle act on every download of a
+	// title and answer catalog.ErrNotFound for a title not in the library.
+	PauseTitle(ctx context.Context, titleID string) ([]catalog.Download, error)
+	ResumeTitle(ctx context.Context, titleID string) ([]catalog.Download, error)
+	CancelTitle(ctx context.Context, titleID string) error
 }
 
 type Deps struct {
@@ -98,6 +109,20 @@ func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", a.health)
 	mux.HandleFunc("GET /api/downloads", a.listDownloads)
+	mux.HandleFunc("POST /api/downloads/{downloadId}/pause", a.changeDownload(func(ctx context.Context, id string) (catalog.Download, error) {
+		return a.Transfers.Pause(ctx, id)
+	}))
+	mux.HandleFunc("POST /api/downloads/{downloadId}/resume", a.changeDownload(func(ctx context.Context, id string) (catalog.Download, error) {
+		return a.Transfers.Resume(ctx, id)
+	}))
+	mux.HandleFunc("POST /api/downloads/{downloadId}/cancel", a.cancelDownload)
+	mux.HandleFunc("POST /api/titles/{id}/downloads/pause", a.changeTitleDownloads(func(ctx context.Context, id string) ([]catalog.Download, error) {
+		return a.Transfers.PauseTitle(ctx, id)
+	}))
+	mux.HandleFunc("POST /api/titles/{id}/downloads/resume", a.changeTitleDownloads(func(ctx context.Context, id string) ([]catalog.Download, error) {
+		return a.Transfers.ResumeTitle(ctx, id)
+	}))
+	mux.HandleFunc("POST /api/titles/{id}/downloads/cancel", a.cancelTitleDownloads)
 	mux.HandleFunc("GET /api/history", a.listHistory)
 	mux.HandleFunc("GET /api/wall", a.wall)
 	mux.HandleFunc("GET /api/search", a.search)

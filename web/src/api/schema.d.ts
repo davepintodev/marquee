@@ -315,6 +315,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/downloads/{downloadId}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                downloadId: components["parameters"]["DownloadId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause a download, keeping what it has fetched.
+         * @description Stops the transfer and keeps the partial file, or keeps a queued download from starting. A paused download keeps its place in the queue but holds no connection and no TorBox caching slot; a torrent TorBox is caching for it stays on TorBox. It stays paused across a restart until it is resumed. Pausing a paused download changes nothing.
+         */
+        post: operations["pauseDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/{downloadId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                downloadId: components["parameters"]["DownloadId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume a paused download from the bytes it already has.
+         * @description The download goes back into the queue at its old place and continues from its partial file when a place is free. Resuming a download that is not paused changes nothing.
+         */
+        post: operations["resumeDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/{downloadId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                downloadId: components["parameters"]["DownloadId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a download and look for a different release.
+         * @description Stops the transfer, deletes the partial file and blocklists the release. A torrent TorBox fetched for it is deleted unless another download still needs it. The movie or episode stays monitored, so it is wanted again and searched for at once. The cancel is a `cancelled` history entry, which cannot be retried. A queued or paused download can be cancelled too.
+         */
+        post: operations["cancelDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/titles/{id}/downloads/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause every download of a title.
+         * @description Pauses each of the title's downloads as pauseDownload does. One that is being verified or imported is left to finish.
+         */
+        post: operations["pauseTitleDownloads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/titles/{id}/downloads/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume every paused download of a title. */
+        post: operations["resumeTitleDownloads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/titles/{id}/downloads/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel every download of a title.
+         * @description Cancels each of the title's downloads as cancelDownload does. One that is being verified or imported is left to finish.
+         */
+        post: operations["cancelTitleDownloads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/history": {
         parameters: {
             query?: never;
@@ -687,10 +816,10 @@ export interface components {
             dropped: components["schemas"]["DroppedRelease"][];
         };
         /**
-         * @description An uncached release is `caching` while TorBox fetches it (its percent is TorBox's), then `downloading` once marquee transfers the file.
+         * @description An uncached release is `caching` while TorBox fetches it (its percent is TorBox's), then `downloading` once marquee transfers the file. A `paused` download keeps its partial file and its place in the queue but holds no connection or TorBox slot; its percent is how far it got.
          * @enum {string}
          */
-        DownloadState: "queued" | "caching" | "downloading" | "verifying" | "importing";
+        DownloadState: "queued" | "caching" | "downloading" | "verifying" | "importing" | "paused";
         Download: {
             id: string;
             titleId: components["schemas"]["TitleId"];
@@ -724,7 +853,7 @@ export interface components {
             reSearch: boolean;
         };
         /** @enum {string} */
-        HistoryKind: "added" | "searched" | "would_grab" | "imported" | "failed" | "removed" | "wrong_file";
+        HistoryKind: "added" | "searched" | "would_grab" | "imported" | "failed" | "removed" | "wrong_file" | "cancelled";
         /** @enum {string} */
         FailureReason: "stalled" | "not_video" | "wrong_episode" | "too_small" | "size_mismatch" | "source_down" | "local_error" | "duplicate_episode" | "caching_timeout";
         HistoryEntry: {
@@ -861,7 +990,27 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description No such title, episode, release or entry. */
+        /** @description The download has already finished, or it is being verified or imported and can no longer be stopped; the error says which. */
+        DownloadSettled: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The title's downloads this changed; empty when none could be. */
+        ChangedDownloads: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    downloads: components["schemas"]["Download"][];
+                };
+            };
+        };
+        /** @description No such title, episode, release, download or entry. */
         NotFound: {
             headers: {
                 [name: string]: unknown;
@@ -874,6 +1023,7 @@ export interface components {
     parameters: {
         TitleId: components["schemas"]["TitleId"];
         EpisodeId: components["schemas"]["EpisodeId"];
+        DownloadId: string;
     };
     requestBodies: never;
     headers: never;
@@ -1419,6 +1569,133 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    pauseDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                downloadId: components["parameters"]["DownloadId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The download, now `paused`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["DownloadSettled"];
+        };
+    };
+    resumeDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                downloadId: components["parameters"]["DownloadId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The download, no longer paused. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Download"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["DownloadSettled"];
+        };
+    };
+    cancelDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                downloadId: components["parameters"]["DownloadId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The download is cancelled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["DownloadSettled"];
+        };
+    };
+    pauseTitleDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ChangedDownloads"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resumeTitleDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ChangedDownloads"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    cancelTitleDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The title's downloads are cancelled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     listHistory: {

@@ -291,6 +291,8 @@ CREATE TABLE run_mode (
   id           INTEGER PRIMARY KEY CHECK (id = 1),
   last_dry_run INTEGER NOT NULL
 );
+`, `
+ALTER TABLE downloads ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

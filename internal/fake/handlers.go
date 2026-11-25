@@ -94,6 +94,12 @@ func (f *Fake) routes() http.Handler {
 	h("GET /api/titles/{id}/about", f.about)
 	h("POST /api/titles/{id}/releases/{releaseId}/grab", f.grab)
 	h("GET /api/downloads", f.listDownloads)
+	h("POST /api/downloads/{downloadId}/pause", f.downloadOp(f.pause))
+	h("POST /api/downloads/{downloadId}/resume", f.downloadOp(f.resume))
+	h("POST /api/downloads/{downloadId}/cancel", f.downloadOp(f.cancel))
+	h("POST /api/titles/{id}/downloads/pause", f.titleDownloadsOp(f.pause, false))
+	h("POST /api/titles/{id}/downloads/resume", f.titleDownloadsOp(f.resume, false))
+	h("POST /api/titles/{id}/downloads/cancel", f.titleDownloadsOp(f.cancel, true))
 	h("GET /api/history", f.listHistory)
 	h("POST /api/history/{historyId}/retry", f.retry)
 	h("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -812,6 +818,99 @@ func (f *Fake) listDownloads(w http.ResponseWriter, _ *http.Request) {
 		out = append(out, f.downloadOut(d))
 	}
 	write(w, http.StatusOK, map[string]any{"downloads": out})
+}
+
+// settling are the states a download can no longer be stopped in.
+func settling(d *download) bool { return d.State == "verifying" || d.State == "importing" }
+
+func (f *Fake) pause(d *download) bool {
+	if settling(d) {
+		return false
+	}
+	if d.State != "paused" {
+		d.resume, d.resumeStalls = d.State, d.Stalled
+		if d.State == "caching" {
+			d.resume = "queued"
+		}
+		d.State, d.Stalled = "paused", false
+		f.emit("progress", d.progress(d.State))
+	}
+	return true
+}
+
+func (f *Fake) resume(d *download) bool {
+	if d.State == "paused" {
+		d.State, d.Stalled = d.resume, d.resumeStalls
+		f.emit("progress", d.progress(d.State))
+	}
+	return true
+}
+
+func (f *Fake) cancel(d *download) bool {
+	if settling(d) {
+		return false
+	}
+	f.downloads = slices.DeleteFunc(f.downloads, func(x *download) bool { return x == d })
+	if t := f.find(d.TitleID); t != nil {
+		f.addHistory("cancelled", t, d.Episode, "Cancelled; this release will not be tried again.", "", false)
+		if d.Episode != "" {
+			if e := f.findEpisode(t, d.Episode); e != nil && e.State != "downloaded" {
+				f.startSearch(t, e, time.Now())
+			}
+		} else if t.State != "downloaded" {
+			f.startSearch(t, nil, time.Now())
+		}
+		f.emitTitle(t)
+	}
+	return true
+}
+
+func (f *Fake) downloadOp(op func(*download) bool) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("downloadId")
+		i := slices.IndexFunc(f.downloads, func(d *download) bool { return d.ID == id })
+		if i < 0 {
+			fail(w, http.StatusNotFound, "no such download")
+			return
+		}
+		d := f.downloads[i]
+		if !op(d) {
+			fail(w, http.StatusConflict, "this download is being verified or imported and can no longer be stopped")
+			return
+		}
+		if slices.Contains(f.downloads, d) {
+			write(w, http.StatusOK, f.downloadOut(d))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// titleDownloadsOp answers the downloads a pause left paused or a resume
+// took out of pause; a cancel answers nothing.
+func (f *Fake) titleDownloadsOp(op func(*download) bool, cancel bool) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t := f.find(r.PathValue("id"))
+		if t == nil || !t.InLibrary {
+			fail(w, http.StatusNotFound, "no such title or episode in the library")
+			return
+		}
+		out := []downloadOut{}
+		for _, d := range slices.Clone(f.downloads) {
+			if d.TitleID != t.id() {
+				continue
+			}
+			wasPaused := d.State == "paused"
+			if op(d) && !cancel && (d.State == "paused" || wasPaused) {
+				out = append(out, f.downloadOut(d))
+			}
+		}
+		if cancel {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		write(w, http.StatusOK, map[string]any{"downloads": out})
+	}
 }
 
 func (f *Fake) listHistory(w http.ResponseWriter, r *http.Request) {

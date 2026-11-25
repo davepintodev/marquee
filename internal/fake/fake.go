@@ -85,6 +85,9 @@ type download struct {
 	Percent     int    `json:"percent"`
 	Stalled     bool   `json:"stalled"`
 	State       string `json:"state"`
+	// resume is what a paused download goes back to.
+	resume       string
+	resumeStalls bool
 }
 
 type release struct {
@@ -337,7 +340,7 @@ func (f *Fake) advance() {
 	defer f.mu.Unlock()
 	var finished []*download
 	for _, d := range f.downloads {
-		if d.Stalled {
+		if d.Stalled || d.State == "paused" {
 			continue
 		}
 		switch d.State {

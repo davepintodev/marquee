@@ -255,6 +255,7 @@ func TestEachEpisodeHasItsOwnDailySearchBudget(t *testing.T) {
 // search budget kept per title.
 const oldBudget = `
 ALTER TABLE downloads DROP COLUMN caching_started_at;
+ALTER TABLE downloads DROP COLUMN paused;
 CREATE TABLE search_budget_old (
   title_id TEXT PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
   day      TEXT NOT NULL,
