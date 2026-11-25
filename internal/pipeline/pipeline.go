@@ -77,6 +77,9 @@ type Job struct {
 	ReleaseName, Resolution, Quality string
 	// URL is the playback link, which carries credentials.
 	URL config.Secret
+	// Replace has the download take the place of the file the movie or
+	// episode already has, once it has been verified.
+	Replace bool
 }
 
 // Manager runs the downloads.
@@ -168,7 +171,7 @@ func (m *Manager) Enqueue(ctx context.Context, j Job) (catalog.Download, error) 
 	}
 	d, err := m.cat.AddDownload(ctx, catalog.NewDownload{
 		ID: m.idSource(), TitleID: j.TitleID, Season: j.Season, Number: j.Number, Release: j.Release,
-		ReleaseName: j.ReleaseName, Resolution: j.Resolution, Quality: j.Quality, URL: j.URL,
+		ReleaseName: j.ReleaseName, Resolution: j.Resolution, Quality: j.Quality, URL: j.URL, ReplaceExisting: j.Replace,
 	})
 	if errors.Is(err, catalog.ErrActiveDownload) {
 		existing, gerr := m.cat.ActiveDownloadFor(ctx, j.TitleID, j.Season, j.Number)
@@ -478,6 +481,15 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 		return
 	}
 	dst := m.libraryPath(t, d)
+	root, rel := m.rootOf(t), m.relPath(t, dst)
+	old, err := m.replaced(ctx, d)
+	if err != nil {
+		if ctx.Err() == nil {
+			m.log.Error("cannot look up the file to replace", "download", d.ID, "err", err)
+			m.fail(ctx, d, ReasonLocalError, "the library could not be read", false)
+		}
+		return
+	}
 	if err := m.cat.SetDownloadLibraryPath(ctx, d.ID, dst); err != nil {
 		m.gone(ctx, d, err)
 		return
@@ -490,7 +502,7 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 			m.fail(ctx, d, ReasonLocalError, "the downloaded file is gone from the temp folder", false)
 			return
 		}
-	} else if err := importer.Place(part, dst); err != nil {
+	} else if err := m.move(part, dst, old == rel); err != nil {
 		if ctx.Err() != nil {
 			return
 		}
@@ -505,6 +517,9 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 	// A leftover hard link source, if a crash fell between link and remove.
 	_ = os.Remove(part)
 	_ = os.Remove(part + ".plan")
+	// The old file goes before the download is recorded as done, so a crash
+	// in between leaves the download importing and the next run finishes the job.
+	m.removeReplaced(ctx, d, root, old, rel)
 	if err := m.cat.FinishDownload(ctx, d.ID, m.recordFile(t, d, dst)); err != nil {
 		m.gone(ctx, d, err)
 		return
@@ -513,19 +528,61 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 	m.refreshJellyfin(ctx)
 }
 
+// move puts the verified file at dst. Only a replacement of the very file at
+// dst may overwrite it, by an atomic rename; anything else already there
+// stays and fails the import.
+func (m *Manager) move(part, dst string, overwrite bool) error {
+	if overwrite {
+		if fi, err := os.Lstat(dst); err == nil && fi.Mode().IsRegular() {
+			return os.Rename(part, dst)
+		}
+	}
+	return importer.Place(part, dst)
+}
+
+// replaced is the library-relative path of the file a replacing download
+// takes the place of, empty when it replaces none.
+func (m *Manager) replaced(ctx context.Context, d catalog.Download) (string, error) {
+	if !d.ReplaceExisting {
+		return "", nil
+	}
+	f, err := m.cat.FileOf(ctx, d.TitleID, d.Season, d.Number)
+	if err != nil {
+		return "", err
+	}
+	if !f.Have {
+		return "", nil
+	}
+	return f.Path, nil
+}
+
+// removeReplaced deletes what the new file replaced: the old video and its
+// subtitle sidecars, or, when the new file took the old one's name, only the
+// sidecars. A file another episode still records stays. A failure leaves an
+// orphan file behind, which is better than failing an import that has
+// already happened.
+func (m *Manager) removeReplaced(ctx context.Context, d catalog.Download, root, old, now string) {
+	if old == "" {
+		return
+	}
+	var err error
+	if old == now {
+		err = importer.DeleteSidecars(root, old)
+	} else if shared, serr := m.cat.SharesFile(ctx, d.TitleID, old, d.Season, d.Number); serr != nil || shared {
+		err = serr
+	} else if err = importer.DeleteMediaFile(root, old); err == nil {
+		err = importer.PruneEmptyDirs(root, old)
+	}
+	if err != nil && ctx.Err() == nil {
+		m.log.Warn("cannot delete the file a download replaced", "download", d.ID, "err", err)
+	}
+}
+
 // recordFile describes the placed file for the catalog. A fingerprint that
 // cannot be read is left empty rather than failing an import that already
 // happened.
 func (m *Manager) recordFile(t catalog.Title, d catalog.Download, dst string) catalog.File {
-	root := m.series
-	if t.Kind == "movie" {
-		root = m.movies
-	}
-	rel, err := filepath.Rel(root, dst)
-	if err != nil {
-		rel = dst
-	}
-	f := catalog.File{Path: filepath.ToSlash(rel), Size: d.BytesTotal}
+	f := catalog.File{Path: m.relPath(t, dst), Size: d.BytesTotal}
 	if fi, err := os.Stat(dst); err == nil {
 		f.Size = fi.Size()
 	}
@@ -536,6 +593,25 @@ func (m *Manager) recordFile(t catalog.Title, d catalog.Download, dst string) ca
 	}
 	return f
 }
+
+func (m *Manager) rootOf(t catalog.Title) string {
+	if t.Kind == "movie" {
+		return m.movies
+	}
+	return m.series
+}
+
+func (m *Manager) relPath(t catalog.Title, dst string) string {
+	rel, err := filepath.Rel(m.rootOf(t), dst)
+	if err != nil {
+		rel = dst
+	}
+	return filepath.ToSlash(rel)
+}
+
+// RefreshLibrary asks Jellyfin to scan, as an import does, for a change
+// made to the library by something else, such as deleting files.
+func (m *Manager) RefreshLibrary(ctx context.Context) { m.refreshJellyfin(ctx) }
 
 // refreshJellyfin asks Jellyfin to scan. The import has already succeeded;
 // a failure here is recorded for the Health page and nothing more.

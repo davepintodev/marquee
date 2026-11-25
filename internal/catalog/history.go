@@ -77,8 +77,10 @@ type HistoryPage struct {
 }
 
 // retryableSQL is true for a failed download d that no later finished
-// download and no running download of the same target has replaced.
-const retryableSQL = `(d.state = 'failed' AND NOT EXISTS (SELECT 1 FROM downloads n
+// download and no running download of the same target has replaced. A
+// failed replacement is never retryable: the target already has its file,
+// so a search would find nothing to do.
+const retryableSQL = `(d.state = 'failed' AND d.replace_existing = 0 AND NOT EXISTS (SELECT 1 FROM downloads n
 	WHERE n.title_id = d.title_id AND n.season = d.season AND n.number = d.number AND n.id != d.id
 	AND n.state NOT IN ('done', 'failed'))
 	AND NOT EXISTS (SELECT 1 FROM downloads n

@@ -227,6 +227,45 @@ CREATE INDEX episodes_by_fingerprint ON episodes (title_id, file_fingerprint) WH
 `, `
 ALTER TABLE titles ADD COLUMN profile TEXT NOT NULL DEFAULT '';
 ALTER TABLE titles DROP COLUMN preferred_quality;
+`, `
+CREATE TABLE downloads_new (
+  id                TEXT PRIMARY KEY,
+  title_id          TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+  season            INTEGER NOT NULL DEFAULT 0,
+  number            INTEGER NOT NULL DEFAULT 0,
+  state             TEXT NOT NULL CHECK (state IN ('queued', 'caching', 'downloading', 'verifying', 'importing', 'done', 'failed')),
+  info_hash         TEXT NOT NULL,
+  file_name         TEXT NOT NULL,
+  size              INTEGER NOT NULL,
+  release_name      TEXT NOT NULL,
+  resolution        TEXT NOT NULL DEFAULT '',
+  quality           TEXT NOT NULL DEFAULT '',
+  url               TEXT NOT NULL,
+  bytes_done        INTEGER NOT NULL DEFAULT 0,
+  bytes_total       INTEGER NOT NULL DEFAULT 0,
+  reason            TEXT NOT NULL DEFAULT '',
+  message           TEXT NOT NULL DEFAULT '',
+  library_path      TEXT NOT NULL DEFAULT '',
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL,
+  at_ms             INTEGER NOT NULL DEFAULT 0,
+  replace_existing  INTEGER NOT NULL DEFAULT 0,
+  covered_episodes  TEXT NOT NULL DEFAULT '',
+  cached            INTEGER NOT NULL DEFAULT 1,
+  torbox_torrent_id INTEGER NOT NULL DEFAULT 0,
+  torbox_file_id    INTEGER NOT NULL DEFAULT 0,
+  cache_percent     INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO downloads_new (rowid, id, title_id, season, number, state, info_hash, file_name, size, release_name, resolution, quality, url,
+  bytes_done, bytes_total, reason, message, library_path, created_at, updated_at, at_ms)
+SELECT rowid, id, title_id, season, number, state, info_hash, file_name, size, release_name, resolution, quality, url,
+  bytes_done, bytes_total, reason, message, library_path, created_at, updated_at, at_ms FROM downloads;
+DROP TABLE downloads;
+ALTER TABLE downloads_new RENAME TO downloads;
+CREATE UNIQUE INDEX downloads_one_active ON downloads (title_id, season, number)
+  WHERE state NOT IN ('done', 'failed');
+CREATE INDEX downloads_finished ON downloads (at_ms) WHERE state IN ('done', 'failed');
+CREATE INDEX downloads_finished_by_target ON downloads (title_id, season, number, at_ms) WHERE state IN ('done', 'failed');
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

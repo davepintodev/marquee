@@ -33,6 +33,8 @@ type TMDB interface {
 // catalog.ErrActiveDownload.
 type Transfers interface {
 	Enqueue(ctx context.Context, j pipeline.Job) (catalog.Download, error)
+	// RefreshLibrary asks the media server to look at the library again.
+	RefreshLibrary(ctx context.Context)
 }
 
 type Deps struct {
@@ -105,6 +107,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/titles/{id}/episodes/{episodeId}", a.updateEpisode)
 	mux.HandleFunc("PUT /api/titles/{id}/seasons/{number}", a.updateSeason)
 	mux.HandleFunc("POST /api/titles/{id}/search", a.searchNow)
+	mux.HandleFunc("POST /api/titles/{id}/wrong-file", a.wrongFile)
+	mux.HandleFunc("POST /api/titles/{id}/episodes/{episodeId}/wrong-file", a.wrongFile)
 	mux.HandleFunc("POST /api/titles/{id}/rescan", a.rescanTitle)
 	mux.HandleFunc("POST /api/library/rescan", a.rescanLibrary)
 	mux.HandleFunc("POST /api/titles/{id}/episodes/{episodeId}/search", a.searchNow)

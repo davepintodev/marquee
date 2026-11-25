@@ -89,12 +89,37 @@ export interface paths {
         get: operations["getTitle"];
         put?: never;
         post?: never;
-        /** Remove a title from marquee. Files on disk are never deleted. */
+        /**
+         * Remove a title from marquee. Files on disk are deleted only when asked.
+         * @description With deleteFiles=true, every file the title has in the library is deleted too, with the subtitle sidecars beside it (.srt, .ass, .ssa, .sub, .vtt named after the video), and the folders that end up empty are removed; nothing outside the library folders is ever touched. Without it, or with deleteFiles=false, the disk is never touched. Downloads in flight stop and Jellyfin is asked to refresh. In dry-run deleteFiles=true answers 409 and nothing changes. It also answers 409, and nothing is deleted or removed, when a file's location is not yet recorded (rescan the title first) or a recorded path would leave the library.
+         */
         delete: operations["removeTitle"];
         options?: never;
         head?: never;
         /** Monitor or unmonitor a title, or change its quality profile. */
         patch: operations["updateTitle"];
+        trace?: never;
+    };
+    "/api/titles/{id}/wrong-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete a movie's file because it is the wrong one, and get it again.
+         * @description Deletes the movie's video and its matching subtitle sidecars from disk, blocklists the release that produced the file when it is known (a file marquee adopted has none), makes the movie missing and monitored again and notes it in the history. With reSearch true, the default, a search for another release starts at once; with false the owner is expected to pick one in Interactive Search. Jellyfin is asked to refresh. Answers 409 in dry-run, when the movie has no file, when the file's location is not yet recorded (rescan the title first) or when the recorded path would leave the library; then nothing changes.
+         */
+        post: operations["markWrongFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/titles/{id}/search": {
@@ -185,6 +210,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/titles/{id}/episodes/{episodeId}/wrong-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+                episodeId: components["parameters"]["EpisodeId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete an episode's file because it is the wrong one, and get it again.
+         * @description Like marking a movie's file wrong. An episode whose file covers several episodes resets all of them together, and the answer shows them all missing and monitored. The series is monitored again too.
+         */
+        post: operations["markEpisodeWrongFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/titles/{id}/episodes/{episodeId}/search": {
         parameters: {
             query?: never;
@@ -241,7 +289,7 @@ export interface paths {
         put?: never;
         /**
          * Pick one release. It goes through the same download, check and import path and overrides the blocklist.
-         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video, too small or the wrong episode answers 409 with the reason; a blocklisted one, or one its profile rejected, can be grabbed. In dry-run nothing is downloaded, so every grab answers 409.
+         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video, too small or the wrong episode answers 409 with the reason; a blocklisted one, or one its profile rejected, can be grabbed. In dry-run nothing is downloaded, so every grab answers 409. A movie or episode that already has a file answers 409 unless the body says replace: true. A replacement downloads and is verified completely first; only then does it take the old file's place, and the old video and its matching subtitle sidecars are deleted. When it fails, the old file stays untouched.
          */
         post: operations["grabRelease"];
         delete?: never;
@@ -659,8 +707,15 @@ export interface components {
             /** @description Library problems after the scan. */
             problems: number;
         };
+        WrongFileRequest: {
+            /**
+             * @description Search for another release at once. False leaves the choice to Interactive Search.
+             * @default true
+             */
+            reSearch: boolean;
+        };
         /** @enum {string} */
-        HistoryKind: "added" | "searched" | "would_grab" | "imported" | "failed" | "removed";
+        HistoryKind: "added" | "searched" | "would_grab" | "imported" | "failed" | "removed" | "wrong_file";
         /** @enum {string} */
         FailureReason: "stalled" | "not_video" | "wrong_episode" | "too_small" | "size_mismatch" | "source_down" | "local_error" | "duplicate_episode";
         HistoryEntry: {
@@ -972,7 +1027,10 @@ export interface operations {
     };
     removeTitle: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Also delete the title's files from disk. Default false. */
+                deleteFiles?: boolean;
+            };
             header?: never;
             path: {
                 id: components["parameters"]["TitleId"];
@@ -988,8 +1046,19 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /** @description Files cannot be deleted now (dry-run is on, a file's location is not recorded, or a path is outside the library); the error says which, and the title is still in the library. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
         };
     };
     updateTitle: {
@@ -1019,6 +1088,45 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    markWrongFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WrongFileRequest"];
+            };
+        };
+        responses: {
+            /** @description The movie, missing again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Title"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Nothing was deleted because dry-run is on, the movie has no file, the file's location is not recorded, or its path is outside the library. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
         };
     };
     searchTitleNow: {
@@ -1136,6 +1244,46 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    markEpisodeWrongFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["TitleId"];
+                episodeId: components["parameters"]["EpisodeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WrongFileRequest"];
+            };
+        };
+        responses: {
+            /** @description The series, with the episode missing again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Title"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Nothing was deleted because dry-run is on, the episode has no file, the file's location is not recorded, or its path is outside the library. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
     searchEpisodeNow: {
         parameters: {
             query?: never;
@@ -1206,6 +1354,11 @@ export interface operations {
             content: {
                 "application/json": {
                     episode?: components["schemas"]["EpisodeId"];
+                    /**
+                     * @description Replace the file the movie or episode already has.
+                     * @default false
+                     */
+                    replace?: boolean;
                 };
             };
         };
@@ -1222,7 +1375,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description The release was dropped (not cached, not a video, too small or the wrong episode) and cannot be grabbed; the error says why. */
+            /** @description The release was dropped (not cached, not a video, too small or the wrong episode) and cannot be grabbed, dry-run is on, or the movie or episode already has a file and replace was not true; the error says why. */
             409: {
                 headers: {
                     [name: string]: unknown;

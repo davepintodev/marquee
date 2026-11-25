@@ -591,3 +591,65 @@ func TestTheLibraryListsTheSearchingEpisodesOfEachSeries(t *testing.T) {
 		t.Errorf("an unmonitored episode is not searched for: %v, want %v", searching()["series-226745"], want)
 	}
 }
+
+func TestWrongFileMakesADownloadedMovieOrEpisodeMissingAgain(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+
+	movie := exchange(t, srv, router, "POST", "/api/titles/movie-687163/wrong-file", "", 200)
+	if b := movie["badge"].(map[string]any); b["state"] == "downloaded" {
+		t.Errorf("the movie still looks downloaded: %v", b)
+	}
+	if movie["monitored"] != true {
+		t.Error("a wrong file is monitored again")
+	}
+	exchange(t, srv, router, "POST", "/api/titles/movie-687163/wrong-file", "", 409)
+
+	house := exchange(t, srv, router, "POST", "/api/titles/series-1408/episodes/s01e01/wrong-file", `{"reSearch":false}`, 200)
+	ep := house["seasons"].([]any)[0].(map[string]any)["episodes"].([]any)[0].(map[string]any)
+	if ep["state"] == "downloaded" || ep["monitored"] != true {
+		t.Errorf("the episode: %v", ep)
+	}
+	exchange(t, srv, router, "POST", "/api/titles/series-1408/episodes/s01e01/wrong-file", "", 409)
+	exchange(t, srv, router, "POST", "/api/titles/series-1408/episodes/s09e09/wrong-file", "", 404)
+	exchange(t, srv, router, "POST", "/api/titles/series-1408/wrong-file", "", 400)
+	exchange(t, srv, router, "POST", "/api/titles/movie-693134/wrong-file", "", 409)
+	exchange(t, srv, router, "POST", "/api/titles/movie-1/wrong-file", "", 404)
+	resp := do(t, srv, call{"POST", "", `{"nope":1}`, 400}, "/api/titles/movie-687163/wrong-file")
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("an unknown field: %d", resp.StatusCode)
+	}
+
+	notes := 0
+	for _, h := range exchange(t, srv, router, "GET", "/api/history?titleId=movie-687163", "", 200)["history"].([]any) {
+		if h.(map[string]any)["kind"] == "wrong_file" {
+			notes++
+		}
+	}
+	if notes != 1 {
+		t.Errorf("one history note for the movie: %d", notes)
+	}
+}
+
+func TestGrabbingATitleThatHasItsFileNeedsReplace(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	exchange(t, srv, router, "POST", "/api/titles/movie-687163/releases/rel-movie-1/grab", "", 409)
+	exchange(t, srv, router, "POST", "/api/titles/movie-687163/releases/rel-movie-1/grab", `{"replace":false}`, 409)
+	exchange(t, srv, router, "POST", "/api/titles/movie-687163/releases/rel-movie-1/grab", `{"replace":true}`, 202)
+	exchange(t, srv, router, "POST", "/api/titles/series-1408/releases/rel-series-5/grab", `{"episode":"s01e01"}`, 409)
+	exchange(t, srv, router, "POST", "/api/titles/series-1408/releases/rel-series-5/grab", `{"episode":"s01e01","replace":true}`, 202)
+}
+
+func TestRemovingATitleTakesDeleteFilesAsTrueOrFalse(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	resp := do(t, srv, call{"DELETE", "", "", 400}, "/api/titles/movie-13187?deleteFiles=maybe")
+	_ = resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Errorf("deleteFiles=maybe: %d", resp.StatusCode)
+	}
+	exchange(t, srv, router, "DELETE", "/api/titles/movie-13187?deleteFiles=false", "", 204)
+	exchange(t, srv, router, "DELETE", "/api/titles/movie-687163?deleteFiles=true", "", 204)
+}

@@ -62,6 +62,10 @@ type NewDownload struct {
 	Resolution  string // AIOStreams' parsed resolution, for the quality tag
 	Quality     string // AIOStreams' parsed quality, for the quality tag
 	URL         config.Secret
+	// ReplaceExisting marks a download that swaps in for the file the movie
+	// or episode already has: the old file stays until the new one is
+	// verified and placed.
+	ReplaceExisting bool
 }
 
 type Download struct {
@@ -79,18 +83,19 @@ type Download struct {
 
 const downloadColumns = `d.id, d.title_id, t.title, d.season, d.number, d.state, d.info_hash, d.file_name, d.size,
 	d.release_name, d.resolution, d.quality, d.url, d.bytes_done, d.bytes_total, d.reason, d.message,
-	d.library_path, d.created_at, d.updated_at`
+	d.library_path, d.created_at, d.updated_at, d.replace_existing`
 
 func scanDownload(sc interface{ Scan(...any) error }, extra ...any) (Download, error) {
 	var d Download
 	var url, created, updated string
+	var replace int
 	dest := append([]any{&d.ID, &d.TitleID, &d.TitleName, &d.Season, &d.Number, &d.State, &d.Release.InfoHash,
 		&d.Release.FileName, &d.Release.Size, &d.ReleaseName, &d.Resolution, &d.Quality, &url, &d.BytesDone,
-		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated}, extra...)
+		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated, &replace}, extra...)
 	if err := sc.Scan(dest...); err != nil {
 		return Download{}, err
 	}
-	d.URL = config.Secret(url)
+	d.URL, d.ReplaceExisting = config.Secret(url), replace == 1
 	d.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 	return d, nil
@@ -111,9 +116,9 @@ func (s *Store) AddDownload(ctx context.Context, n NewDownload) (Download, error
 	}
 	now := s.stamp()
 	_, err := s.w.ExecContext(ctx, `INSERT INTO downloads (id, title_id, season, number, state, info_hash, file_name, size,
-		release_name, resolution, quality, url, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		release_name, resolution, quality, url, replace_existing, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		n.ID, n.TitleID, n.Season, n.Number, n.Release.InfoHash, n.Release.FileName, n.Release.Size,
-		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), now, now)
+		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), now, now)
 	if err != nil {
 		if isUnique(err) {
 			return Download{}, ErrActiveDownload

@@ -300,10 +300,24 @@ func (a *api) titleReply(w http.ResponseWriter, r *http.Request, t catalog.Title
 	}
 }
 
-// removeTitle forgets a title and its cached images. The catalog has no
-// notion of a library path, so no file on disk can be touched from here.
+// removeTitle forgets a title and its cached images. With deleteFiles=true
+// it first deletes the title's files from the library; without, no file on
+// disk is touched.
 func (a *api) removeTitle(w http.ResponseWriter, r *http.Request) {
-	refs, err := a.Catalog.Remove(r.Context(), r.PathValue("id"))
+	deleteFiles := false
+	switch r.URL.Query().Get("deleteFiles") {
+	case "", "false":
+	case "true":
+		deleteFiles = true
+	default:
+		fail(w, http.StatusBadRequest, "deleteFiles must be true or false")
+		return
+	}
+	id := r.PathValue("id")
+	if deleteFiles && !a.deleteTitleFiles(w, r, id) {
+		return
+	}
+	refs, err := a.Catalog.Remove(r.Context(), id)
 	if errors.Is(err, catalog.ErrNotFound) {
 		fail(w, http.StatusNotFound, "no such title in the library")
 		return
@@ -316,6 +330,9 @@ func (a *api) removeTitle(w http.ResponseWriter, r *http.Request) {
 		if ref.Path != "" {
 			a.Images.Forget(imageSize(ref.Kind), ref.Path)
 		}
+	}
+	if deleteFiles {
+		a.refreshLibrary(r.Context())
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -224,16 +224,26 @@ func (a *api) listReleases(w http.ResponseWriter, r *http.Request) {
 func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Episode string `json:"episode"`
+		Replace bool   `json:"replace"`
 	}
 	if r.ContentLength != 0 {
 		if err := decode(r, &req); err != nil && !errors.Is(err, io.EOF) {
-			fail(w, http.StatusBadRequest, "body must be {\"episode\": \"sNNeNN\"} or empty")
+			fail(w, http.StatusBadRequest, "body must be {\"episode\": \"sNNeNN\", \"replace\": true|false} or empty")
 			return
 		}
 	}
 	id := r.PathValue("id")
 	if a.DryRun {
 		fail(w, http.StatusConflict, "dry-run is on, so nothing is downloaded; turn it off to grab a release")
+		return
+	}
+	owned, err := a.targetHasFile(r.Context(), id, req.Episode)
+	if err != nil {
+		a.internal(w, r, err)
+		return
+	}
+	if owned && !req.Replace {
+		fail(w, http.StatusConflict, "this item already has a file; pass replace: true to replace it")
 		return
 	}
 	found, ok := a.searchReleases(w, r, id, req.Episode, true)
@@ -275,7 +285,7 @@ func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 	job := pipeline.Job{
 		TitleID: id, Season: found.season, Number: found.episode,
 		Release:     catalog.ReleaseID{InfoHash: st.InfoHash, FileName: st.Filename, Size: st.Size},
-		ReleaseName: releaseOf(*pick).Name, URL: st.URL,
+		ReleaseName: releaseOf(*pick).Name, URL: st.URL, Replace: owned,
 	}
 	if p := st.ParsedFile; p != nil {
 		job.Resolution, job.Quality = p.Resolution, p.Quality
@@ -289,6 +299,25 @@ func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 	default:
 		a.internal(w, r, err)
 	}
+}
+
+// targetHasFile reports whether the movie, or the episode named in the
+// request, is in the library with its file. A request that names no valid
+// episode is left for the search to refuse.
+func (a *api) targetHasFile(ctx context.Context, id, episode string) (bool, error) {
+	kind, _, ok := parseTitleID(id)
+	if !ok {
+		return false, nil
+	}
+	season, number := 0, 0
+	if kind == "series" {
+		m := episodeIDRe.FindStringSubmatch(episode)
+		if m == nil {
+			return false, nil
+		}
+		season, number = atoi(m[1]), atoi(m[2])
+	}
+	return a.ownsFile(ctx, id, season, number)
 }
 
 func isTMDBError(err error) bool {
