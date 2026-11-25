@@ -397,6 +397,7 @@ function EpisodeRow({
   const downloading = e.state === "downloading" || e.state === "caching";
   const panel = `ts-panel-${e.id}`;
   const word = stateLabel(e);
+  const busyLabel = e.state === "caching" ? "Caching now" : downloading ? "Downloading now" : null;
   return (
     <li className="ts-ep" data-open={expanded} data-off={!e.monitored} data-done={done} data-state={e.state}>
       <div className="ts-ep-row">
@@ -437,8 +438,8 @@ function EpisodeRow({
         </button>
         {aired ? (
           <IconButton
-            label={downloading ? "Downloading now" : done ? "Search again automatically" : "Search automatically"}
-            name={`${downloading ? "Downloading now" : "Search automatically for"} ${e.name}`}
+            label={busyLabel ?? (done ? "Search again automatically" : "Search automatically")}
+            name={`${busyLabel ?? "Search automatically for"} ${e.name}`}
             quiet
             className="ts-find"
             data-here={done}

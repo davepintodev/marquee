@@ -232,6 +232,7 @@ test("TorBox caching progress shows on the episode as Caching, not Downloading",
 
   expect(await screen.findByText("Caching 42%")).toBeTruthy();
   expect(screen.queryByText("Downloading 42%")).toBeNull();
+  expect(screen.getByRole("button", { name: /^Caching now / }).getAttribute("aria-disabled")).toBe("true");
 });
 
 test("an open episode survives the title being refreshed from under it", async () => {
