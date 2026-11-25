@@ -314,3 +314,22 @@ test("Forget on this device asks first with Keep it before Forget, opens on Keep
   fireEvent.click(within(sec).getByRole("button", { name: "Forget" }));
   expect(onForget).toHaveBeenCalledTimes(1);
 });
+
+test("TorBox is a stop on the path right after AIOStreams", async () => {
+  setup([
+    () =>
+      json(
+        fine({
+          checks: [
+            { id: "jellyfin", name: "Jellyfin", status: "ok", message: "Reachable." },
+            { id: "torbox", name: "TorBox", status: "ok", message: "Key accepted." },
+            { id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." },
+            { id: "aiostreams", name: "AIOStreams", status: "ok", message: "Reachable." },
+          ],
+        }),
+      ),
+  ]);
+
+  const stops = await line();
+  expect(stops.map((s) => s.querySelector(".bd-name")?.firstChild?.textContent)).toEqual(["TMDB", "AIOStreams", "TorBox", "Jellyfin"]);
+});

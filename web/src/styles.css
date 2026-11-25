@@ -347,6 +347,11 @@ button {
   background: var(--info);
 }
 
+.meter[data-state="caching"] i,
+.show[data-state="caching"] .show-bar i {
+  background-image: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.28) 0 4px, transparent 4px 8px);
+}
+
 .meter[data-state="stalled"] i,
 .meter[data-state="partial_season"] i {
   background: var(--warn);
@@ -429,6 +434,7 @@ button {
   background: var(--ok);
 }
 .state-line.badge-searching i,
+.state-line.badge-caching i,
 .state-line.badge-downloading i {
   background: var(--info);
 }

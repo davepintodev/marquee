@@ -9,6 +9,8 @@ const arrival: Download = { id: "dl-2", titleId: "movie-2", titleName: "Arrival"
 const sicario: Download = { id: "dl-3", titleId: "movie-5", titleName: "Sicario", releaseName: "Sicario.2015.1080p.WEB", state: "verifying", percent: 100, bytesDone: 5_000_000_000, bytesTotal: 5_000_000_000, stalled: false };
 const house: Download = { id: "dl-4", titleId: "series-4", titleName: "House", episode: "s04e03", releaseName: "House.S04E03.1080p", state: "queued", percent: 0, bytesDone: 0, bytesTotal: 0, stalled: false };
 
+const caching: Download = { id: "dl-5", titleId: "movie-6", titleName: "Blade Runner 2049", releaseName: "Blade.Runner.2049.2017.720p.HDTV", state: "caching", percent: 42, bytesDone: 0, bytesTotal: 3_221_225_472, stalled: false };
+
 const local = (day: number, hour: number, minute: number) => new Date(2026, 10, day, hour, minute).toISOString();
 
 const failed: HistoryEntry = { id: "h-stalled", at: local(18, 9, 42), kind: "failed", titleId: "movie-2", titleName: "Arrival", message: "Arrival.2016.1080p.BluRay stalled: no data for 1 minute. Blocklisted; trying the next release.", reason: "stalled", retryable: true };
@@ -527,4 +529,15 @@ test("leaving Activity cancels a refetch still waiting for its burst to end", as
   await later(500);
 
   expect(asked.downloads).toBe(before);
+});
+
+test("a caching download says Caching with its percent and a bar of its own, not Downloading", async () => {
+  setupApp(serve({ downloads: [dune, caching], history: [], titles: [] }), "#/activity");
+
+  const cards = within(await screen.findByRole("list", { name: "Downloads" })).getAllByRole("listitem");
+  expect(cards.map((c) => c.getAttribute("data-state"))).toEqual(["downloading", "caching"]);
+  expect(within(cards[1]).getByText("Caching 42%")).toBeTruthy();
+  expect(within(cards[1]).queryByText("Downloading")).toBeNull();
+  expect(within(cards[1]).queryByText(/of 3(\.0)? GB/)).toBeNull();
+  expect(within(cards[1]).getByRole("progressbar", { name: "Blade Runner 2049 progress" }).getAttribute("aria-valuenow")).toBe("42");
 });

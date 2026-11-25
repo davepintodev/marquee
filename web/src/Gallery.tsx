@@ -30,12 +30,12 @@ export function DownloadCard({ api, d }: { api: Api; d: Download }) {
             <a href={hrefOf({ name: "title", id: d.titleId })}>{d.titleName}</a>
             {d.episode && <span className="show-ep">{d.episode.toUpperCase()}</span>}
           </p>
-          <span className="show-percent">{`${d.percent}%`}</span>
+          {d.state !== "caching" && <span className="show-percent">{`${d.percent}%`}</span>}
         </div>
         <p className="show-state">
           <i aria-hidden="true" />
-          {d.stalled ? "Stalled" : stateWords[d.state]}
-          {d.bytesTotal > 0 && <span>{`${bytesOf(d.bytesDone)} of ${bytesOf(d.bytesTotal)}`}</span>}
+          {d.stalled ? "Stalled" : d.state === "caching" ? `Caching ${d.percent}%` : stateWords[d.state]}
+          {d.bytesTotal > 0 && d.state !== "caching" && <span>{`${bytesOf(d.bytesDone)} of ${bytesOf(d.bytesTotal)}`}</span>}
         </p>
         {d.stalled && <p className="show-note">No data has arrived for a while. marquee will try the next release.</p>}
         <p className="show-release">{d.releaseName}</p>

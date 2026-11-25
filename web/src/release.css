@@ -200,6 +200,10 @@
   background: var(--ok);
 }
 
+.rt-row:not([data-dropped="true"]) .rt-c[data-cached="false"] i {
+  background: var(--info);
+}
+
 .rt-c[data-cached="false"] i {
   background: var(--mute);
 }
