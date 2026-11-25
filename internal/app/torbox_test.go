@@ -545,3 +545,42 @@ func TestTheSharedTorrentSurvivesTheFirstImportAndGoesWithTheLast(t *testing.T) 
 		t.Fatalf("deleted %v: the shared torrent goes once, with the last download", got)
 	}
 }
+
+func TestSearchNowOnAnEpisodeWaitingForTorBoxSaysWantedAndRunsWhenThereIsRoom(t *testing.T) {
+	r := newTBRig(t, map[string]string{"MARQUEE_TORBOX_MAX_ACTIVE": "1"})
+	r.episodeFile(hashA, ep1Name)
+	r.episodeFile(hashB, ep2Name)
+	r.aio.Answer("series", ep1ID, results(listed{name: ep1Name, size: epSize, uncached: true, hash: hashA, season: 1, ep: 1}))
+	r.aio.Answer("series", ep2ID, results(listed{name: ep2Name, size: epSize, uncached: true, hash: hashB, season: 1, ep: 2}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	first := r.torrentIDs(1)[0]
+	r.tb.Step(first, 0.5, 100)
+	r.waitCaching(50)
+	r.advance(10 * time.Second)
+	r.step()
+	if got := r.searchedID(ep2ID); got != 1 {
+		t.Fatalf("the second episode is searched and set aside: %d", got)
+	}
+
+	v := r.mustCall("POST", "/api/titles/series-1408/episodes/s01e02/search", "", 200)
+	if e := episodes(t, v)["s01e02"]; e["state"] != "wanted" {
+		t.Errorf("Search now on an episode waiting for TorBox: %v", e)
+	}
+	r.advance(10 * time.Second)
+	r.step()
+	if e := episodes(t, r.mustCall("GET", "/api/titles/series-1408", "", 200))["s01e02"]; e["state"] != "wanted" {
+		t.Errorf("a step while TorBox is still full: %v", e)
+	}
+	if got := r.searchedID(ep2ID); got != 1 {
+		t.Fatalf("TorBox is full, so no search: %d", got)
+	}
+
+	r.tb.Present(first)
+	waitFor(t, "the first import", 30*time.Second, func() bool { return len(r.entries("imported")) == 1 })
+	r.advance(10 * time.Second)
+	r.step()
+	if got := r.searchedID(ep2ID); got != 2 {
+		t.Fatalf("the asked-for search runs once TorBox has room: %d", got)
+	}
+}

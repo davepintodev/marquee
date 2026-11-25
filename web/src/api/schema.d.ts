@@ -495,10 +495,10 @@ export interface components {
         /** @enum {string} */
         Kind: "movie" | "series";
         /**
-         * @description The closed set of states a tile can show.
+         * @description The closed set of states a tile can show. `wanted` is monitored with no file, waiting for its next scheduled search or for its turn after Search now (then due now); `searching` only while its search is in flight, and a series only while one of its episodes' is; `not_found` is wanted after a search that found nothing usable; `missing` is not monitored and has no file.
          * @enum {string}
          */
-        BadgeState: "downloaded" | "searching" | "caching" | "downloading" | "stalled" | "missing" | "partial_season";
+        BadgeState: "downloaded" | "wanted" | "searching" | "not_found" | "caching" | "downloading" | "stalled" | "missing" | "partial_season";
         /**
          * @example {
          *       "state": "partial_season",
@@ -509,7 +509,7 @@ export interface components {
          */
         Badge: {
             state: components["schemas"]["BadgeState"];
-            /** @description Display text, such as "Downloading 43%", "Caching 42%" or "Season 4 · 3 missing". */
+            /** @description Display text, such as "Wanted", "Not found", "Downloading 43%", "Caching 42%" or "Season 4 · 3 missing". */
             label: string;
             /** @description Present when state is downloading or caching. While caching it is how far TorBox has got with an uncached release. */
             percent?: number;
@@ -534,7 +534,7 @@ export interface components {
             monitored?: boolean;
             /** @description Present when inLibrary. */
             badge?: components["schemas"]["Badge"];
-            /** @description Ids of the series' monitored episodes still waiting for a release, whatever the title's badge says. Omitted when there are none. */
+            /** @description Ids of the series' monitored episodes still waiting for a release (wanted, searching or not found), whatever the title's badge says. Omitted when there are none. */
             searchingEpisodes?: string[];
         };
         /** @description One score for a title, in the scale its source uses. */
@@ -623,8 +623,11 @@ export interface components {
             /** @description The name of a profile in `profiles`. */
             defaultSeriesProfile: string;
         };
-        /** @enum {string} */
-        EpisodeState: "downloaded" | "searching" | "caching" | "downloading" | "stalled" | "missing" | "unaired";
+        /**
+         * @description The same words as BadgeState; `missing` is an aired episode nobody monitors.
+         * @enum {string}
+         */
+        EpisodeState: "downloaded" | "wanted" | "searching" | "not_found" | "caching" | "downloading" | "stalled" | "missing" | "unaired";
         Episode: {
             id: components["schemas"]["EpisodeId"];
             number: number;
@@ -639,7 +642,7 @@ export interface components {
             /** @description Present when one video file holds this episode and others: every episode that shares the file, this one included, in order. Marking the file as the wrong one, or deleting it, affects all of them. */
             sharedEpisodes?: components["schemas"]["EpisodeId"][];
         };
-        /** @description When marquee searches next. Null unless the item is monitored and searching or missing. */
+        /** @description When marquee searches next by its schedule, now or earlier when it is already due. Null unless the item is monitored and wanted or not found; a title has the soonest of its episodes'. */
         NextSearchAt: string | null;
         Season: {
             number: number;
@@ -1146,7 +1149,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The title, now searching. */
+            /** @description The title, its movie or wanted episodes queued to be searched now, one at a time; each reads `wanted`, due now, until its search starts. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1302,7 +1305,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The title, with the episode now searching. */
+            /** @description The title, with the episode queued to be searched now; it reads `wanted`, due now, until its search starts. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1461,7 +1464,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The title, now searching again. */
+            /** @description The title, queued to be searched again. */
             200: {
                 headers: {
                     [name: string]: unknown;

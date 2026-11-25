@@ -1,6 +1,9 @@
 package fake
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type badge struct {
 	State        string `json:"state"`
@@ -29,8 +32,30 @@ func (f *Fake) epState(t *entry, s *season, e *episode) (state string, percent i
 		}
 		return "downloading", d.Percent
 	}
+	if queued(e) {
+		return "wanted", 0
+	}
+	if running(e.searchAt, e.searchUntil) {
+		return "searching", 0
+	}
 	return e.State, 0
 }
+
+func movieState(t *entry) string {
+	switch {
+	case t.State == "downloaded":
+		return "downloaded"
+	case running(time.Time{}, t.searchUntil):
+		return "searching"
+	case !t.monitored:
+		return "missing"
+	case t.State == "missing":
+		return "wanted"
+	}
+	return t.State
+}
+
+func waiting(state string) bool { return state == "wanted" || state == "not_found" }
 
 func (f *Fake) badge(t *entry) *badge {
 	if !t.InLibrary {
@@ -46,7 +71,7 @@ func (f *Fake) badge(t *entry) *badge {
 			}
 			return downloading(d.Percent)
 		}
-		return simple(t.State)
+		return simple(movieState(t))
 	}
 	if b := f.group(t, t.Seasons); b != nil {
 		return b
@@ -76,7 +101,7 @@ func unmonitoredBadge(t *entry) *badge {
 }
 
 func simple(state string) *badge {
-	labels := map[string]string{"downloaded": "Downloaded", "searching": "Searching", "missing": "Missing"}
+	labels := map[string]string{"downloaded": "Downloaded", "wanted": "Wanted", "searching": "Searching", "not_found": "Not found", "missing": "Missing"}
 	return &badge{State: state, Label: labels[state]}
 }
 
@@ -88,24 +113,35 @@ func (f *Fake) seasonBadge(t *entry, s *season) *badge {
 }
 
 func (f *Fake) group(t *entry, seasons []*season) *badge {
-	var have, searching, missing, total int
-	var dl, stall, cache bool
+	var have, wanted, nothing, missing, total int
+	var dl, stall, cache, searching bool
 	percent, cachePercent := 0, 0
 	gapSeason := 0
 	for _, s := range seasons {
 		seasonGap := false
 		for _, e := range s.Episodes {
+			st, p := f.epState(t, s, e)
 			if !e.monitored {
+				if st == "searching" {
+					searching = true
+					total++
+				}
 				continue
 			}
-			st, p := f.epState(t, s, e)
 			switch st {
 			case "unaired":
 				continue
 			case "downloaded":
 				have++
 			case "searching":
-				searching++
+				searching = true
+				wanted++
+				seasonGap = true
+			case "wanted":
+				wanted++
+				seasonGap = true
+			case "not_found":
+				nothing++
 				seasonGap = true
 			case "missing":
 				missing++
@@ -129,7 +165,7 @@ func (f *Fake) group(t *entry, seasons []*season) *badge {
 			gapSeason = s.Number
 		}
 	}
-	gaps := searching + missing
+	gaps := wanted + nothing + missing
 	switch {
 	case total == 0:
 		return nil
@@ -139,10 +175,14 @@ func (f *Fake) group(t *entry, seasons []*season) *badge {
 		return caching(cachePercent)
 	case stall:
 		return stalled()
+	case searching:
+		return simple("searching")
 	case have > 0 && gaps > 0:
 		return partialSeason(seasons, gapSeason)
-	case searching > 0:
-		return simple("searching")
+	case nothing > 0 && nothing == gaps:
+		return simple("not_found")
+	case wanted+nothing > 0:
+		return simple("wanted")
 	case missing > 0:
 		return simple("missing")
 	}
@@ -156,7 +196,7 @@ func partialSeason(seasons []*season, number int) *badge {
 			continue
 		}
 		for _, e := range s.Episodes {
-			if e.monitored && (e.State == "missing" || e.State == "searching") {
+			if e.monitored && (e.State == "missing" || waiting(e.State)) {
 				n++
 			}
 		}

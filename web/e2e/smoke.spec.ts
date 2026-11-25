@@ -274,7 +274,7 @@ for (const s of screens.slice(0, 2)) {
   });
 }
 
-const inLibrary = /Downloaded|missing|Searching|Downloading|Stalled|Caching/i;
+const inLibrary = /Downloaded|missing|Wanted|Searching|Not found|Downloading|Stalled|Caching/i;
 
 for (const s of screens.slice(0, 2)) {
   test(`Library and Trending are separate sections that each keep their own Movies and Series choice on ${s.name}`, async ({ page }) => {
@@ -385,7 +385,7 @@ async function noSideScroll(page: Page, width: number) {
 }
 
 for (const s of pageTitles) {
-  test(`a result opens the title page on ${s.name}, adds on Add & monitor and then reads Search automatically`, async ({ page }) => {
+  test(`a result opens the title page on ${s.name}, adds on Add & monitor and then reads Search now`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
     await openApp(page);
     const bar = page.getByRole("searchbox");
@@ -405,7 +405,7 @@ for (const s of pageTitles) {
     await title.getByRole("button", { name: "Add & monitor" }).click();
 
     await expect(page.getByRole("status")).toContainText(s.title);
-    await expect(title.getByRole("button", { name: "Search automatically", exact: true })).toBeVisible();
+    await expect(title.getByRole("button", { name: "Search now", exact: true })).toBeVisible();
     await page.waitForTimeout(500);
     await page.screenshot({ path: join(shots, `title-added-${s.name}.png`) });
 
@@ -426,14 +426,14 @@ async function tileOnScreen(page: Page, name: RegExp) {
   throw new Error(`no poster named ${name} is fully on screen`);
 }
 
-test("a wall poster opens the title page and a title already in the library reads Search automatically", async ({ page }) => {
+test("a wall poster opens the title page and a title already in the library reads Search now", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await page.goto("/");
 
   await (await tileOnScreen(page, inLibrary)).click();
 
   const title = page.getByRole("main");
-  await expect(title.getByRole("button", { name: "Search automatically", exact: true })).toBeVisible();
+  await expect(title.getByRole("button", { name: "Search now", exact: true })).toBeVisible();
   await expect(title.getByRole("button", { name: "Add & monitor" })).toHaveCount(0);
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(shots, "title-library-laptop.png") });
@@ -452,9 +452,12 @@ for (const s of screens.slice(0, 2)) {
     await page.getByRole("tab", { name: /^Season 4,/ }).click();
     const season4 = page.getByRole("list", { name: "Season 4 episodes" });
     await expect(season4.getByRole("listitem")).toHaveCount(16);
-    await expect(season4.getByText("Missing").first()).toBeVisible();
+    await expect(season4.getByText("Wanted").first()).toBeVisible();
+    const big = season4.getByRole("listitem").filter({ hasText: "Big Baby" });
+    await expect(big.getByText("Not found")).toBeVisible();
+    await expect(big.getByText(/nothing found · next try in \d+h/)).toBeVisible();
     await expect(season4.getByText("Downloaded").first()).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Season 4/ })).toContainText("missing");
+    await expect(page.getByRole("button", { name: /^Season 4/ })).toContainText("1 of 16");
     const overview = page.locator(".ts-overview");
     await expect(overview).toBeVisible();
     const ob = (await overview.boundingBox())!;
@@ -477,6 +480,44 @@ for (const s of screens.slice(0, 2)) {
     await page.locator(".ts").evaluate((el) => el.scrollTo(0, el.scrollHeight));
     await page.waitForTimeout(300);
     await page.screenshot({ path: join(shots, `title-series-${s.name}-scrolled.png`) });
+  });
+}
+
+const waits = [
+  { ...screens[0], id: "series-226745", name: "Camp Snoopy", tile: /^Camp Snoopy \(2024\), Wanted$/, state: "wanted", line: /Next search in [23]h/ },
+  { ...screens[1], id: "movie-335984", name: "Blade Runner 2049", tile: /^Blade Runner 2049 \(2017\), Not found$/, state: "not_found", line: /Nothing found · next try in [56]h/ },
+];
+
+for (const w of waits) {
+  test(`a title waiting for its search says so beside its facts, and Search now shows Searching then Nothing found on ${w.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: w.width, height: w.height });
+    await openApp(page);
+    await expect(page.getByRole("list", { name: "Library titles" }).getByRole("button", { name: w.tile })).toBeVisible();
+
+    await page.goto(`/#/title/${w.id}`);
+    await expect(page.getByRole("heading", { name: w.name, level: 1 })).toBeVisible();
+    const line = page.locator(".ts-facts .ts-wait");
+    await expect(line).toHaveAttribute("data-state", w.state);
+    await expect(line).toContainText(w.line);
+    await expect(page.locator(".ts-hist-head")).not.toContainText(/next|Search now/i);
+    await page.screenshot({ path: join(shots, `title-${w.state}-${w.name}.png`) });
+    await noSideScroll(page, w.width);
+
+    const searchNow = page.getByRole("main").getByRole("button", { name: "Search now", exact: true });
+    await expect(searchNow).toHaveCount(1);
+    await searchNow.click();
+    await expect(page.getByRole("status")).toContainText(`Searching for “${w.name}” now.`);
+    await expect(line).toHaveAttribute("data-state", "searching");
+    await expect(line).toContainText("Searching now");
+    await expect(searchNow).toHaveAttribute("aria-disabled", "true");
+    if (w.id.startsWith("series-")) {
+      const eps = page.getByRole("list", { name: /episodes$/ });
+      await expect(eps.getByText("Searching", { exact: true })).toHaveCount(1);
+      await expect(eps.getByText("Wanted", { exact: true })).toHaveCount(1);
+    }
+    await page.screenshot({ path: join(shots, `title-searching-${w.name}.png`) });
+    await expect(line).toHaveAttribute("data-state", "not_found", { timeout: 15_000 });
+    await expect(line).toContainText(/Nothing found · next try in 6h/);
   });
 }
 

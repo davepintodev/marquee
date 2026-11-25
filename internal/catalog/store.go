@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -28,6 +29,10 @@ type Store struct {
 	now           func() time.Time
 	activityKeep  int
 	downloadsKeep int
+
+	runMu   sync.Mutex
+	running map[target]int
+	held    map[target]bool
 }
 
 // FileName is the database file inside the data directory.

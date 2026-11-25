@@ -43,7 +43,8 @@
   "title": "Blade Runner 2049",
   "year": 2017,
   "inLibrary": true,
-  "state": "missing",
+  "state": "not_found",
+  "nextSearchIn": "6h",
   "overview": "A new blade runner unearths a long-buried secret."
  },
  {
@@ -503,7 +504,7 @@
       "number": 2,
       "name": "Big Baby",
       "airDate": "2007-09-10",
-      "state": "missing"
+      "state": "not_found"
      },
      {
       "number": 3,
@@ -1166,6 +1167,7 @@
   "year": 2024,
   "inLibrary": true,
   "overview": "Snoopy and the Beagle Scouts at summer camp.",
+  "nextSearchIn": "3h",
   "seasons": [
    {
     "number": 1,
@@ -1174,13 +1176,13 @@
       "number": 1,
       "name": "Arrival at Camp",
       "airDate": "2024-06-14",
-      "state": "searching"
+      "state": "wanted"
      },
      {
       "number": 2,
       "name": "Campfire Songs",
       "airDate": "2024-06-14",
-      "state": "searching"
+      "state": "wanted"
      }
     ]
    }
@@ -1220,6 +1222,16 @@
     ]
    }
   ]
+ },
+ {
+  "tmdbId": 27205,
+  "kind": "movie",
+  "title": "Inception",
+  "year": 2010,
+  "inLibrary": true,
+  "state": "missing",
+  "unmonitored": true,
+  "overview": "A thief who steals secrets through dreams is offered a way home."
  },
  {
   "tmdbId": 157336,

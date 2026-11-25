@@ -1,11 +1,16 @@
 package catalog
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Badge is a title's or season's state for a tile. Without a download in
-// flight it follows from the catalog alone: a monitored title with no file
-// on disk is "searching" (it is wanted and the scheduler will look for it);
-// one nobody monitors is "missing". A download in flight shows as
+// flight, a monitored title with no file on disk is "wanted" while it waits
+// for its next scheduled search or a Search now request waits its turn,
+// "searching" only while its search runs, and "not_found" once a search
+// found nothing usable; one
+// nobody monitors is "missing". A download in flight shows as
 // "downloading" with its percent, "caching" with TorBox's percent while it
 // fetches an uncached release, or "stalled" when its bytes stand still.
 type Badge struct {
@@ -24,11 +29,21 @@ func downloadingBadge(percent int) *Badge {
 	return &Badge{State: "downloading", Label: fmt.Sprintf("Downloading %d%%", percent), Percent: &percent}
 }
 
-var badgeLabels = map[string]string{"downloaded": "Downloaded", "searching": "Searching", "missing": "Missing", "stalled": "Stalled"}
+var badgeLabels = map[string]string{
+	"downloaded": "Downloaded", "wanted": "Wanted", "searching": "Searching", "not_found": "Not found", "missing": "Missing", "stalled": "Stalled",
+}
 
 func simpleBadge(state string) *Badge { return &Badge{State: state, Label: badgeLabels[state]} }
 
-func movieBadge(monitored, haveFile bool, dl *inFlight) *Badge {
+func movieBadge(monitored, haveFile bool, dl *inFlight, p pending, running bool, now time.Time) (*Badge, time.Time) {
+	if dl == nil && !haveFile && (monitored || running || p.searchNow) {
+		state, next := waitState(p, running, now)
+		return simpleBadge(state), next
+	}
+	return movieDiskBadge(haveFile, dl), time.Time{}
+}
+
+func movieDiskBadge(haveFile bool, dl *inFlight) *Badge {
 	switch {
 	case dl != nil && dl.caching:
 		return cachingBadge(dl.percent)
@@ -38,8 +53,6 @@ func movieBadge(monitored, haveFile bool, dl *inFlight) *Badge {
 		return downloadingBadge(dl.percent)
 	case haveFile:
 		return simpleBadge("downloaded")
-	case monitored:
-		return simpleBadge("searching")
 	}
 	return simpleBadge("missing")
 }
@@ -62,12 +75,14 @@ func transferring(state string) bool {
 }
 
 // groupBadge summarises the monitored, aired episodes and any episode being
-// downloaded, whatever its monitoring. It is nil when there are none, so
-// callers fall back to what is on disk. A download in flight outranks one
-// TorBox is still caching, which outranks a stalled one, which outranks a gap.
+// downloaded or searched, whatever its monitoring. It is nil when there are
+// none, so callers fall back to what is on disk. A download in flight
+// outranks one TorBox is still caching, which outranks a stalled one, which
+// outranks a search running, which outranks a gap. Gaps say "not_found" only
+// when every one of them found nothing.
 func groupBadge(eps []epView) *Badge {
-	var have, gaps, total int
-	var downloading, stalled, caching bool
+	var have, gaps, nothing, total int
+	var downloading, stalled, caching, searching bool
 	percent, cachePercent := 0, 0
 	gapSeason := 0
 	gapsIn := map[int]int{}
@@ -90,13 +105,24 @@ func groupBadge(eps []epView) *Badge {
 			}
 			continue
 		}
-		if !e.monitored || e.state == "unaired" {
+		if e.state == "searching" {
+			searching = true
+			if !e.monitored {
+				total++
+				continue
+			}
+		}
+		asked := e.state == "wanted" || e.state == "not_found"
+		if (!e.monitored && !asked) || e.state == "unaired" {
 			continue
 		}
 		total++
 		if e.state == "downloaded" {
 			have++
 			continue
+		}
+		if e.state == "not_found" {
+			nothing++
 		}
 		gaps++
 		gapSeason = e.season
@@ -111,11 +137,15 @@ func groupBadge(eps []epView) *Badge {
 		return cachingBadge(cachePercent)
 	case stalled:
 		return simpleBadge("stalled")
+	case searching:
+		return simpleBadge("searching")
 	case have > 0 && gaps > 0:
 		n := gapsIn[gapSeason]
 		return &Badge{State: "partial_season", Label: fmt.Sprintf("Season %d · %d missing", gapSeason, n), Season: &gapSeason, MissingCount: &n}
+	case gaps > 0 && nothing == gaps:
+		return simpleBadge("not_found")
 	case gaps > 0:
-		return simpleBadge("searching")
+		return simpleBadge("wanted")
 	}
 	return simpleBadge("downloaded")
 }

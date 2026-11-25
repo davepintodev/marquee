@@ -86,8 +86,11 @@ type Episode struct {
 	Name      string
 	AirDate   string
 	Monitored bool
-	State     string // downloaded, searching, caching, downloading, stalled, missing or unaired
+	State     string // downloaded, wanted, searching, not_found, caching, downloading, stalled, missing or unaired
 	Percent   *int   // set while caching or downloading
+	// NextSearchAt is when the scheduler searches for it next; zero unless
+	// it is wanted or found nothing.
+	NextSearchAt time.Time
 	// Shared lists, in order, the ids of every episode that shares this
 	// episode's file, itself included; it is empty unless the file holds
 	// more than one episode.
@@ -113,6 +116,9 @@ type Title struct {
 	Profile   string // empty when the title uses its kind's default
 	Seasons   []Season
 	Badge     *Badge
+	// NextSearchAt is the soonest next search of the movie or an episode;
+	// zero when nothing waits for one.
+	NextSearchAt time.Time
 }
 
 // TitleID is the id of a TMDB title in the API and the database.
@@ -177,17 +183,40 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 	if err != nil {
 		return nil, err
 	}
+	now := s.now()
+	sched, err := s.schedules(ctx, q, where, args, now)
+	if err != nil {
+		return nil, err
+	}
 
-	today := s.now().UTC().Format(time.DateOnly)
+	today := now.UTC().Format(time.DateOnly)
 	for i := range titles {
 		t := &titles[i]
 		if t.Kind == "movie" {
-			t.Badge = movieBadge(t.Monitored, have[t.ID], flying[target{t.ID, 0, 0}])
+			k := target{t.ID, 0, 0}
+			t.Badge, t.NextSearchAt = movieBadge(t.Monitored, have[t.ID], flying[k], sched[k], s.isRunning(k), now)
 			continue
 		}
-		t.Seasons, t.Badge = buildSeasons(eps[t.ID], today, func(season, number int) *inFlight { return flying[target{t.ID, season, number}] })
+		t.Seasons, t.Badge = buildSeasons(eps[t.ID], today, func(season, number int) episodeInfo {
+			k := target{t.ID, season, number}
+			return episodeInfo{flying[k], sched[k], s.isRunning(k), now}
+		})
+		for _, se := range t.Seasons {
+			for _, e := range se.Episodes {
+				if !e.NextSearchAt.IsZero() && (t.NextSearchAt.IsZero() || e.NextSearchAt.Before(t.NextSearchAt)) {
+					t.NextSearchAt = e.NextSearchAt
+				}
+			}
+		}
 	}
 	return titles, nil
+}
+
+type episodeInfo struct {
+	dl      *inFlight
+	sched   pending
+	running bool
+	now     time.Time
 }
 
 type target struct {
@@ -494,7 +523,7 @@ type epRow struct {
 	monitored, haveFile bool
 }
 
-func buildSeasons(rows []epRow, today string, flying func(season, number int) *inFlight) ([]Season, *Badge) {
+func buildSeasons(rows []epRow, today string, info func(season, number int) episodeInfo) ([]Season, *Badge) {
 	sharing := map[string][]string{}
 	for _, r := range rows {
 		if r.haveFile && r.path != "" {
@@ -509,9 +538,11 @@ func buildSeasons(rows []epRow, today string, flying func(season, number int) *i
 		if _, ok := eps[r.season]; !ok {
 			numbers = append(numbers, r.season)
 		}
-		state := episodeState(r, today)
+		in := info(r.season, r.number)
+		state, next := episodeState(r, today, in)
 		percent := 0
-		if dl := flying(r.season, r.number); dl != nil {
+		if dl := in.dl; dl != nil {
+			next = time.Time{}
 			state, percent = "downloading", dl.percent
 			switch {
 			case dl.caching:
@@ -520,7 +551,7 @@ func buildSeasons(rows []epRow, today string, flying func(season, number int) *i
 				state = "stalled"
 			}
 		}
-		ep := Episode{Number: r.number, Name: r.name, AirDate: r.airDate, Monitored: r.monitored, State: state}
+		ep := Episode{Number: r.number, Name: r.name, AirDate: r.airDate, Monitored: r.monitored, State: state, NextSearchAt: next}
 		if ids := sharing[r.path]; r.haveFile && r.path != "" && len(ids) > 1 {
 			ep.Shared = ids
 		}
@@ -543,14 +574,18 @@ func buildSeasons(rows []epRow, today string, flying func(season, number int) *i
 	return seasons, unmonitoredBadge(all)
 }
 
-func episodeState(r epRow, today string) string {
+// episodeState also answers when the episode is next searched. Specials
+// (season 0) are never searched, so they wait without a time.
+func episodeState(r epRow, today string, in episodeInfo) (string, time.Time) {
 	switch {
 	case r.haveFile:
-		return "downloaded"
+		return "downloaded", time.Time{}
 	case r.airDate > today:
-		return "unaired"
-	case r.monitored:
-		return "searching"
+		return "unaired", time.Time{}
+	case r.season == 0 && r.monitored:
+		return "wanted", time.Time{}
+	case r.season > 0 && (r.monitored || in.running || in.sched.searchNow):
+		return waitState(in.sched, in.running, in.now)
 	}
-	return "missing"
+	return "missing", time.Time{}
 }

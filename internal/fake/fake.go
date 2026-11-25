@@ -31,6 +31,10 @@ type Options struct {
 	// that are not cached are candidates after the cached ones and can be
 	// grabbed, and such a grab shows as caching before it downloads.
 	TorBox bool
+	// SearchFor is how long a search started by Search now or a retry shows
+	// as searching before it ends having found nothing. Search now on a
+	// series searches its episodes one after another, each for SearchFor.
+	SearchFor time.Duration
 }
 
 type episode struct {
@@ -40,8 +44,10 @@ type episode struct {
 	State   string `json:"state"`
 	// File names the video file a downloaded episode is in; episodes of one
 	// season that name the same file share it.
-	File      string `json:"file"`
-	monitored bool
+	File        string `json:"file"`
+	monitored   bool
+	searchAt    time.Time
+	searchUntil time.Time
 }
 
 type season struct {
@@ -60,10 +66,12 @@ type entry struct {
 	Seasons   []*season `json:"seasons"`
 
 	NextSearchIn string `json:"nextSearchIn"`
+	Unmonitored  bool   `json:"unmonitored"`
 
-	monitored  bool
-	profile    string
-	nextSearch time.Time
+	monitored   bool
+	profile     string
+	nextSearch  time.Time
+	searchUntil time.Time
 }
 
 func (e *entry) id() string { return fmt.Sprintf("%s-%d", e.Kind, e.TmdbID) }
@@ -150,6 +158,9 @@ func New(opts Options) *Fake {
 	if opts.Step <= 0 {
 		opts.Step = 1
 	}
+	if opts.SearchFor <= 0 {
+		opts.SearchFor = 4 * time.Second
+	}
 	f := &Fake{
 		opts: opts, subs: map[chan event]struct{}{},
 		stop: make(chan struct{}), done: make(chan struct{}),
@@ -164,11 +175,14 @@ func New(opts Options) *Fake {
 		f.health = withTorBoxCheck(f.health)
 	}
 	for _, t := range f.titles {
-		t.monitored = t.InLibrary
+		t.monitored = t.InLibrary && !t.Unmonitored
 		t.nextSearch = time.Now().Add(parseIn(t.NextSearchIn))
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
 				e.monitored = true
+				if t.InLibrary && e.State == "missing" {
+					e.State = "wanted"
+				}
 			}
 		}
 	}
@@ -348,6 +362,57 @@ func (f *Fake) advance() {
 	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return slices.Contains(finished, d) })
 	for _, d := range finished {
 		f.finish(d)
+	}
+	f.endSearches()
+}
+
+func (f *Fake) endSearches() {
+	now := time.Now()
+	for _, t := range f.titles {
+		ended := endSearch(&t.searchUntil, now)
+		for _, s := range t.Seasons {
+			for _, e := range s.Episodes {
+				if endSearch(&e.searchUntil, now) {
+					e.searchAt, ended = time.Time{}, true
+				}
+			}
+		}
+		if ended {
+			f.emitTitle(t)
+		}
+	}
+}
+
+func endSearch(until *time.Time, now time.Time) bool {
+	if until.IsZero() || now.Before(*until) {
+		return false
+	}
+	*until = time.Time{}
+	return true
+}
+
+func running(at, until time.Time) bool {
+	now := time.Now()
+	return !until.IsZero() && !now.Before(at) && now.Before(until)
+}
+
+func queued(e *episode) bool { return time.Now().Before(e.searchAt) }
+
+// startSearch searches a movie now, or an episode from at, as the scheduler
+// takes one search at a time.
+func (f *Fake) startSearch(t *entry, e *episode, at time.Time) {
+	until := at.Add(f.opts.SearchFor)
+	t.nextSearch = time.Now().Add(defaultNextSearch)
+	if e == nil {
+		t.searchUntil = until
+		if t.State != "downloaded" && t.monitored {
+			t.State = "not_found"
+		}
+		return
+	}
+	e.searchAt, e.searchUntil = at, until
+	if e.monitored && waiting(e.State) {
+		e.State = "not_found"
 	}
 }
 

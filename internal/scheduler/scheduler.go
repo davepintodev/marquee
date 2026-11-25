@@ -268,6 +268,7 @@ func (s *Scheduler) torboxFull(ctx context.Context) (bool, error) {
 	}
 	if n < s.torbox {
 		clear(s.deferred)
+		s.cat.ReleaseHolds()
 		return false, nil
 	}
 	return true, nil
@@ -297,6 +298,7 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 		return
 	}
 	s.lastSearch = now
+	defer s.cat.Searching(t.TitleID, t.Season, t.Number)()
 	streams, err := s.src.Search(ctx, t.Kind, id)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -371,6 +373,7 @@ func (s *Scheduler) noRoomOnTorBox(ctx context.Context) bool {
 // that was spent, so the budget is given back.
 func (s *Scheduler) deferTarget(ctx context.Context, t catalog.Target, now time.Time) {
 	s.deferred[slot{t.TitleID, t.Season, t.Number}] = true
+	s.cat.Hold(t.TitleID, t.Season, t.Number)
 	if !t.Forced && !t.FollowUp {
 		s.ignoreGone(s.cat.RefundSearch(ctx, t.TitleID, t.Season, t.Number, now.UTC().Format(time.DateOnly)))
 	}
@@ -435,6 +438,9 @@ func (s *Scheduler) grab(ctx context.Context, now time.Time, t catalog.Target, c
 		s.ignoreGone(s.cat.SetSchedule(ctx, t, catalog.Schedule{Attempts: t.Attempts, FollowUp: true, ClearForced: t.Forced}))
 	case errors.Is(err, pipeline.ErrBadJob):
 		s.log.Warn("a title changed under a search", "title", t.TitleID)
+		if t.Forced {
+			s.ignoreGone(s.cat.SetSchedule(ctx, t, catalog.Schedule{Attempts: t.Attempts, NextAt: t.NextAt, FollowUp: t.FollowUp, ClearForced: true}))
+		}
 	default:
 		if ctx.Err() == nil {
 			s.log.Error("cannot queue a download", "title", t.TitleID, "err", err)

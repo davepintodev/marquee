@@ -91,7 +91,7 @@ func TestASeriesBadgesFollowAnEpisodeDownload(t *testing.T) {
 	if _, ok := ep["percent"]; !ok {
 		t.Errorf("a downloading episode has a percent: %v", ep)
 	}
-	if other := season["episodes"].([]any)[1].(map[string]any); other["state"] != "searching" {
+	if other := season["episodes"].([]any)[1].(map[string]any); other["state"] != "wanted" {
 		t.Errorf("the other aired episode keeps its state: %v", other)
 	}
 
@@ -264,18 +264,18 @@ func TestTheEventStreamNamesTheEpisodeAndReportsATitleAddedAndRemoved(t *testing
 	}
 
 	r.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":7}`, 201)
-	s.next("the added title", isTitle("movie-7", "searching"))
+	s.next("the added title", isTitle("movie-7", "wanted"))
 	r.mustCall("DELETE", "/api/titles/movie-7", "", 204)
 	s.next("the removed title", isTitle("movie-7", ""))
 }
 
-func TestAFailedDownloadReachesTheStreamAsTheTitleGoingBackToSearching(t *testing.T) {
+func TestAFailedDownloadReachesTheStreamAsTheTitleWantedAgain(t *testing.T) {
 	r, _ := setup(t)
 	s := r.openStream()
 	r.enqueue(movieJob(r.cdn.Add("stuck.mkv", debridfake.File{Data: debridfake.MKV(400 << 10), StallAt: 100 << 10}), "stuck.mkv"))
-	// The title goes searching, downloading, then back to searching with the failure in its history.
+	// The title goes wanted, downloading, then wanted again with the failure in its history.
 	s.next("the download", isTitle("movie-438631", "downloading"))
-	s.next("the title back to searching", isTitle("movie-438631", "searching"))
+	s.next("the title wanted again", isTitle("movie-438631", "wanted"))
 }
 
 func TestOpenStreamsDoNotHoldUpShutdown(t *testing.T) {

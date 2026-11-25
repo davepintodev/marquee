@@ -353,6 +353,7 @@ button {
 }
 
 .meter[data-state="stalled"] i,
+.meter[data-state="not_found"] i,
 .meter[data-state="partial_season"] i {
   background: var(--warn);
 }
@@ -439,6 +440,7 @@ button {
   background: var(--info);
 }
 .state-line.badge-stalled i,
+.state-line.badge-not_found i,
 .state-line.badge-partial_season i {
   background: var(--warn);
 }
@@ -2338,6 +2340,11 @@ button:where(.fold-btn):focus-visible {
   background: var(--info);
   opacity: 1;
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+.next[data-state="not_found"] .next-bar i {
+  background: var(--warn);
+  opacity: 1;
 }
 
 .next-name {

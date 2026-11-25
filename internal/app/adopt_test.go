@@ -213,9 +213,9 @@ func TestAnAdoptedSeriesMonitorsOnlyMissingEpisodesOfSeasonsOnDiskAndFutureOnes(
 		state     string
 	}{
 		"s01e01": {false, "missing"}, "s01e02": {false, "missing"}, "s01e03": {false, "missing"},
-		"s02e01": {true, "downloaded"}, "s02e02": {true, "downloaded"}, "s02e03": {true, "searching"},
+		"s02e01": {true, "downloaded"}, "s02e02": {true, "downloaded"}, "s02e03": {true, "wanted"},
 		"s03e01": {true, "downloaded"}, "s03e02": {true, "downloaded"}, "s03e03": {true, "downloaded"},
-		"s04e01": {true, "downloaded"}, "s04e02": {true, "searching"}, "s04e03": {true, "searching"},
+		"s04e01": {true, "downloaded"}, "s04e02": {true, "wanted"}, "s04e03": {true, "wanted"},
 		"s05e01": {false, "missing"}, "s05e02": {false, "missing"}, "s05e03": {true, "unaired"},
 	} {
 		got, ok := s.episodes("series-1622")[id]
@@ -249,7 +249,7 @@ func TestASeasonFolderThatIsASymlinkHasItsEpisodesAdoptedAsOwned(t *testing.T) {
 		state     string
 	}{
 		"s02e01": {true, "downloaded"},
-		"s04e01": {true, "downloaded"}, "s04e02": {true, "downloaded"}, "s04e03": {true, "searching"},
+		"s04e01": {true, "downloaded"}, "s04e02": {true, "downloaded"}, "s04e03": {true, "wanted"},
 	} {
 		got, ok := s.episodes("series-1622")[id]
 		if !ok || got["monitored"] != want.monitored || got["state"] != want.state {
@@ -315,7 +315,7 @@ func TestAFileWithoutAnEpisodeTokenIsListedAndOtherwiseIgnored(t *testing.T) {
 			t.Errorf("%s = %+v (listed %v)", path, p, ok)
 		}
 	}
-	if e := s.episodes("series-1622"); e["s04e01"]["state"] != "downloaded" || e["s04e02"]["state"] != "searching" {
+	if e := s.episodes("series-1622"); e["s04e01"]["state"] != "downloaded" || e["s04e02"]["state"] != "wanted" {
 		t.Errorf("the series is adopted from the video files that parse, and a sidecar owns nothing: %v", e["s04e02"])
 	}
 }
@@ -344,7 +344,7 @@ func TestAMovieFolderWithNoVideoIsAdoptedAsWanted(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := s.mustCall("GET", "/api/titles/movie-329865", "", 200)
-	if v["monitored"] != true || v["badge"].(map[string]any)["state"] != "searching" {
+	if v["monitored"] != true || v["badge"].(map[string]any)["state"] != "wanted" {
 		t.Errorf("a folder with no video is a wanted movie: %v", v)
 	}
 }

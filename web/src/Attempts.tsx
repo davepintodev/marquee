@@ -28,7 +28,7 @@ export function Attempts({ title }: { title: Title }) {
     return () => document.removeEventListener("pointerdown", away);
   }, [open]);
 
-  if (failed.length === 0 && !next) return null;
+  if (failed.length === 0) return null;
   const summary = title.historySummary || (next ? `Next search in ${inHours(next)}.` : "");
 
   const onFocus = (e: FocusEvent) => {
@@ -55,7 +55,6 @@ export function Attempts({ title }: { title: Title }) {
         setDismissed(false);
       }}
     >
-      {next && <span className="ts-att-next">{`next try in ${inHours(next)}`}</span>}
       <button type="button" className="ts-att-info" aria-label="About these attempts" aria-expanded={open} aria-controls={tip} onClick={() => {
           setDismissed(false);
           setOpen(!open);

@@ -446,11 +446,11 @@ func TestAddHonoursTheMonitorChoice(t *testing.T) {
 		title     bool
 		badge     string
 	}{
-		{"", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
-		{"all", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
+		{"", []string{"s01e01", "s01e02", "s01e03"}, true, "wanted"},
+		{"all", []string{"s01e01", "s01e02", "s01e03"}, true, "wanted"},
 		{"future", []string{"s01e03"}, true, "missing"},
-		{"first_season", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
-		{"latest_season", []string{"s01e01", "s01e02", "s01e03"}, true, "searching"},
+		{"first_season", []string{"s01e01", "s01e02", "s01e03"}, true, "wanted"},
+		{"latest_season", []string{"s01e01", "s01e02", "s01e03"}, true, "wanted"},
 		{"none", nil, false, "missing"},
 	}
 	for _, c := range cases {
@@ -582,8 +582,11 @@ func TestTheLibraryListsTheSearchingEpisodesOfEachSeries(t *testing.T) {
 	if want := []any{"s01e01", "s01e02"}; !reflect.DeepEqual(got["series-226745"], want) {
 		t.Errorf("a series waiting on every episode: %v, want %v", got["series-226745"], want)
 	}
-	if got["series-1408"] != nil || got["movie-693134"] != nil {
-		t.Errorf("a title with nothing to search for omits the field: %v %v", got["series-1408"], got["movie-693134"])
+	if got["movie-693134"] != nil {
+		t.Errorf("a movie omits the field: %v", got["movie-693134"])
+	}
+	if eps, _ := got["series-1408"].([]any); len(eps) == 0 || eps[0] != "s04e02" {
+		t.Errorf("episodes that found nothing still wait for a release: %v", got["series-1408"])
 	}
 
 	exchange(t, srv, router, "PATCH", "/api/titles/series-226745/episodes/s01e01", `{"monitored":false}`, 200)
@@ -751,4 +754,114 @@ func TestWithoutTorBoxAnUncachedReleaseStaysDroppedAndOffHealth(t *testing.T) {
 		}
 	}
 	exchange(t, srv, router, "POST", "/api/titles/movie-335984/releases/rel-movie-3/grab", "", 409)
+}
+
+func TestSearchNowShowsSearchingThenNothingFoundWithTheNextTry(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, SearchFor: 50 * time.Millisecond})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+	state := func(v map[string]any) any { return v["badge"].(map[string]any)["state"] }
+
+	camp := exchange(t, srv, router, "GET", "/api/titles/series-226745", "", 200)
+	if state(camp) != "wanted" || camp["nextSearchAt"] == nil {
+		t.Errorf("a series waiting for its next search: %v %v", camp["badge"], camp["nextSearchAt"])
+	}
+	blade := exchange(t, srv, router, "GET", "/api/titles/movie-335984", "", 200)
+	if state(blade) != "not_found" || blade["nextSearchAt"] == nil {
+		t.Errorf("a movie whose search found nothing: %v %v", blade["badge"], blade["nextSearchAt"])
+	}
+
+	blade = exchange(t, srv, router, "POST", "/api/titles/movie-335984/search", "", 200)
+	if state(blade) != "searching" || blade["nextSearchAt"] != nil {
+		t.Errorf("Search now: %v %v", blade["badge"], blade["nextSearchAt"])
+	}
+	camp = exchange(t, srv, router, "POST", "/api/titles/series-226745/episodes/s01e02/search", "", 200)
+	eps := camp["seasons"].([]any)[0].(map[string]any)["episodes"].([]any)
+	if e := eps[1].(map[string]any); e["state"] != "searching" || state(camp) != "searching" {
+		t.Errorf("Search now on an episode: %v, title %v", e, camp["badge"])
+	}
+	if e := eps[0].(map[string]any); e["state"] != "wanted" {
+		t.Errorf("the other episode is left alone: %v", e)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		blade = exchange(t, srv, router, "GET", "/api/titles/movie-335984", "", 200)
+		if state(blade) != "searching" || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	next, _ := blade["nextSearchAt"].(string)
+	if at, err := time.Parse(time.RFC3339, next); state(blade) != "not_found" || err != nil || time.Until(at) < 5*time.Hour {
+		t.Errorf("the search ends having found nothing, next try in hours: %v %v", blade["badge"], blade["nextSearchAt"])
+	}
+	after := episodes(exchange(t, srv, router, "GET", "/api/titles/series-226745", "", 200))
+	if after[1]["state"] != "not_found" {
+		t.Errorf("the episode's search ends having found nothing: %v", after[1])
+	}
+}
+
+func episodes(title map[string]any) []map[string]any {
+	var out []map[string]any
+	for _, s := range title["seasons"].([]any) {
+		for _, e := range s.(map[string]any)["episodes"].([]any) {
+			out = append(out, e.(map[string]any))
+		}
+	}
+	return out
+}
+
+func TestSearchNowOnASeriesWithNothingMonitoredSearchesEveryAiredEpisode(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: time.Hour, SearchFor: time.Hour})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+
+	exchange(t, srv, router, "PATCH", "/api/titles/series-226745", `{"monitored":false}`, 200)
+	camp := exchange(t, srv, router, "POST", "/api/titles/series-226745/search", "", 200)
+	if got := states(camp); !reflect.DeepEqual(got, []any{"searching", "wanted"}) {
+		t.Errorf("as the real service does, every aired episode is queued when none is monitored, one searched at a time: %v", got)
+	}
+}
+
+func states(title map[string]any) []any {
+	var out []any
+	for _, e := range episodes(title) {
+		out = append(out, e["state"])
+	}
+	return out
+}
+
+func TestSearchNowOnASeriesSearchesOneEpisodeAtATimeAndTheRestReadWanted(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, SearchFor: 150 * time.Millisecond})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+	state := func(v map[string]any) any { return v["badge"].(map[string]any)["state"] }
+
+	camp := exchange(t, srv, router, "POST", "/api/titles/series-226745/search", "", 200)
+	if got := states(camp); !reflect.DeepEqual(got, []any{"searching", "wanted"}) || state(camp) != "searching" {
+		t.Errorf("Search now on a series: episodes %v, title %v", got, camp["badge"])
+	}
+	queued := episodes(camp)[1]
+	next, _ := queued["nextSearchAt"].(string)
+	if at, err := time.Parse(time.RFC3339Nano, next); err != nil || time.Until(at) > time.Minute {
+		t.Errorf("a queued episode is due shortly: %v", queued["nextSearchAt"])
+	}
+
+	seen := map[string]bool{}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		got := states(exchange(t, srv, router, "GET", "/api/titles/series-226745", "", 200))
+		seen[fmt.Sprint(got)] = true
+		if reflect.DeepEqual(got, []any{"not_found", "not_found"}) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !seen["[not_found searching]"] || !seen["[not_found not_found]"] || seen["[searching searching]"] {
+		t.Errorf("the second episode searches after the first, never both at once: %v", seen)
+	}
 }

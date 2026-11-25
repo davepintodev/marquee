@@ -2,6 +2,7 @@ import type { Title } from "./api/types";
 import { Attempts } from "./Attempts";
 import { IconCheck } from "./icons";
 import { totalsOf } from "./episodes";
+import { waitLine, waitOf } from "./words";
 
 function figures(t: Title) {
   const c = totalsOf(t);
@@ -20,12 +21,24 @@ export function Have({ title }: { title: Title }) {
       </p>
     );
   }
-  if (!title.badge) return null;
+  if (!title.badge || waitOf(title)) return null;
   return (
     <p className="ts-have" data-state={title.badge.state}>
       {title.badge.state === "downloaded" && <IconCheck />}
       <b>{title.badge.label}</b>
     </p>
+  );
+}
+
+export function Wait({ title }: { title: Title }) {
+  const state = waitOf(title);
+  const line = state && waitLine(state, title.nextSearchAt);
+  if (!line) return null;
+  return (
+    <span className="ts-wait" data-state={state}>
+      <i aria-hidden="true" />
+      {line}
+    </span>
   );
 }
 

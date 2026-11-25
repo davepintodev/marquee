@@ -11,7 +11,7 @@ import { IconBookmark, IconButton, IconChevron, IconSearch } from "./icons";
 import { Say, Sk, TitleSkeleton } from "./Skeleton";
 import { ErrorState } from "./State";
 import { MonitorMark } from "./MonitorMark";
-import { ProgressLine } from "./Progress";
+import { ProgressLine, Wait } from "./Progress";
 import { ProfilePicker, defaultProfile } from "./ProfilePicker";
 import { ReleaseList } from "./ReleaseList";
 import { BackBar, Collapse, RemoveBlock } from "./TitleParts";
@@ -19,7 +19,7 @@ import { useEscape } from "./useEscape";
 import { useProfiles } from "./useProfiles";
 import { useTitleScreen } from "./useTitleScreen";
 import { WrongFile } from "./WrongFile";
-import { inHours, stateLabel, titleRescanSummary } from "./words";
+import { stateLabel, titleRescanSummary, waitLine, waitOf } from "./words";
 import "./icons.css";
 import "./title-screen.css";
 import "./title-details.css";
@@ -163,6 +163,8 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
   const retry = (h: HistoryEntry) => run(h.id, () => api.retry(h.id), `Searching for “${t.title}” again.`);
   const monitored = t.monitored !== false;
   const movieHasFile = !isSeries && t.badge?.state === "downloaded";
+  const searchNow = () => run("search", () => api.searchNow(t.id), `Searching for “${t.title}” now.`);
+  const searching = waitOf(t) === "searching";
 
   const wrongFile = async (episode: Episode | undefined, reSearch: boolean) => {
     const what = episode ? `${codeOf(chosen?.number ?? 0, episode.number)} ${episode.name}` : `“${t.title}”`;
@@ -195,6 +197,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
             <p className="ts-facts">
               {factsOf(t)}
               {inLib && !monitored && <span className="tag">Not monitored</span>}
+              {inLib && <Wait title={t} />}
             </p>
             <Ratings about={about} />
             {t.overview && <p className="ts-overview">{t.overview}</p>}
@@ -202,9 +205,15 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
             <div className="ts-actions">
               {inLib ? (
                 <>
-                  <button type="button" className="btn-primary with-icon" aria-disabled={busy === "search"} onClick={() => run("search", () => api.searchNow(t.id), `Searching for “${t.title}” now.`)}>
+                  <button
+                    type="button"
+                    className="btn-primary with-icon"
+                    aria-disabled={busy === "search" || searching}
+                    aria-busy={busy === "search"}
+                    onClick={() => busy !== "search" && !searching && searchNow()}
+                  >
                     {busy === "search" ? <Sk shape="dot" /> : <IconSearch />}
-                    Search automatically
+                    Search now
                   </button>
                   <IconButton
                     label={monitored ? "Monitored. Stop monitoring this title" : "Not monitored. Start monitoring this title"}
@@ -398,6 +407,7 @@ function EpisodeRow({
   const downloading = e.state === "downloading" || e.state === "caching";
   const panel = `ts-panel-${e.id}`;
   const word = stateLabel(e);
+  const wait = e.monitored && (e.state === "wanted" || e.state === "not_found") ? waitLine(e.state, e.nextSearchAt) : null;
   const busyLabel = e.state === "caching" ? "Caching now" : downloading ? "Downloading now" : null;
   return (
     <li className="ts-ep" data-open={expanded} data-off={!e.monitored} data-done={done} data-state={e.state}>
@@ -427,7 +437,7 @@ function EpisodeRow({
             </span>
             <small>
               {dateOf(e.airDate)}
-              {e.nextSearchAt && e.monitored && ` · next search in ${inHours(e.nextSearchAt)}`}
+              {wait && ` · ${wait.charAt(0).toLowerCase()}${wait.slice(1)}`}
             </small>
           </span>
           <span className="ts-ep-end">

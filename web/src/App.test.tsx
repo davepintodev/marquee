@@ -553,7 +553,7 @@ test("Add & monitor adds the title, confirms with a toast and the page becomes t
 
   expect((await screen.findByRole("status")).textContent).toMatch(/added.*dune/i);
   expect(writes).toEqual([{ method: "POST", path: "/api/titles", body: { kind: "movie", tmdbId: 1 } }]);
-  expect(page().getByRole("button", { name: "Search automatically" })).toBeTruthy();
+  expect(page().getByRole("button", { name: "Search now" })).toBeTruthy();
   expect(page().queryByRole("button", { name: "Add & monitor" })).toBeNull();
   expect(page().getByRole("group", { name: "Remove from marquee" })).toBeTruthy();
 });
@@ -576,11 +576,11 @@ test("pressing Add & monitor twice quickly sends one request", async () => {
   fireEvent.click(add);
   release();
 
-  await page().findByRole("button", { name: "Search automatically" });
+  await page().findByRole("button", { name: "Search now" });
   expect(writes).toHaveLength(1);
 });
 
-test("a title already in the library opens with Search automatically, which searches it", async () => {
+test("a title already in the library opens with Search now, which searches it", async () => {
   const { writes } = setup(
     pageApi((url, init) => {
       if (init.method === "POST" && url.pathname === "/api/titles/series-2/search") return json(houseOut);
@@ -592,13 +592,13 @@ test("a title already in the library opens with Search automatically, which sear
   await openTile(/^House \(2004\)/);
   await screen.findByRole("heading", { name: "House", level: 1 });
   expect(page().queryByRole("button", { name: "Add & monitor" })).toBeNull();
-  fireEvent.click(page().getByRole("button", { name: "Search automatically" }));
+  fireEvent.click(page().getByRole("button", { name: "Search now" }));
 
   expect((await screen.findByRole("status")).textContent).toMatch(/searching.*house/i);
   expect(writes).toEqual([{ method: "POST", path: "/api/titles/series-2/search", body: undefined }]);
 });
 
-test("Search automatically on a Missing library title moves its tile badge to Searching once the page is left", async () => {
+test("Search now on a Missing library title moves its tile badge to Searching once the page is left", async () => {
   const missing = { ...house, badge: { state: "missing" as const, label: "Missing" } };
   const searching = { ...missing, badge: { state: "searching" as const, label: "Searching" }, seasons: [], historySummary: "Nothing tried yet." };
   setup((url, init) => {
@@ -610,7 +610,7 @@ test("Search automatically on a Missing library title moves its tile badge to Se
   await openTile(/^House \(2004\), Missing/);
   await screen.findByRole("heading", { name: "House", level: 1 });
 
-  fireEvent.click(page().getByRole("button", { name: "Search automatically" }));
+  fireEvent.click(page().getByRole("button", { name: "Search now" }));
   await screen.findByRole("status");
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
@@ -629,7 +629,7 @@ test("a failed add shows the API's message on the page and can be tried again", 
   expect(screen.queryByRole("status")).toBeNull();
   up = true;
   fireEvent.click(page().getByRole("button", { name: "Add & monitor" }));
-  await page().findByRole("button", { name: "Search automatically" });
+  await page().findByRole("button", { name: "Search now" });
   expect(page().queryByRole("alert")).toBeNull();
 });
 
@@ -647,14 +647,14 @@ test("an added title reads as in the library on its tile and when its page is re
   );
   await openTile(/^Dune \(2021\)/);
   fireEvent.click(await page().findByRole("button", { name: "Add & monitor" }));
-  await page().findByRole("button", { name: "Search automatically" });
+  await page().findByRole("button", { name: "Search now" });
 
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
   await waitFor(() => expect(screen.queryByRole("main")).toBeNull());
   const tile = screen.getAllByRole("button", { name: /^Dune \(2021\), Searching/ })[0];
   fireEvent.click(tile);
-  expect(await page().findByRole("button", { name: "Search automatically" })).toBeTruthy();
+  expect(await page().findByRole("button", { name: "Search now" })).toBeTruthy();
 });
 
 test("Esc closes the page first and keeps the search", async () => {

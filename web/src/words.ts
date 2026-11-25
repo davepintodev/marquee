@@ -20,8 +20,12 @@ export function stateLabel(e: Pick<Episode, "state"> & { percent?: number }) {
   switch (e.state) {
     case "downloaded":
       return "Downloaded";
+    case "wanted":
+      return "Wanted";
     case "searching":
       return "Searching";
+    case "not_found":
+      return "Not found";
     case "caching":
       return `Caching ${e.percent ?? 0}%`;
     case "downloading":
@@ -45,6 +49,29 @@ export function inHours(iso: string, now = new Date()) {
   if (ms <= 0) return "moments";
   if (ms >= 3600_000) return `${Math.floor((ms + 1800_000) / 3600_000)}h`;
   return `${Math.max(1, Math.floor((ms + 30_000) / 60_000))}m`;
+}
+
+export type WaitState = "wanted" | "searching" | "not_found";
+
+const SOON_MS = 60_000;
+
+export function waitLine(state: WaitState, next?: string | null, now = new Date()) {
+  if (state === "searching") return "Searching now";
+  if (!next) return state === "not_found" ? "Nothing found" : null;
+  const soon = new Date(next).getTime() - now.getTime() < SOON_MS;
+  if (state === "wanted") return soon ? "Next search shortly" : `Next search in ${inHours(next, now)}`;
+  return soon ? "Nothing found · trying again shortly" : `Nothing found · next try in ${inHours(next, now)}`;
+}
+
+export const isWait = (s: string | undefined): s is WaitState => s === "wanted" || s === "searching" || s === "not_found";
+
+export function waitOf(t: Pick<Title, "kind" | "badge" | "seasons">): WaitState | null {
+  if (t.kind === "movie") return isWait(t.badge?.state) ? t.badge.state : null;
+  const eps = t.seasons.flatMap((s) => s.episodes);
+  if (eps.some((e) => e.state === "searching")) return "searching";
+  const gaps = eps.filter((e) => e.monitored && isWait(e.state));
+  if (gaps.length === 0) return null;
+  return gaps.every((e) => e.state === "not_found") ? "not_found" : "wanted";
 }
 
 export function ago(iso: string, now = new Date()) {

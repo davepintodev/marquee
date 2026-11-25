@@ -26,7 +26,7 @@ export const house = (over: Partial<Title> = {}): Title => ({
       badge: { state: "partial_season", label: "Season 4 · 2 missing", season: 4, missingCount: 2 },
       episodes: [
         { id: "s04e01", number: 1, name: "Alone", airDate: "2007-09-25", monitored: true, state: "downloaded" },
-        { id: "s04e02", number: 2, name: "Big Baby", airDate: "2007-10-02", monitored: true, state: "missing", nextSearchAt: "2026-11-18T18:00:00Z" },
+        { id: "s04e02", number: 2, name: "Big Baby", airDate: "2007-10-02", monitored: true, state: "not_found", nextSearchAt: "2026-11-18T18:00:00Z" },
         { id: "s04e03", number: 3, name: "You Don't Want to Know", airDate: "2007-10-09", monitored: true, state: "downloading", percent: 40 },
         { id: "s04e04", number: 4, name: "Sex Kills", airDate: "2007-10-16", monitored: false, state: "stalled" },
         { id: "s04e05", number: 5, name: "Next Week", airDate: "2026-12-01", monitored: true, state: "unaired" },

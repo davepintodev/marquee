@@ -1203,8 +1203,13 @@
   --st: var(--bad);
 }
 
-[data-state="stalled"] {
+[data-state="stalled"],
+[data-state="not_found"] {
   --st: var(--warn);
+}
+
+[data-state="wanted"] {
+  --st: var(--fg);
 }
 
 [data-state="searching"],
@@ -1290,4 +1295,28 @@
 
 .ts-bar + .ts-body {
   padding-top: calc(var(--space-6) + 56px);
+}
+
+.ts-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ts-wait > i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--st, var(--mute));
+}
+
+.ts-wait[data-state="searching"] > i {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ts-wait[data-state="searching"] > i {
+    animation: none;
+  }
 }

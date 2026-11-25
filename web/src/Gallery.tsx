@@ -50,7 +50,7 @@ export interface Upcoming {
   name: string;
   word: string;
   note?: string;
-  state: "queued" | "searching";
+  state: "queued" | "wanted" | "searching" | "not_found";
 }
 
 export function WaitingCard({ api, n }: { api: Api; n: Upcoming }) {

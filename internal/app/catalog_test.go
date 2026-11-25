@@ -263,7 +263,7 @@ func TestSearchMarksTitlesAlreadyInTheLibraryWithTheirBadge(t *testing.T) {
 			continue
 		}
 		b, _ := m["badge"].(map[string]any)
-		if m["inLibrary"] != true || m["monitored"] != true || b["state"] != "searching" || b["label"] != "Searching" {
+		if m["inLibrary"] != true || m["monitored"] != true || b["state"] != "wanted" || b["label"] != "Wanted" {
 			t.Errorf("library title: %v", m)
 		}
 	}
@@ -300,20 +300,20 @@ func TestAddedSeriesMonitorsAiredEpisodesAndUnairedWaitForTheirDate(t *testing.T
 		t.Fatalf("want 3 dated episodes of season 1 and no specials: %v", eps)
 	}
 	for _, id := range []string{"s01e01", "s01e02"} {
-		if eps[id]["monitored"] != true || eps[id]["state"] != "searching" {
+		if eps[id]["monitored"] != true || eps[id]["state"] != "wanted" {
 			t.Errorf("%s is aired: %v", id, eps[id])
 		}
 	}
 	if e := eps["s01e03"]; e["state"] != "unaired" || e["airDate"] != "2026-12-25" || e["monitored"] != true {
 		t.Errorf("s01e03 waits for its air date: %v", e)
 	}
-	if b := title["badge"].(map[string]any); b["state"] != "searching" {
+	if b := title["badge"].(map[string]any); b["state"] != "wanted" {
 		t.Errorf("badge %v", b)
 	}
 
 	s.now.Store(time.Date(2026, 12, 25, 0, 0, 1, 0, time.UTC).UnixNano())
 	eps = episodes(t, s.mustCall("GET", "/api/titles/series-1408", "", 200))
-	if eps["s01e03"]["state"] != "searching" {
+	if eps["s01e03"]["state"] != "wanted" {
 		t.Errorf("on its air date the episode is wanted: %v", eps["s01e03"])
 	}
 }

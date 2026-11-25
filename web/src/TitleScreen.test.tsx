@@ -32,12 +32,12 @@ test("a series opens on its season with each episode's state, and 'N missing' on
   expect(screen.getByText("2004 · Series · 2 seasons · 6 episodes")).toBeTruthy();
   expect(screen.getByText("A diagnostician.")).toBeTruthy();
   const row = screen.getByRole("heading", { name: /Season 4/ });
-  expect(row.textContent).toBe("Season 41 of 4 · 2 missing · 1 not aired");
+  expect(row.textContent).toBe("Season 41 of 4 · 1 missing · 1 not aired");
   const rows = episodeList();
   expect(rows).toHaveLength(5);
   expect(within(rows[0]).getByText("Downloaded")).toBeTruthy();
-  expect(within(rows[1]).getByText("Missing")).toBeTruthy();
-  expect(within(rows[1]).getByText(/next search in 6h/i)).toBeTruthy();
+  expect(within(rows[1]).getByText("Not found")).toBeTruthy();
+  expect(within(rows[1]).getByText(/nothing found · next try in 6h/i)).toBeTruthy();
   expect(within(rows[2]).getByText("Downloading 40%")).toBeTruthy();
   expect(within(rows[3]).getByText("Stalled")).toBeTruthy();
   expect(within(rows[3]).getByText("Not monitored")).toBeTruthy();
@@ -48,7 +48,7 @@ test("a series opens on its season with each episode's state, and 'N missing' on
 test("the details block has the description, two actions and the four facts, and the scores wear their service's name", async () => {
   await open(house());
 
-  expect(screen.getByRole("button", { name: "Search automatically" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Search now" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Monitored. Stop monitoring this title" }).getAttribute("aria-pressed")).toBe("true");
   const facts = Object.fromEntries([...document.querySelectorAll(".ts-factlist div")].map((d) => [d.querySelector("dt")!.textContent, d.querySelector("dd")!.textContent]));
   expect(facts).toEqual({ Genres: "Drama, Mystery, Comedy", Runtime: "44 min", Status: "Ended", Language: "English" });
@@ -207,15 +207,47 @@ test("an episode and the title can be un-monitored, and the page shows the answe
   expect(screen.getByText("Not monitored", { selector: ".tag" })).toBeTruthy();
 });
 
-test("Search automatically on an episode and on the title skip the backoff", async () => {
+test("Search automatically on an episode and Search now on the title skip the backoff", async () => {
   const { writes } = await open(house(), (url, init) => (init.method === "POST" && url.pathname.endsWith("/search") ? json(house({ historySummary: "Searching now." })) : undefined));
 
   fireEvent.click(screen.getByRole("button", { name: "Search automatically for Big Baby" }));
   await screen.findByText("Searching for Big Baby now.");
-  fireEvent.click(screen.getByRole("button", { name: "Search automatically" }));
+  fireEvent.click(screen.getByRole("button", { name: "Search now" }));
   await screen.findByText("Searching for “House” now.");
 
   expect(writes.map((w) => `${w.method} ${w.path}`)).toEqual(["POST /api/titles/series-2/episodes/s04e02/search", "POST /api/titles/series-2/search"]);
+});
+
+test("a wanted movie says when it is searched next beside its facts, and the one Search now button starts a search the page follows", async () => {
+  const wanted = dune({ badge: { state: "wanted", label: "Wanted" }, nextSearchAt: "2026-11-18T14:00:00Z", history: [], historySummary: "Nothing tried yet." });
+  const { writes } = await open(wanted, (url, init) =>
+    init.method === "POST" && url.pathname === "/api/titles/movie-1/search" ? json({ ...wanted, badge: { state: "searching", label: "Searching" }, nextSearchAt: null }) : undefined,
+  );
+  const line = screen.getByText("Next search in 2h").closest(".ts-wait")!;
+  expect(line.getAttribute("data-state")).toBe("wanted");
+  expect(line.closest(".ts-facts")).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "Search now" })).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Search automatically" })).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Search now" }));
+  expect(await screen.findByText("Searching for “Dune” now.")).toBeTruthy();
+  await screen.findByText("Searching now");
+  expect(writes.map((w) => `${w.method} ${w.path}`)).toEqual(["POST /api/titles/movie-1/search"]);
+  expect(screen.getByText("Searching now").closest(".ts-wait")!.getAttribute("data-state")).toBe("searching");
+  const button = screen.getByRole("button", { name: "Search now" });
+  expect(button.getAttribute("aria-disabled")).toBe("true");
+  fireEvent.click(button);
+  expect(writes).toHaveLength(1);
+});
+
+test("a series says Nothing found only when every waiting episode found nothing, and Searching while any episode is", async () => {
+  const base = house();
+  const eps = (states: string[]) => [{ ...base.seasons[1], episodes: base.seasons[1].episodes.map((e, i) => (i < states.length ? { ...e, monitored: true, state: states[i] as never } : e)) }];
+  await open(house({ seasons: eps(["wanted", "not_found"]) }));
+  expect(screen.getByText("Next search in 6h")).toBeTruthy();
+  cleanup();
+  await open(house({ seasons: eps(["searching", "not_found"]) }));
+  expect(screen.getByText("Searching now")).toBeTruthy();
 });
 
 test("the episode that is downloading cannot be searched, and an unaired one has no search at all", async () => {
@@ -365,7 +397,9 @@ test("History is one muted line with the progress and the next try, closed until
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("list", { name: "History" })).toBeNull();
   expect(screen.getByRole("img", { name: "2 of 5 aired episodes downloaded" }).textContent).toBe("2 of 5downloaded");
-  expect(screen.getByText("next try in 6h")).toBeTruthy();
+  const wait = screen.getByText("Nothing found · next try in 6h");
+  expect(wait.closest(".ts-facts")).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "History", level: 2 }).parentElement!.textContent).not.toMatch(/next try|Search now/);
 
   fireEvent.click(toggle);
   const list = screen.getByRole("list", { name: "History" });
@@ -561,7 +595,7 @@ test("a refused profile change is said in words and the picker goes back to the 
 
 test("without profiles from the API the screen has no picker", async () => {
   await open(dune());
-  await screen.findByRole("button", { name: "Search automatically" });
+  await screen.findByRole("button", { name: "Search now" });
   expect(screen.queryByRole("combobox", { name: "Quality profile" })).toBeNull();
 });
 
