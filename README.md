@@ -81,7 +81,7 @@ The temp folder must be on the same filesystem as both library folders, so the f
 
 ## Quality profiles
 
-A profile says which releases marquee may download for a title. Out of the box there is one, `default`, made for players that cannot decode everything (an Android TV, for instance): WEB and Blu-ray releases from 2160p down to 720p, never a Remux, and never a release tagged TrueHD, DTS-HD, DTS:X or Dolby Vision Profile 7.
+A profile says which releases marquee may download for a title. Out of the box there is one, `default`, made for players that cannot decode everything (an Android TV, for instance): WEB, HDTV and Blu-ray releases from 2160p down to 720p, never a Remux, and never a release tagged TrueHD, DTS-HD, DTS:X or Dolby Vision Profile 7.
 
 To define your own, write a JSON config file, add `profiles` to it and point `MARQUEE_CONFIG` at it (in `compose.yaml`, uncomment the `<config-file>` mount and the `MARQUEE_CONFIG` line):
 
@@ -109,13 +109,13 @@ To define your own, write a JSON config file, add `profiles` to it and point `MA
 | `reject` | Format tags that rule a release out, however good its quality. |
 | `prefer` | Format tags that rank a release higher among those of the same quality, first tag first. |
 | `size_limits` | `min_mb` and `max_mb`, in MiB. `0` or missing means no limit. |
-| `default_movie_profile`, `default_series_profile` | The profile a title gets when it names none. Each must be one of `profiles`. |
+| `default_movie_profile`, `default_series_profile` | The profile a title gets when it names none. Each must be one of `profiles`. Defining any `profiles` replaces the built-in `default`, so name your own profile here (or keep one called `default`). |
 
 Qualities: `Remux-2160p`, `Bluray-2160p`, `WEBDL-2160p`, `WEBRip-2160p`, `HDTV-2160p`, `Remux-1080p`, `Bluray-1080p`, `WEBDL-1080p`, `WEBRip-1080p`, `HDTV-1080p`, `Bluray-720p`, `WEBDL-720p`, `WEBRip-720p`, `HDTV-720p`, `Bluray-576p`, `Bluray-480p`, `WEBDL-480p`, `WEBRip-480p`, `DVD`, `SDTV`, `CAM`, `TELESYNC`, `TELECINE`, `DVDSCR`, `Unknown`.
 
 Tags: `truehd`, `dts-hd`, `dts-x`, `dd+-atmos`, `dd+`, `dts`, `dd`, `aac`, `flac`, `opus`, `dv-p7`, `dv`, `hdr10+`, `hdr10`, `hdr`, `av1`, `hevc`, `avc`.
 
-A name or tag marquee does not know stops startup with a message naming it. marquee reads tags from the release's file name, since a web release does not announce its Dolby Vision profile; a Remux or a Blu-ray encode with no web marker is assumed to be Profile 7 unless it says Profile 8.
+A name or tag marquee does not know stops startup with a message naming it. marquee reads tags from the release's file name, since a web release does not announce its Dolby Vision profile; a Dolby Vision Remux is always assumed to be Profile 7, and a Dolby Vision Blu-ray encode with no web marker is assumed to be Profile 7 unless it says Profile 8.
 
 Each title picks its profile on its page or when you add it (the **Profile** menu); a title that picks none follows the default of its kind. marquee never swaps a file just because a better release appeared; to change one, use **Replace file** (below). In **Search releases**, a release the profile rules out is listed with the reason and a **Pick anyway** button.
 

@@ -202,8 +202,6 @@ func release(url string, size int, name string) []byte {
 	return fmt.Appendf(nil, `{"success":true,"data":{"results":[{"url":%q,"filename":%q,"folderName":%q,"size":%d,"type":"debrid","service":"torbox","cached":true,"addon":"Fake","infoHash":"1111111111111111111111111111111111111111","parsedFile":{"resolution":"1080p","quality":"WEB-DL","seasons":[],"episodes":[]}}]}}`, url, name, strings.TrimSuffix(name, ".mkv"), size)
 }
 
-// uncachedRelease is a result the debrid service does not hold: it has no
-// playback link, only the info hash TorBox can be asked to fetch.
 func uncachedRelease(hash string, size int, name string) []byte {
 	return fmt.Appendf(nil, `{"success":true,"data":{"results":[{"filename":%q,"folderName":%q,"size":%d,"type":"debrid","service":"torbox","cached":false,"addon":"Fake","infoHash":%q,"parsedFile":{"resolution":"1080p","quality":"WEB-DL","seasons":[],"episodes":[]}}]}}`, name, strings.TrimSuffix(name, ".mkv"), size, hash)
 }
