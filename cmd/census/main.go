@@ -194,8 +194,12 @@ func (c *census) movie(ctx context.Context, folder string) {
 		c.rows = append(c.rows, row{folder: folder, problem: "TMDB details failed"})
 		return
 	}
-	c.rows = append(c.rows, c.measure(ctx, folder, "movie", aiostreams.MovieID(d.IMDbID, d.TMDBID), chooser.Context{Kind: "movie"}))
+	c.rows = append(c.rows, c.measure(ctx, folder, "movie", aiostreams.MovieID(d.IMDbID, d.TMDBID), chooser.Context{Kind: "movie", Profile: everything}))
 }
+
+// everything is a profile that refuses nothing: the census counts what
+// AIOStreams offers, not what an owner's profile would keep.
+var everything = config.Profile{Qualities: config.QualityTiers()}
 
 func (c *census) series(ctx context.Context, folder string) {
 	s, ok, err := c.match(ctx, folder, "series", 0)
@@ -228,7 +232,7 @@ func (c *census) series(ctx context.Context, folder string) {
 			c.rows = append(c.rows, row{folder: folder, search: fmt.Sprintf("S%02dE01", n), problem: "TMDB has no TVDB or IMDb id"})
 			continue
 		}
-		r := c.measure(ctx, folder, "series", id, chooser.Context{Kind: "series", Season: n, Episode: 1})
+		r := c.measure(ctx, folder, "series", id, chooser.Context{Kind: "series", Season: n, Episode: 1, Profile: everything})
 		r.search = fmt.Sprintf("S%02dE01", n)
 		c.rows = append(c.rows, r)
 	}

@@ -12,7 +12,7 @@ export const house = (over: Partial<Title> = {}): Title => ({
   inLibrary: true,
   monitored: true,
   badge: { state: "partial_season", label: "Season 4 · 2 missing", season: 4, missingCount: 2 },
-  preferredQuality: null,
+  profile: null,
   nextSearchAt: "2026-11-18T18:00:00Z",
   historySummary: "Tried 3 releases, 1 stalled, 2 fake, retrying in 6h.",
   seasons: [

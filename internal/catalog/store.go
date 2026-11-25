@@ -224,6 +224,9 @@ ALTER TABLE episodes ADD COLUMN file_path TEXT NOT NULL DEFAULT '';
 ALTER TABLE episodes ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE episodes ADD COLUMN file_fingerprint TEXT NOT NULL DEFAULT '';
 CREATE INDEX episodes_by_fingerprint ON episodes (title_id, file_fingerprint) WHERE file_fingerprint != '';
+`, `
+ALTER TABLE titles ADD COLUMN profile TEXT NOT NULL DEFAULT '';
+ALTER TABLE titles DROP COLUMN preferred_quality;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

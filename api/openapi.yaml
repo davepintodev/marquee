@@ -54,6 +54,18 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/profiles:
+    get:
+      tags: [titles]
+      operationId: listProfiles
+      summary: The quality profiles from the config file, and which one each kind of title uses by default.
+      responses:
+        "200":
+          description: Profiles by name, and the default of each kind.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profiles" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/titles:
     get:
       tags: [titles]
@@ -118,7 +130,7 @@ paths:
     patch:
       tags: [titles]
       operationId: updateTitle
-      summary: Monitor or unmonitor a title, or set its preferred quality.
+      summary: Monitor or unmonitor a title, or change its quality profile.
       requestBody:
         required: true
         content:
@@ -279,8 +291,9 @@ paths:
       summary: Pick one release. It goes through the same download, check and import path and overrides the blocklist.
       description: >
         A title that is not in the library yet is added and monitored first.
-        A release the chooser would drop as not cached, not a video or too
-        small answers 409 with the reason; a blocklisted one can be grabbed.
+        A release the chooser would drop as not cached, not a video, too
+        small or the wrong episode answers 409 with the reason; a blocklisted
+        one, or one its profile rejected, can be grabbed.
         In dry-run nothing is downloaded, so every grab answers 409.
       requestBody:
         required: false
@@ -301,7 +314,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: The release was dropped (not cached, not a video or too small) and cannot be grabbed; the error says why.
+          description: The release was dropped (not cached, not a video, too small or the wrong episode) and cannot be grabbed; the error says why.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -751,7 +764,14 @@ components:
       properties:
         kind: { $ref: "#/components/schemas/Kind" }
         tmdbId: { type: integer }
-        preferredQuality: { $ref: "#/components/schemas/Quality" }
+        profile:
+          description: >
+            A profile name from `GET /api/profiles`; leave it out, or send
+            null, for the default of the title's kind. An unknown name
+            answers 400.
+          anyOf:
+            - { type: string, minLength: 1 }
+            - { type: "null" }
         monitor: { $ref: "#/components/schemas/MonitorChoice" }
     MonitorChoice:
       type: string
@@ -770,15 +790,49 @@ components:
       minProperties: 1
       properties:
         monitored: { type: boolean }
-        preferredQuality:
-          description: Send null to clear the preference.
+        profile:
+          description: A profile name from `GET /api/profiles`, or null to use the default of the title's kind. An unknown name answers 400.
           anyOf:
-            - { $ref: "#/components/schemas/Quality" }
+            - { type: string, minLength: 1 }
             - { type: "null" }
-    Quality:
-      type: string
-      description: A soft preference over AIOStreams' own order.
-      enum: [2160p, 1080p, 720p]
+    Profile:
+      type: object
+      description: >
+        A named rule set from the config file. A release whose quality is not
+        in `qualities`, that carries a `reject` tag, or whose size is outside
+        `sizeLimits` is dropped from automatic search as `profile_rejected`.
+      required: [name, qualities, reject, prefer, sizeLimits]
+      properties:
+        name: { type: string }
+        qualities:
+          type: array
+          description: Canonical quality names such as `WEBDL-1080p`, best first.
+          items: { type: string }
+        reject:
+          type: array
+          description: Format tags that are never downloaded automatically, such as `truehd` or `dv-p7`.
+          items: { type: string }
+        prefer:
+          type: array
+          description: Format tags that rank a release higher within one quality, most wanted first.
+          items: { type: string }
+        sizeLimits:
+          type: object
+          description: Zero means no limit.
+          required: [minMb, maxMb]
+          properties:
+            minMb: { type: integer, minimum: 0 }
+            maxMb: { type: integer, minimum: 0 }
+    Profiles:
+      type: object
+      required: [profiles, defaultMovieProfile, defaultSeriesProfile]
+      properties:
+        profiles:
+          type: array
+          description: Alphabetical by name.
+          items: { $ref: "#/components/schemas/Profile" }
+        defaultMovieProfile: { type: string, description: The name of a profile in `profiles`. }
+        defaultSeriesProfile: { type: string, description: The name of a profile in `profiles`. }
     EpisodeState:
       type: string
       enum: [downloaded, searching, downloading, stalled, missing, unaired]
@@ -821,10 +875,13 @@ components:
               type: array
               description: Empty for a movie.
               items: { $ref: "#/components/schemas/Season" }
-            preferredQuality:
-              description: Null when no preference is set.
+            profile:
+              description: >
+                The profile name the owner chose for this title; null when it
+                uses the default of its kind, which is also what a stored
+                name the config no longer defines answers.
               anyOf:
-                - { $ref: "#/components/schemas/Quality" }
+                - { type: string }
                 - { type: "null" }
             nextSearchAt: { $ref: "#/components/schemas/NextSearchAt" }
             historySummary:
@@ -840,12 +897,16 @@ components:
         id: { type: string }
         name: { type: string }
         quality: { type: string, examples: [Bluray-1080p] }
+        tags:
+          type: array
+          description: Format tags marquee read from the release, such as `dd+`, `hdr10+` or `dv-p7`, in a fixed order.
+          items: { type: string }
         sizeBytes: { type: integer, minimum: 0 }
         source: { type: string, description: The AIOStreams addon or tracker that listed it. }
         cached: { type: boolean }
     DropReason:
       type: string
-      enum: [not_cached, not_video, too_small, wrong_episode, blocklisted]
+      enum: [not_cached, not_video, too_small, wrong_episode, profile_rejected, blocklisted]
     DroppedRelease:
       type: object
       required: [release, reason, message]

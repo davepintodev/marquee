@@ -9,9 +9,6 @@ import (
 	"time"
 )
 
-// Qualities a title can prefer.
-var Qualities = []string{"2160p", "1080p", "720p"}
-
 type NewEpisode struct {
 	Season, Number int
 	Name           string
@@ -19,14 +16,17 @@ type NewEpisode struct {
 }
 
 type NewTitle struct {
-	Kind             string
-	TMDBID           int
-	Title            string
-	Year             int
-	Overview         string
-	IMDbID           string
-	TVDBID           int
-	PreferredQuality string
+	Kind     string
+	TMDBID   int
+	Title    string
+	Year     int
+	Overview string
+	IMDbID   string
+	TVDBID   int
+	// Profile names the quality profile the title is judged by; empty means
+	// the default of its kind. The catalog keeps the name and cannot tell
+	// whether the config still defines it.
+	Profile string
 	// Monitor is what a series monitors when added; empty means MonitorAll.
 	// A movie is always monitored.
 	Monitor  string
@@ -97,18 +97,18 @@ type Season struct {
 }
 
 type Title struct {
-	ID               string
-	Kind             string
-	TMDBID           int
-	Title            string
-	Year             int
-	Overview         string
-	IMDbID           string
-	TVDBID           int
-	Monitored        bool
-	PreferredQuality string // empty when none
-	Seasons          []Season
-	Badge            *Badge
+	ID        string
+	Kind      string
+	TMDBID    int
+	Title     string
+	Year      int
+	Overview  string
+	IMDbID    string
+	TVDBID    int
+	Monitored bool
+	Profile   string // empty when the title uses its kind's default
+	Seasons   []Season
+	Badge     *Badge
 }
 
 // TitleID is the id of a TMDB title in the API and the database.
@@ -117,7 +117,7 @@ func TitleID(kind string, tmdbID int) string { return fmt.Sprintf("%s-%d", kind,
 // EpisodeID is the API's id for an episode.
 func EpisodeID(season, number int) string { return fmt.Sprintf("s%02de%02d", season, number) }
 
-const titleColumns = `id, kind, tmdb_id, title, year, overview, imdb_id, tvdb_id, monitored, preferred_quality, have_file`
+const titleColumns = `id, kind, tmdb_id, title, year, overview, imdb_id, tvdb_id, monitored, profile, have_file`
 
 type queryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
@@ -133,12 +133,12 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 	for rows.Next() {
 		var t Title
 		var mon, file int
-		var quality sql.NullString
-		if err := rows.Scan(&t.ID, &t.Kind, &t.TMDBID, &t.Title, &t.Year, &t.Overview, &t.IMDbID, &t.TVDBID, &mon, &quality, &file); err != nil {
+		var profile sql.NullString
+		if err := rows.Scan(&t.ID, &t.Kind, &t.TMDBID, &t.Title, &t.Year, &t.Overview, &t.IMDbID, &t.TVDBID, &mon, &profile, &file); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
-		t.Monitored, t.PreferredQuality = mon == 1, quality.String
+		t.Monitored, t.Profile = mon == 1, profile.String
 		have[t.ID] = file == 1
 		titles = append(titles, t)
 	}
@@ -244,7 +244,7 @@ func (s *Store) List(ctx context.Context) ([]Title, error) {
 // unmonitored title, from monitoring anything of it. A title already in the
 // library is returned untouched.
 func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
-	if (n.PreferredQuality != "" && !validQuality(n.PreferredQuality)) || !ValidMonitor(n.Monitor) {
+	if !ValidMonitor(n.Monitor) {
 		return Title{}, false, ErrInvalid
 	}
 	monitored := n.Kind != "series" || n.Monitor != MonitorNone
@@ -260,13 +260,9 @@ func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var quality any
-	if n.PreferredQuality != "" {
-		quality = n.PreferredQuality
-	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO titles (id, kind, tmdb_id, title, year, overview, imdb_id, tvdb_id, monitored, monitor_new, preferred_quality, added_at)
+	res, err := tx.ExecContext(ctx, `INSERT INTO titles (id, kind, tmdb_id, title, year, overview, imdb_id, tvdb_id, monitored, monitor_new, profile, added_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
-		id, n.Kind, n.TMDBID, n.Title, n.Year, n.Overview, n.IMDbID, n.TVDBID, b2i(monitored), b2i(monitorsNew), quality, s.now().UTC().Format(time.RFC3339Nano))
+		id, n.Kind, n.TMDBID, n.Title, n.Year, n.Overview, n.IMDbID, n.TVDBID, b2i(monitored), b2i(monitorsNew), n.Profile, s.now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return Title{}, false, err
 	}
@@ -298,19 +294,16 @@ func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
 	return t, created, err
 }
 
-// Patch changes a title's monitored state or preferred quality. Nil leaves
-// a field alone; a Quality pointing at "" clears it.
+// Patch changes a title's monitored state or profile. Nil leaves a field
+// alone; a Profile pointing at "" returns the title to its kind's default.
 type Patch struct {
 	Monitored *bool
-	Quality   *string
+	Profile   *string
 }
 
 // Update applies p in one transaction. Monitoring or unmonitoring a series
 // applies to all of its episodes.
 func (s *Store) Update(ctx context.Context, id string, p Patch) (Title, error) {
-	if p.Quality != nil && *p.Quality != "" && !validQuality(*p.Quality) {
-		return Title{}, ErrInvalid
-	}
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
 		return Title{}, err
@@ -330,12 +323,8 @@ func (s *Store) Update(ctx context.Context, id string, p Patch) (Title, error) {
 			return Title{}, err
 		}
 	}
-	if p.Quality != nil {
-		var q any
-		if *p.Quality != "" {
-			q = *p.Quality
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE titles SET preferred_quality = ? WHERE id = ?`, q, id); err != nil {
+	if p.Profile != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE titles SET profile = ? WHERE id = ?`, *p.Profile, id); err != nil {
 			return Title{}, err
 		}
 	}
@@ -436,15 +425,6 @@ func (s *Store) Remove(ctx context.Context, id string) ([]ImageRef, error) {
 		return nil, err
 	}
 	return refs, tx.Commit()
-}
-
-func validQuality(q string) bool {
-	for _, v := range Qualities {
-		if v == q {
-			return true
-		}
-	}
-	return false
 }
 
 func b2i(b bool) int {

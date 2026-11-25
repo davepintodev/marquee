@@ -150,3 +150,57 @@ func resolveProfiles(c *Config, movie, series string) error {
 	}
 	return nil
 }
+
+// ProfileSet is the profiles a running marquee knows and which one each
+// kind of title uses when it names none.
+type ProfileSet struct {
+	Profiles      map[string]Profile
+	DefaultMovie  string
+	DefaultSeries string
+}
+
+// ProfileSet returns the profiles the config defines.
+func (c Config) ProfileSet() ProfileSet {
+	return ProfileSet{Profiles: c.Profiles, DefaultMovie: c.DefaultMovieProfile, DefaultSeries: c.DefaultSeriesProfile}
+}
+
+// Names lists the profile names in alphabetical order.
+func (s ProfileSet) Names() []string {
+	names := make([]string, 0, len(s.Profiles))
+	for n := range s.Profiles {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// Default is the name of the profile a title of this kind uses when it
+// names none.
+func (s ProfileSet) Default(kind string) string {
+	name := s.DefaultMovie
+	if kind == "series" {
+		name = s.DefaultSeries
+	}
+	if name == "" {
+		return DefaultProfileName
+	}
+	return name
+}
+
+// Resolve returns the profile a title of this kind is judged by, and its
+// name. An empty name means the kind's default; a name the config no
+// longer defines also gets the default, and fellBack says so, so the
+// caller can warn.
+func (s ProfileSet) Resolve(kind, name string) (p Profile, resolved string, fellBack bool) {
+	if name != "" {
+		if p, ok := s.Profiles[name]; ok {
+			return p, name, false
+		}
+		fellBack = true
+	}
+	resolved = s.Default(kind)
+	if p, ok := s.Profiles[resolved]; ok {
+		return p, resolved, fellBack
+	}
+	return DefaultProfile(), DefaultProfileName, fellBack
+}

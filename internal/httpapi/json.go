@@ -89,16 +89,17 @@ type seasonJSON struct {
 
 type titleJSON struct {
 	summaryJSON
-	Seasons          []seasonJSON  `json:"seasons"`
-	PreferredQuality *string       `json:"preferredQuality"`
-	HistorySummary   string        `json:"historySummary"`
-	History          []historyJSON `json:"history"`
+	Seasons        []seasonJSON  `json:"seasons"`
+	Profile        *string       `json:"profile"`
+	HistorySummary string        `json:"historySummary"`
+	History        []historyJSON `json:"history"`
 }
 
-func titleOf(t catalog.Title, history []historyJSON) titleJSON {
+// titleOf shows a title; profile is the name it chose, or empty when it uses the default of its kind.
+func titleOf(t catalog.Title, profile string, history []historyJSON) titleJSON {
 	out := titleJSON{summaryJSON: fromLibrary(t), Seasons: []seasonJSON{}, History: history, HistorySummary: summarize(t, history)}
-	if t.PreferredQuality != "" {
-		out.PreferredQuality = &t.PreferredQuality
+	if profile != "" {
+		out.Profile = &profile
 	}
 	for _, s := range t.Seasons {
 		sj := seasonJSON{Number: s.Number, Badge: badgeOf(s.Badge), Episodes: []episodeJSON{}}

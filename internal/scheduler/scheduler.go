@@ -19,6 +19,7 @@ import (
 	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/chooser"
+	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/metadata"
 	"github.com/davepintodev/marquee/internal/pipeline"
 )
@@ -72,21 +73,25 @@ type Options struct {
 	Transfers Transfers
 	// DryRun makes the scheduler record "would grab" instead of queueing.
 	DryRun bool
-	Log    *slog.Logger
-	Tuning Tuning
+	// Profiles are the quality profiles a title is judged by; the zero value
+	// has only the built-in default.
+	Profiles config.ProfileSet
+	Log      *slog.Logger
+	Tuning   Tuning
 }
 
 // Scheduler searches for what is missing. Every time it reads is the
 // catalog's clock, which tests control.
 type Scheduler struct {
-	cat  *catalog.Store
-	src  Source
-	tmdb TMDB
-	tr   Transfers
-	dry  bool
-	log  *slog.Logger
-	tick time.Duration
-	wake chan struct{}
+	cat      *catalog.Store
+	src      Source
+	tmdb     TMDB
+	tr       Transfers
+	dry      bool
+	profiles config.ProfileSet
+	log      *slog.Logger
+	tick     time.Duration
+	wake     chan struct{}
 
 	mu         sync.Mutex
 	lastSearch time.Time
@@ -102,7 +107,7 @@ func New(o Options) *Scheduler {
 		tick = time.Second
 	}
 	return &Scheduler{
-		cat: o.Catalog, src: o.Source, tmdb: o.TMDB, tr: o.Transfers, dry: o.DryRun, log: log,
+		cat: o.Catalog, src: o.Source, tmdb: o.TMDB, tr: o.Transfers, dry: o.DryRun, profiles: o.Profiles, log: log,
 		tick: tick, wake: make(chan struct{}, 1),
 	}
 }
@@ -259,8 +264,12 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 		s.logErr(ctx, "cannot read the blocklist", err)
 		return
 	}
+	profile, name, fellBack := s.profiles.Resolve(t.Kind, t.Profile)
+	if fellBack {
+		s.log.Warn("a title names a profile the config does not define; using the default", "title", t.TitleID, "profile", t.Profile, "default", name)
+	}
 	res := chooser.Choose(streams, chooser.Context{
-		Kind: t.Kind, Season: t.Season, Episode: t.Number, PreferredQuality: t.PreferredQuality,
+		Kind: t.Kind, Season: t.Season, Episode: t.Number, Profile: profile,
 		Blocklist: blocked, Now: now,
 	})
 	if !s.stillWanted(ctx, now, t) {
@@ -410,7 +419,8 @@ func nothingUsable(found int, dropped []chooser.Drop) string {
 		label  string
 	}{
 		{chooser.NotCached, "not cached"}, {chooser.NotVideo, "not a video"}, {chooser.TooSmall, "too small"},
-		{chooser.WrongEpisode, "wrong episode"}, {chooser.Blocklisted, "failed before"},
+		{chooser.WrongEpisode, "wrong episode"}, {chooser.ProfileRejected, "rejected by profile"},
+		{chooser.Blocklisted, "failed before"},
 	} {
 		if n := counts[r.reason]; n > 0 {
 			why = append(why, fmt.Sprintf("%d %s", n, r.label))

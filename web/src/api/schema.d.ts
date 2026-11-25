@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The quality profiles from the config file, and which one each kind of title uses by default. */
+        get: operations["listProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/titles": {
         parameters: {
             query?: never;
@@ -76,7 +93,7 @@ export interface paths {
         delete: operations["removeTitle"];
         options?: never;
         head?: never;
-        /** Monitor or unmonitor a title, or set its preferred quality. */
+        /** Monitor or unmonitor a title, or change its quality profile. */
         patch: operations["updateTitle"];
         trace?: never;
     };
@@ -202,7 +219,7 @@ export interface paths {
         put?: never;
         /**
          * Pick one release. It goes through the same download, check and import path and overrides the blocklist.
-         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video or too small answers 409 with the reason; a blocklisted one can be grabbed. In dry-run nothing is downloaded, so every grab answers 409.
+         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video, too small or the wrong episode answers 409 with the reason; a blocklisted one, or one its profile rejected, can be grabbed. In dry-run nothing is downloaded, so every grab answers 409.
          */
         post: operations["grabRelease"];
         delete?: never;
@@ -478,7 +495,8 @@ export interface components {
         AddTitleRequest: {
             kind: components["schemas"]["Kind"];
             tmdbId: number;
-            preferredQuality?: components["schemas"]["Quality"];
+            /** @description A profile name from `GET /api/profiles`; leave it out, or send null, for the default of the title's kind. An unknown name answers 400. */
+            profile?: string | null;
             monitor?: components["schemas"]["MonitorChoice"];
         };
         /**
@@ -489,14 +507,32 @@ export interface components {
         MonitorChoice: "all" | "future" | "first_season" | "latest_season" | "none";
         UpdateTitleRequest: {
             monitored?: boolean;
-            /** @description Send null to clear the preference. */
-            preferredQuality?: components["schemas"]["Quality"] | null;
+            /** @description A profile name from `GET /api/profiles`, or null to use the default of the title's kind. An unknown name answers 400. */
+            profile?: string | null;
         };
-        /**
-         * @description A soft preference over AIOStreams' own order.
-         * @enum {string}
-         */
-        Quality: "2160p" | "1080p" | "720p";
+        /** @description A named rule set from the config file. A release whose quality is not in `qualities`, that carries a `reject` tag, or whose size is outside `sizeLimits` is dropped from automatic search as `profile_rejected`. */
+        Profile: {
+            name: string;
+            /** @description Canonical quality names such as `WEBDL-1080p`, best first. */
+            qualities: string[];
+            /** @description Format tags that are never downloaded automatically, such as `truehd` or `dv-p7`. */
+            reject: string[];
+            /** @description Format tags that rank a release higher within one quality, most wanted first. */
+            prefer: string[];
+            /** @description Zero means no limit. */
+            sizeLimits: {
+                minMb: number;
+                maxMb: number;
+            };
+        };
+        Profiles: {
+            /** @description Alphabetical by name. */
+            profiles: components["schemas"]["Profile"][];
+            /** @description The name of a profile in `profiles`. */
+            defaultMovieProfile: string;
+            /** @description The name of a profile in `profiles`. */
+            defaultSeriesProfile: string;
+        };
         /** @enum {string} */
         EpisodeState: "downloaded" | "searching" | "downloading" | "stalled" | "missing" | "unaired";
         Episode: {
@@ -523,8 +559,8 @@ export interface components {
         Title: components["schemas"]["TitleSummary"] & {
             /** @description Empty for a movie. */
             seasons: components["schemas"]["Season"][];
-            /** @description Null when no preference is set. */
-            preferredQuality?: components["schemas"]["Quality"] | null;
+            /** @description The profile name the owner chose for this title; null when it uses the default of its kind, which is also what a stored name the config no longer defines answers. */
+            profile?: string | null;
             nextSearchAt?: components["schemas"]["NextSearchAt"];
             /** @description One plain sentence, such as "Tried 3 releases, 2 fake, 1 stalled, retrying in 6h." */
             historySummary: string;
@@ -535,13 +571,15 @@ export interface components {
             name: string;
             /** @example Bluray-1080p */
             quality: string;
+            /** @description Format tags marquee read from the release, such as `dd+`, `hdr10+` or `dv-p7`, in a fixed order. */
+            tags?: string[];
             sizeBytes: number;
             /** @description The AIOStreams addon or tracker that listed it. */
             source: string;
             cached: boolean;
         };
         /** @enum {string} */
-        DropReason: "not_cached" | "not_video" | "too_small" | "wrong_episode" | "blocklisted";
+        DropReason: "not_cached" | "not_video" | "too_small" | "wrong_episode" | "profile_rejected" | "blocklisted";
         DroppedRelease: {
             release: components["schemas"]["Release"];
             reason: components["schemas"]["DropReason"];
@@ -770,6 +808,27 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             502: components["responses"]["BadGateway"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profiles by name, and the default of each kind. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profiles"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     listTitles: {
@@ -1083,7 +1142,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description The release was dropped (not cached, not a video or too small) and cannot be grabbed; the error says why. */
+            /** @description The release was dropped (not cached, not a video, too small or the wrong episode) and cannot be grabbed; the error says why. */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -12,6 +12,7 @@ import (
 	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/chooser"
+	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/metadata"
 	"github.com/davepintodev/marquee/internal/pipeline"
 )
@@ -23,12 +24,12 @@ type Source interface {
 
 // searchTarget is what a release search needs to know about a title.
 type searchTarget struct {
-	kind             string
-	tmdbID           int
-	imdbID           string
-	tvdbID           int
-	preferredQuality string
-	hasEpisode       func(season, number int) bool
+	kind       string
+	tmdbID     int
+	imdbID     string
+	tvdbID     int
+	profile    config.Profile
+	hasEpisode func(season, number int) bool
 }
 
 // target describes the title from the library, or, for one marquee does
@@ -36,8 +37,9 @@ type searchTarget struct {
 func (a *api) target(r *http.Request, id, kind string, tmdbID int) (searchTarget, error) {
 	t, err := a.Catalog.Get(r.Context(), id)
 	if err == nil {
+		profile, _ := a.profileFor(t)
 		return searchTarget{
-			kind: kind, tmdbID: tmdbID, imdbID: t.IMDbID, tvdbID: t.TVDBID, preferredQuality: t.PreferredQuality,
+			kind: kind, tmdbID: tmdbID, imdbID: t.IMDbID, tvdbID: t.TVDBID, profile: profile,
 			hasEpisode: func(season, number int) bool {
 				for _, s := range t.Seasons {
 					for _, e := range s.Episodes {
@@ -57,8 +59,9 @@ func (a *api) target(r *http.Request, id, kind string, tmdbID int) (searchTarget
 	if err != nil {
 		return searchTarget{}, err
 	}
+	profile, _, _ := a.Profiles.Resolve(kind, "")
 	return searchTarget{
-		kind: kind, tmdbID: tmdbID, imdbID: d.IMDbID, tvdbID: d.TVDBID,
+		kind: kind, tmdbID: tmdbID, imdbID: d.IMDbID, tvdbID: d.TVDBID, profile: profile,
 		hasEpisode: func(season, number int) bool {
 			for _, s := range d.Seasons {
 				for _, e := range s.Episodes {
@@ -80,12 +83,13 @@ func (t searchTarget) sourceID(season, episode int) (string, bool) {
 }
 
 type releaseJSON struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Quality   string `json:"quality"`
-	SizeBytes int64  `json:"sizeBytes"`
-	Source    string `json:"source"`
-	Cached    bool   `json:"cached"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Quality   string   `json:"quality"`
+	SizeBytes int64    `json:"sizeBytes"`
+	Source    string   `json:"source"`
+	Cached    bool     `json:"cached"`
+	Tags      []string `json:"tags"`
 }
 
 type droppedJSON struct {
@@ -105,7 +109,10 @@ func releaseOf(c chooser.Candidate) releaseJSON {
 	if source == "" {
 		source = s.Indexer
 	}
-	return releaseJSON{ID: c.ID, Name: name, Quality: qualityOf(s.ParsedFile), SizeBytes: max(s.Size, 0), Source: source, Cached: s.Cached}
+	return releaseJSON{
+		ID: c.ID, Name: name, Quality: qualityOf(s.ParsedFile), SizeBytes: max(s.Size, 0), Source: source, Cached: s.Cached,
+		Tags: nonNil(chooser.ExtractTags(s)),
+	}
 }
 
 // qualityOf is the AIOStreams quality and resolution joined, such as
@@ -186,7 +193,7 @@ func (a *api) searchReleases(w http.ResponseWriter, r *http.Request, id, episode
 		}
 	}
 	out.result = chooser.Choose(streams, chooser.Context{
-		Kind: kind, Season: out.season, Episode: out.episode, PreferredQuality: t.preferredQuality,
+		Kind: kind, Season: out.season, Episode: out.episode, Profile: t.profile,
 		Blocklist: blocked, Now: a.Now(),
 	})
 	return out, true
@@ -212,8 +219,8 @@ func (a *api) listReleases(w http.ResponseWriter, r *http.Request) {
 
 // grabRelease queues the release the owner picked. The same search is made
 // again to find it, since a release's playback link is never kept or sent
-// to the browser; a blocklisted release can be picked, one the chooser
-// drops for being unusable cannot.
+// to the browser; a blocklisted release or one its profile rejected can be
+// picked, one the chooser drops for being unusable cannot.
 func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Episode string `json:"episode"`
@@ -241,12 +248,18 @@ func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if pick == nil {
-		for _, d := range found.result.Dropped {
-			if d.ID == releaseID {
+		for i, d := range found.result.Dropped {
+			switch {
+			case d.ID != releaseID:
+			case d.Reason == chooser.ProfileRejected:
+				pick = &found.result.Dropped[i].Candidate
+			default:
 				fail(w, http.StatusConflict, "this release cannot be grabbed: "+d.Message)
 				return
 			}
 		}
+	}
+	if pick == nil {
 		fail(w, http.StatusNotFound, "no such release; the search may have changed, so list the releases again")
 		return
 	}

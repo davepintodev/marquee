@@ -15,14 +15,14 @@ const RefreshEvery = 24 * time.Hour
 // Target is one thing the scheduler may search for: a movie, with Season and
 // Number zero, or an episode of a series.
 type Target struct {
-	TitleID          string
-	Kind             string
-	Title            string
-	TMDBID           int
-	IMDbID           string
-	TVDBID           int
-	PreferredQuality string
-	Season, Number   int
+	TitleID        string
+	Kind           string
+	Title          string
+	TMDBID         int
+	IMDbID         string
+	TVDBID         int
+	Profile        string
+	Season, Number int
 	// Attempts is how many searches in a row found nothing: the backoff step.
 	Attempts int
 	// NextAt is when the target is next due; zero when it never was searched.
@@ -58,14 +58,14 @@ func nullMillis(t time.Time) any {
 func (s *Store) Targets(ctx context.Context, now time.Time) ([]Target, error) {
 	rows, err := s.r.QueryContext(ctx, `
 SELECT * FROM (
-  SELECT t.id, t.kind, t.title, t.tmdb_id, t.imdb_id, t.tvdb_id, COALESCE(t.preferred_quality, ''), 0 AS season, 0 AS number,
+  SELECT t.id, t.kind, t.title, t.tmdb_id, t.imdb_id, t.tvdb_id, t.profile, 0 AS season, 0 AS number,
          COALESCE(s.attempts, 0), s.next_at, COALESCE(s.forced, 0) AS forced, COALESCE(s.follow_up, 0) AS follow_up
   FROM titles t LEFT JOIN schedule s ON s.title_id = t.id AND s.season = 0 AND s.number = 0
   WHERE t.kind = 'movie' AND t.have_file = 0
     AND (COALESCE(s.forced, 0) = 1 OR (t.monitored = 1 AND (s.next_at IS NULL OR s.next_at <= ?1)))
     AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.title_id = t.id AND d.season = 0 AND d.number = 0 AND d.state NOT IN ('done', 'failed'))
   UNION ALL
-  SELECT t.id, t.kind, t.title, t.tmdb_id, t.imdb_id, t.tvdb_id, COALESCE(t.preferred_quality, ''), e.season, e.number,
+  SELECT t.id, t.kind, t.title, t.tmdb_id, t.imdb_id, t.tvdb_id, t.profile, e.season, e.number,
          COALESCE(s.attempts, 0), s.next_at, COALESCE(s.forced, 0), COALESCE(s.follow_up, 0)
   FROM episodes e JOIN titles t ON t.id = e.title_id
        LEFT JOIN schedule s ON s.title_id = e.title_id AND s.season = e.season AND s.number = e.number
@@ -83,7 +83,7 @@ SELECT * FROM (
 		var t Target
 		var next sql.NullInt64
 		var forced, follow int
-		if err := rows.Scan(&t.TitleID, &t.Kind, &t.Title, &t.TMDBID, &t.IMDbID, &t.TVDBID, &t.PreferredQuality,
+		if err := rows.Scan(&t.TitleID, &t.Kind, &t.Title, &t.TMDBID, &t.IMDbID, &t.TVDBID, &t.Profile,
 			&t.Season, &t.Number, &t.Attempts, &next, &forced, &follow); err != nil {
 			return nil, err
 		}
