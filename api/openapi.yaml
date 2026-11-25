@@ -681,6 +681,10 @@ components:
         badge:
           $ref: "#/components/schemas/Badge"
           description: Present when inLibrary.
+        searchingEpisodes:
+          type: array
+          description: Ids of the series' monitored episodes still waiting for a release, whatever the title's badge says. Omitted when there are none.
+          items: { type: string, examples: ["s04e03"] }
     Rating:
       type: object
       description: One score for a title, in the scale its source uses.

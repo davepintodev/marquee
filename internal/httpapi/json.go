@@ -35,6 +35,8 @@ type summaryJSON struct {
 	InLibrary    bool       `json:"inLibrary"`
 	Monitored    *bool      `json:"monitored,omitempty"`
 	Badge        *badgeJSON `json:"badge,omitempty"`
+
+	SearchingEpisodes []string `json:"searchingEpisodes,omitempty"`
 }
 
 func imagePath(kind, id string) string { return "/api/images/" + kind + "/" + id }
@@ -49,6 +51,13 @@ func summaryOf(id string, kind string, tmdbID int, title string, year int, overv
 func fromLibrary(t catalog.Title) summaryJSON {
 	s := summaryOf(t.ID, t.Kind, t.TMDBID, t.Title, t.Year, t.Overview)
 	s.InLibrary, s.Monitored, s.Badge = true, &t.Monitored, badgeOf(t.Badge)
+	for _, season := range t.Seasons {
+		for _, e := range season.Episodes {
+			if e.Monitored && e.State == "searching" {
+				s.SearchingEpisodes = append(s.SearchingEpisodes, catalog.EpisodeID(season.Number, e.Number))
+			}
+		}
+	}
 	return s
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Api } from "./api/client";
-import type { Download, HistoryEntry, LiveEvent, Title, TitleSummary } from "./api/types";
+import type { Download, HistoryEntry, LiveEvent, TitleSummary } from "./api/types";
 import { galleryColumns, summaryOf } from "./activity";
 import { Carousel, DownloadCard, WaitingCard, type Upcoming } from "./Gallery";
 import { Page } from "./Page";
@@ -52,8 +52,15 @@ type Load = { status: "loading" } | { status: "ok"; data: Data } | { status: "er
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 
-function searchingEpisodes(t: Title) {
-  return t.seasons.flatMap((s) => s.episodes.filter((e) => e.monitored && e.state === "searching").map((e) => e.id.toUpperCase()));
+const BURST = 250;
+
+function waitingOf(library: TitleSummary[]): Waiting[] {
+  return library.flatMap((t): Waiting[] => {
+    const episodes = t.searchingEpisodes ?? [];
+    if (episodes.length > 0) return [{ id: t.id, name: t.title, note: `Waiting for ${episodes.map((e) => e.toUpperCase()).join(", ")} to appear.`, label: t.badge?.state === "searching" ? t.badge.label : "Searching" }];
+    if (t.badge?.state === "searching") return [{ id: t.id, name: t.title, note: "Waiting for a release to appear.", label: t.badge.label }];
+    return [];
+  });
 }
 
 export function Activity({ api, onClose, onChanged, onToast }: Props) {
@@ -62,27 +69,12 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
   const [retrying, setRetrying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const working = useRef(false);
-  // A title's badge says nothing about one searching episode, so a title retried here is asked about directly until it stops searching.
-  const retried = useRef(new Set<string>());
+  const pending = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const fetchAll = useCallback(
     async (signal?: AbortSignal): Promise<Data> => {
-      const asked = [...retried.current];
-      const [downloads, page, library, titles] = await Promise.all([
-        api.downloads(signal),
-        api.history({ limit: PAGE }, signal),
-        api.library(signal),
-        Promise.all(asked.map((id) => api.title(id, signal).catch(() => null))),
-      ]);
-      const waiting: Waiting[] = library
-        .filter((t) => t.badge?.state === "searching")
-        .map((t) => ({ id: t.id, name: t.title, note: "Waiting for a release to appear.", label: t.badge?.label ?? "Searching" }));
-      titles.forEach((t, i) => {
-        const episodes = t ? searchingEpisodes(t) : [];
-        if (episodes.length === 0) retried.current.delete(asked[i]);
-        else if (t && !waiting.some((w) => w.id === t.id)) waiting.push({ id: t.id, name: t.title, note: `Waiting for ${episodes.join(", ")} to appear.`, label: "Searching" });
-      });
-      return { downloads, history: page.entries, next: page.next, older: false, waiting };
+      const [downloads, page, library] = await Promise.all([api.downloads(signal), api.history({ limit: PAGE }, signal), api.library(signal)]);
+      return { downloads, history: page.entries, next: page.next, older: false, waiting: waitingOf(library) };
     },
     [api],
   );
@@ -103,10 +95,17 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
     );
   }, [fetchAll]);
 
+  // The server emits a burst of events for one change; they share one refetch.
+  const refetchSoon = useCallback(() => {
+    clearTimeout(pending.current);
+    pending.current = setTimeout(refetch, BURST);
+  }, [refetch]);
+  useEffect(() => () => clearTimeout(pending.current), []);
+
   useLive(api, (e: LiveEvent) => {
-    if (e.type !== "progress") return refetch();
+    if (e.type !== "progress") return refetchSoon();
     const p = e.data;
-    if (load.status !== "ok" || !load.data.downloads.some((d) => d.id === p.downloadId)) return refetch();
+    if (load.status !== "ok" || !load.data.downloads.some((d) => d.id === p.downloadId)) return refetchSoon();
     setLoad((l) =>
       l.status !== "ok"
         ? l
@@ -127,7 +126,6 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
     setError(null);
     try {
       const title = await api.retry(h.id);
-      if (title.kind === "series") retried.current.add(title.id);
       onChanged(title);
       onToast(`Searching for “${h.titleName}” again.`);
       const data = await fetchAll();

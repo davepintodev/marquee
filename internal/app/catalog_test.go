@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -314,6 +315,37 @@ func TestAddedSeriesMonitorsAiredEpisodesAndUnairedWaitForTheirDate(t *testing.T
 	eps = episodes(t, s.mustCall("GET", "/api/titles/series-1408", "", 200))
 	if eps["s01e03"]["state"] != "searching" {
 		t.Errorf("on its air date the episode is wanted: %v", eps["s01e03"])
+	}
+}
+
+func TestTheLibraryListNamesTheSearchingEpisodesOfASeries(t *testing.T) {
+	s := startReal(t, newTMDB(t))
+	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408}`, 201)
+	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":99}`, 201)
+	searching := func(id string) any {
+		for _, it := range s.mustCall("GET", "/api/titles", "", 200)["titles"].([]any) {
+			if m := it.(map[string]any); m["id"] == id {
+				return m["searchingEpisodes"]
+			}
+		}
+		t.Fatalf("%s is not in the library", id)
+		return nil
+	}
+
+	if got, want := searching("series-1408"), []any{"s01e01", "s01e02"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("aired and monitored, the unaired episode waits for its date: %v, want %v", got, want)
+	}
+	if got := searching("movie-99"); got != nil {
+		t.Errorf("a movie has no episodes: %v", got)
+	}
+
+	s.mustCall("PATCH", "/api/titles/series-1408/episodes/s01e01", `{"monitored":false}`, 200)
+	if got, want := searching("series-1408"), []any{"s01e02"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("an unmonitored episode is not searched for: %v, want %v", got, want)
+	}
+	s.mustCall("PATCH", "/api/titles/series-1408/episodes/s01e02", `{"monitored":false}`, 200)
+	if got := searching("series-1408"); got != nil {
+		t.Errorf("nothing left to search for omits the field: %v", got)
 	}
 }
 

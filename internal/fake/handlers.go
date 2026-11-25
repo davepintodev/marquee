@@ -25,6 +25,8 @@ type summary struct {
 	InLibrary    bool   `json:"inLibrary"`
 	Monitored    *bool  `json:"monitored,omitempty"`
 	Badge        *badge `json:"badge,omitempty"`
+
+	SearchingEpisodes []string `json:"searchingEpisodes,omitempty"`
 }
 
 type episodeOut struct {
@@ -124,6 +126,13 @@ func (f *Fake) summary(t *entry) summary {
 	}
 	if t.InLibrary {
 		s.Monitored = &t.monitored
+		for _, se := range t.Seasons {
+			for _, e := range se.Episodes {
+				if st, _ := f.epState(t, se, e); e.monitored && st == "searching" {
+					s.SearchingEpisodes = append(s.SearchingEpisodes, epID(se, e))
+				}
+			}
+		}
 	}
 	return s
 }
