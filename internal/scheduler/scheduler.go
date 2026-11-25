@@ -349,9 +349,10 @@ func (s *Scheduler) grab(ctx context.Context, now time.Time, t catalog.Target, c
 	}
 	d, err := s.tr.Enqueue(ctx, job)
 	switch {
-	case errors.Is(err, catalog.ErrActiveDownload) && d.Number != t.Number && !slices.Contains(d.Covered, t.Number):
+	case errors.Is(err, catalog.ErrActiveDownload) && d.ID != "" && d.Number != t.Number && !slices.Contains(d.Covered, t.Number):
 		// The release collides with a download of another episode it covers. A
 		// follow-up would skip backoff and the budget and search the target every gap.
+		// A zero download (the busy one ended meanwhile) is not that collision.
 		s.backOff(ctx, now, t, "")
 	case err == nil, errors.Is(err, catalog.ErrActiveDownload):
 		// The download failing leads straight to a new search, which skips the blocklisted release.
