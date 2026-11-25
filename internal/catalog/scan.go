@@ -133,6 +133,9 @@ func (s *Store) ApplyScan(ctx context.Context, titleID string, found []FileFound
 		if err != nil {
 			return 0, err
 		}
+		if err := dropSchedule(ctx, tx, titleID, f.Season, f.Number); err != nil {
+			return 0, err
+		}
 	}
 	removed := 0
 	for _, g := range gone {
@@ -151,11 +154,22 @@ func (s *Store) ApplyScan(ctx context.Context, titleID string, found []FileFound
 			continue
 		}
 		removed++
+		if err := dropSchedule(ctx, tx, titleID, g.Season, g.Number); err != nil {
+			return 0, err
+		}
 		if err := s.addActivity(ctx, tx, Activity{TitleID: titleID, Season: g.Season, Number: g.Number, Kind: ActivityRemoved, Message: "File removed from disk; unmonitored."}); err != nil {
 			return 0, err
 		}
 	}
 	return removed, tx.Commit()
+}
+
+// dropSchedule forgets the backoff and any Search now request of a target
+// whose file state a scan has settled, as a finished download does; a
+// forced request would otherwise outlive the unmonitoring.
+func dropSchedule(ctx context.Context, tx *sql.Tx, titleID string, season, number int) error {
+	_, err := tx.ExecContext(ctx, `DELETE FROM schedule WHERE title_id = ? AND season = ? AND number = ?`, titleID, season, number)
+	return err
 }
 
 // ReplaceLibraryProblems swaps the library problems for the ones a scan
