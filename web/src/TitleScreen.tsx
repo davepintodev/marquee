@@ -5,6 +5,7 @@ import { AboutSections, FactList, Ratings, useAbout } from "./About";
 import { AddBar } from "./AddBar";
 import { Art } from "./Art";
 import { codeOf, countsOf, factsOf, nextWanted, seasonName, seasonShort } from "./episodes";
+import { metaOf } from "./year";
 import { HistoryList } from "./HistoryList";
 import { IconBookmark, IconButton, IconChevron, IconSearch } from "./icons";
 import { Say, Sk, TitleSkeleton } from "./Skeleton";
@@ -119,7 +120,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
               </span>
               <div className="ts-info">
                 <h1 id="ts-h1">{seed.title}</h1>
-                <p className="ts-facts">{`${seed.year} · ${seed.kind === "movie" ? "Movie" : "Series"}`}</p>
+                <p className="ts-facts">{metaOf(seed)}</p>
                 {/* Empty blocks of the loaded screen's height, so its text does not jump up when the rest arrives. */}
                 <div className="ts-rates" data-wait="true" aria-hidden="true" />
                 {seed.overview && <p className="ts-overview">{seed.overview}</p>}

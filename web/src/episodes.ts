@@ -1,4 +1,5 @@
 import type { Episode, Season, Title } from "./api/types";
+import { metaOf } from "./year";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -54,9 +55,9 @@ export function totalsOf(t: Pick<Title, "seasons">): Counts {
 }
 
 export function factsOf(t: Pick<Title, "kind" | "year" | "seasons">): string {
-  if (t.kind === "movie") return `${t.year} · Movie`;
+  if (t.kind === "movie") return metaOf(t);
   const regular = t.seasons.filter((s) => s.number > 0).length;
   const eps = totalsOf(t).total;
   const seasons = regular ? ` · ${regular} season${regular === 1 ? "" : "s"}` : "";
-  return `${t.year} · Series${seasons}${eps ? ` · ${eps} episodes` : ""}`;
+  return `${metaOf(t)}${seasons}${eps ? ` · ${eps} episodes` : ""}`;
 }

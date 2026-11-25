@@ -91,6 +91,15 @@ test("poster tiles are named by title and year, portrait ones show the poster an
   expect(kinds).toEqual(new Set(["poster", "backdrop"]));
 });
 
+test("a wall tile whose title has no release year is named by the title alone", async () => {
+  const marley = title(7, "movie", "Marley", { year: 0, inLibrary: true, badge: { state: "downloading", label: "Downloading 40%", percent: 40 } });
+  const bare = title(8, "movie", "Bare", { year: 0 });
+  await wallUp(serve({ items: [marley, bare].map((t) => ({ source: t.inLibrary ? "library" : "trending", title: t })) }));
+
+  const names = new Set(posters().map((t) => t.getAttribute("aria-label")));
+  expect(names).toEqual(new Set(["Marley, Downloading 40%", "Bare"]));
+});
+
 test("no poster sits next to its own twin when the titles repeat", async () => {
   const many = Array.from({ length: 14 }, (_, i) => ({ source: "trending", title: title(100 + i, "movie", `Film ${i}`) }));
   await wallUp(serve({ items: many }));

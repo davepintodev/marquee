@@ -3,6 +3,7 @@ import type { Api } from "./api/client";
 import type { TitleSummary } from "./api/types";
 import { Art } from "./Art";
 import { Invite } from "./Invite";
+import { tileName } from "./year";
 import { carveWall, EDGE_INSET, nearestTile, snapTile, spreadTitles, tilesTouching } from "./wall/layout";
 
 interface Props {
@@ -56,7 +57,7 @@ export function Front({ api, items, width, height, onEnter, onSelect }: Props) {
         const style = { ...snapTile(s), "--r": r } as CSSProperties;
         if (!placed) return items === null ? <div key={i} className="ptile pplaceholder" style={style} /> : null;
         const { title: t, src } = placed[i];
-        const label = t.badge ? `${t.title} (${t.year}), ${t.badge.label}` : `${t.title} (${t.year})`;
+        const label = tileName(t);
         return (
           <button key={i} type="button" className="ptile" data-tid={t.id} data-shape={s.shape} style={style} aria-label={label} title={label} onClick={() => onSelect(t)}>
             <span className="ptile-frame">

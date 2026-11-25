@@ -305,6 +305,16 @@ test("a new query never shows the old query's error while its own answer is pend
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
+test("a library tile of a title with no release year shows no 0 in its meta line or name", () => {
+  const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
+  const marley = title({ tmdbId: 7, kind: "movie", title: "Marley", year: 0, inLibrary: true, badge: downloaded });
+  const bare = title({ tmdbId: 8, kind: "series", title: "Bare", year: 0, inLibrary: true });
+  render(<Library api={api} items={[marley, bare]} />);
+
+  expect(screen.getByRole("button", { name: "Marley, Downloaded" }).querySelector(".cell-meta")!.textContent).toBe("Movie");
+  expect(screen.getByRole("button", { name: "Bare" }).querySelector(".cell-meta")!.textContent).toBe("Series");
+});
+
 test("a library tile whose image failed tries the new image when its title gets another poster", async () => {
   const api = createApi({ baseUrl: BASE, fetch: (async () => json(wall)) as unknown as typeof fetch });
   const { rerender } = render(<Library api={api} items={[house, hail]} />);
