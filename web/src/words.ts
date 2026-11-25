@@ -8,6 +8,7 @@ const reasons: Record<FailureReason, string> = {
   size_mismatch: "Wrong size",
   source_down: "Source down",
   local_error: "Local error",
+  duplicate_episode: "Duplicate episode",
 };
 
 export function reasonLabel(reason: FailureReason | undefined) {

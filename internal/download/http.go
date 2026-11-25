@@ -177,10 +177,11 @@ func (h *HTTP) download(ctx context.Context, req Request) (Result, error) {
 	if total <= 0 {
 		return Result{}, &Failure{ReasonSourceDown, "the server did not say how big the file is"}
 	}
-	// AIOStreams answers failures with a short "error" video; a wildly
-	// different size means that.
-	if r := req.ReleaseSize; r > 0 && (total < r*95/100 || total > r*105/100) {
-		return Result{}, &Failure{ReasonSizeMismatch, fmt.Sprintf("the server has a %d-byte file but the release is listed at %d bytes (probably an error video)", total, r)}
+	// A different file in the same pack (the House S04E11/S04E12 mix-up was
+	// 0.22% off) is as wrong as AIOStreams' short "error" video, so the
+	// listed size must match to the byte.
+	if r := req.ReleaseSize; r > 0 && total != r {
+		return Result{}, &Failure{ReasonSizeMismatch, fmt.Sprintf("the server has a %d-byte file but the release is listed at %d bytes, so it is not the file that was asked for", total, r)}
 	}
 
 	var p *plan

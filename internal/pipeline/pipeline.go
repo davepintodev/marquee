@@ -27,6 +27,10 @@ import (
 // blocklisted.
 const ReasonLocalError = "local_error"
 
+// ReasonDuplicateEpisode fails a file that is the same as another episode's
+// in the series: the release is blocklisted, as it is not the episode asked for.
+const ReasonDuplicateEpisode = "duplicate_episode"
+
 // Default size floors: a finished file smaller than this is a sample or a stub.
 const (
 	DefaultMovieFloor   = 200 << 20
@@ -268,6 +272,7 @@ var reasonLabels = map[string]string{
 	string(download.ReasonSourceDown):   "Source down",
 	"too_small":                         "Too small",
 	ReasonLocalError:                    "Could not save",
+	ReasonDuplicateEpisode:              "Duplicate episode",
 }
 
 // fail ends the download with a reason. A release that is at fault is
@@ -393,6 +398,7 @@ func (m *Manager) verify(ctx context.Context, d catalog.Download) bool {
 		}
 	case fi.Size() < floor:
 		m.fail(ctx, d, "too_small", fmt.Sprintf("the file is %d bytes, under the %d-byte minimum, so it is a sample or a stub", fi.Size(), floor), true)
+	case m.isDuplicate(ctx, d, t, part):
 	default:
 		if err := m.cat.SetDownloadState(ctx, d.ID, catalog.StateImporting); err != nil {
 			m.gone(ctx, d, err)
@@ -401,6 +407,35 @@ func (m *Manager) verify(ctx context.Context, d catalog.Download) bool {
 		return true
 	}
 	return false
+}
+
+// isDuplicate fails the download and reports true when an episode's file is
+// byte-for-byte what another episode of the series already has, which is
+// how a pack's mislabelled file looks. A fingerprint that cannot be read
+// fails it on marquee's side.
+func (m *Manager) isDuplicate(ctx context.Context, d catalog.Download, t catalog.Title, part string) bool {
+	if t.Kind == "movie" {
+		return false
+	}
+	fp, err := importer.Fingerprint(part)
+	if err != nil {
+		m.fail(ctx, d, ReasonLocalError, "the downloaded file could not be read", false)
+		return true
+	}
+	season, number, found, err := m.cat.DuplicateEpisode(ctx, d.TitleID, fp, d.Season, d.Number)
+	if err != nil {
+		if ctx.Err() == nil {
+			m.log.Error("cannot look for a duplicate episode", "download", d.ID, "err", err)
+		}
+		m.fail(ctx, d, ReasonLocalError, "the library could not be checked for duplicates", false)
+		return true
+	}
+	if !found {
+		return false
+	}
+	m.fail(ctx, d, ReasonDuplicateEpisode,
+		fmt.Sprintf("this file is identical to S%02dE%02d, which is already in the library", season, number), true)
+	return true
 }
 
 func (m *Manager) place(ctx context.Context, d catalog.Download) {
@@ -437,12 +472,36 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 	// A leftover hard link source, if a crash fell between link and remove.
 	_ = os.Remove(part)
 	_ = os.Remove(part + ".plan")
-	if err := m.cat.FinishDownload(ctx, d.ID); err != nil {
+	if err := m.cat.FinishDownload(ctx, d.ID, m.recordFile(t, d, dst)); err != nil {
 		m.gone(ctx, d, err)
 		return
 	}
 	m.log.Info("imported", "download", d.ID, "title", d.TitleID)
 	m.refreshJellyfin(ctx)
+}
+
+// recordFile describes the placed file for the catalog. A fingerprint that
+// cannot be read is left empty rather than failing an import that already
+// happened.
+func (m *Manager) recordFile(t catalog.Title, d catalog.Download, dst string) catalog.File {
+	root := m.series
+	if t.Kind == "movie" {
+		root = m.movies
+	}
+	rel, err := filepath.Rel(root, dst)
+	if err != nil {
+		rel = dst
+	}
+	f := catalog.File{Path: filepath.ToSlash(rel), Size: d.BytesTotal}
+	if fi, err := os.Stat(dst); err == nil {
+		f.Size = fi.Size()
+	}
+	if fp, err := importer.Fingerprint(dst); err == nil {
+		f.Fingerprint = fp
+	} else {
+		m.log.Warn("cannot fingerprint an imported file", "download", d.ID, "err", err)
+	}
+	return f
 }
 
 // refreshJellyfin asks Jellyfin to scan. The import has already succeeded;

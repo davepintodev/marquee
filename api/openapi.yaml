@@ -887,7 +887,7 @@ components:
       enum: [added, searched, would_grab, imported, failed]
     FailureReason:
       type: string
-      enum: [stalled, not_video, wrong_episode, too_small, size_mismatch, source_down, local_error]
+      enum: [stalled, not_video, wrong_episode, too_small, size_mismatch, source_down, local_error, duplicate_episode]
     HistoryEntry:
       type: object
       required: [id, at, kind, titleId, titleName, message, retryable]
