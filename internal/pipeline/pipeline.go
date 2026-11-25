@@ -21,6 +21,7 @@ import (
 	"github.com/davepintodev/marquee/internal/download"
 	"github.com/davepintodev/marquee/internal/importer"
 	"github.com/davepintodev/marquee/internal/naming"
+	"github.com/davepintodev/marquee/internal/torbox"
 )
 
 // ReasonLocalError is a failure on marquee's side (a full disk, a file
@@ -126,6 +127,9 @@ type Manager struct {
 	// find the other still using it and both leave it on the account.
 	leaveMu sync.Mutex
 	leaving map[string]bool
+	// deleted remembers torrents already removed from TorBox, so two
+	// siblings finishing together do not each delete it.
+	deleted map[int]bool
 
 	claimMu sync.Mutex
 	claims  map[string]claim
@@ -172,7 +176,7 @@ func New(o Options) *Manager {
 		cat: o.Catalog, dl: dl, movies: o.MoviesPath, series: o.SeriesPath,
 		tempDir: filepath.Join(o.TempPath, "marquee"), log: log, tune: t,
 		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{},
-		claims: map[string]claim{}, leaving: map[string]bool{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
+		claims: map[string]claim{}, leaving: map[string]bool{}, deleted: map[int]bool{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
 	}
 	if o.JellyfinURL != "" {
 		m.jf = importer.NewJellyfin(o.JellyfinURL, o.JellyfinKey, t.JellyfinTimeout)
@@ -644,17 +648,28 @@ func (m *Manager) deleteTorrent(ctx context.Context, d catalog.Download) {
 	if m.cleanup == nil || d.TorBoxTorrentID == 0 {
 		return
 	}
-	shared, err := m.cat.TorrentInUse(ctx, d.TorBoxTorrentID, d.ID)
+	// One lock for the check and the delete: a sibling that gives up marks
+	// itself leaving before it fails, so it no longer counts as a user, and
+	// two siblings finishing together delete the torrent once.
+	m.leaveMu.Lock()
+	defer m.leaveMu.Unlock()
+	if m.deleted[d.TorBoxTorrentID] {
+		return
+	}
+	users, err := m.cat.TorrentUsers(ctx, d.TorBoxTorrentID, d.ID)
 	if err != nil {
 		if ctx.Err() == nil {
 			m.log.Warn("cannot tell whether a TorBox torrent is still in use", "download", d.ID, "err", err)
 		}
 		return
 	}
-	if shared {
-		return
+	for _, u := range users {
+		if !m.leaving[u] {
+			return
+		}
 	}
-	if err := m.cleanup.DeleteTorrent(context.WithoutCancel(ctx), d.TorBoxTorrentID); err != nil && ctx.Err() == nil {
+	m.deleted[d.TorBoxTorrentID] = true
+	if err := m.cleanup.DeleteTorrent(context.WithoutCancel(ctx), d.TorBoxTorrentID); err != nil && !errors.Is(err, torbox.ErrNotFound) && ctx.Err() == nil {
 		m.log.Warn("cannot delete an imported torrent from TorBox", "download", d.ID, "err", err)
 	}
 }
