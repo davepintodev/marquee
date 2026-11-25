@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -232,14 +233,17 @@ func wrongFileMessage(w WrongFile, res WrongFileResult) string {
 	return msg + " Pick another release."
 }
 
-// SharesFile reports whether a movie or episode of the title other than the
-// one given records the same file, as each episode of a multi-episode file does.
-func (s *Store) SharesFile(ctx context.Context, titleID, path string, season, number int) (bool, error) {
+// SharesFile reports whether an episode of the title outside the given
+// ones records the same file, as each episode of a multi-episode file does.
+// numbers are the episodes of season that are leaving the file.
+func (s *Store) SharesFile(ctx context.Context, titleID, path string, season int, numbers []int) (bool, error) {
 	if path == "" {
 		return false, nil
 	}
+	leaving, _ := json.Marshal(numbers)
 	var n int
-	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes WHERE title_id = ? AND file_path = ? AND NOT (season = ? AND number = ?)`,
-		titleID, path, season, number).Scan(&n)
+	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes WHERE title_id = ? AND file_path = ?
+		AND NOT (season = ? AND number IN (SELECT value FROM json_each(?)))`,
+		titleID, path, season, string(leaving)).Scan(&n)
 	return n > 0, err
 }

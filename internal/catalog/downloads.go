@@ -3,7 +3,9 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/davepintodev/marquee/internal/chooser"
@@ -66,6 +68,10 @@ type NewDownload struct {
 	// or episode already has: the old file stays until the new one is
 	// verified and placed.
 	ReplaceExisting bool
+	// Covered are the episode numbers of Season that the one file holds, as
+	// a release named S01E01E02 does. A file of a single episode leaves it
+	// empty; otherwise it is sorted and holds Number.
+	Covered []int
 }
 
 type Download struct {
@@ -83,19 +89,20 @@ type Download struct {
 
 const downloadColumns = `d.id, d.title_id, t.title, d.season, d.number, d.state, d.info_hash, d.file_name, d.size,
 	d.release_name, d.resolution, d.quality, d.url, d.bytes_done, d.bytes_total, d.reason, d.message,
-	d.library_path, d.created_at, d.updated_at, d.replace_existing`
+	d.library_path, d.created_at, d.updated_at, d.replace_existing, d.covered_episodes`
 
 func scanDownload(sc interface{ Scan(...any) error }, extra ...any) (Download, error) {
 	var d Download
-	var url, created, updated string
+	var url, created, updated, covered string
 	var replace int
 	dest := append([]any{&d.ID, &d.TitleID, &d.TitleName, &d.Season, &d.Number, &d.State, &d.Release.InfoHash,
 		&d.Release.FileName, &d.Release.Size, &d.ReleaseName, &d.Resolution, &d.Quality, &url, &d.BytesDone,
-		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated, &replace}, extra...)
+		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated, &replace, &covered}, extra...)
 	if err := sc.Scan(dest...); err != nil {
 		return Download{}, err
 	}
 	d.URL, d.ReplaceExisting = config.Secret(url), replace == 1
+	d.Covered = decodeCovered(covered)
 	d.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 	return d, nil
@@ -104,34 +111,112 @@ func scanDownload(sc interface{ Scan(...any) error }, extra ...any) (Download, e
 func (s *Store) stamp() string { return s.now().UTC().Format(time.RFC3339Nano) }
 
 // AddDownload queues a download. A title or episode with an unfinished
-// download answers ErrActiveDownload, a title that is not in the library
+// download, or one that an unfinished download's file already covers,
+// answers ErrActiveDownload, a title that is not in the library
 // ErrNotFound.
 func (s *Store) AddDownload(ctx context.Context, n NewDownload) (Download, error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return Download{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
 	var exists int
-	if err := s.w.QueryRowContext(ctx, `SELECT 1 FROM titles WHERE id = ?`, n.TitleID).Scan(&exists); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM titles WHERE id = ?`, n.TitleID).Scan(&exists); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Download{}, ErrNotFound
 		}
 		return Download{}, err
 	}
+	covered := normalizeCovered(n.Number, n.Covered)
+	if n.Season != 0 || n.Number != 0 {
+		busy, err := coveredBusy(ctx, tx, n.TitleID, n.Season, append([]int{n.Number}, covered...))
+		if err != nil {
+			return Download{}, err
+		}
+		if busy {
+			return Download{}, ErrActiveDownload
+		}
+	}
+	stored := ""
+	if len(covered) > 1 {
+		b, _ := json.Marshal(covered)
+		stored = string(b)
+	}
 	now := s.stamp()
-	_, err := s.w.ExecContext(ctx, `INSERT INTO downloads (id, title_id, season, number, state, info_hash, file_name, size,
-		release_name, resolution, quality, url, replace_existing, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO downloads (id, title_id, season, number, state, info_hash, file_name, size,
+		release_name, resolution, quality, url, replace_existing, covered_episodes, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		n.ID, n.TitleID, n.Season, n.Number, n.Release.InfoHash, n.Release.FileName, n.Release.Size,
-		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), now, now)
+		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), stored, now, now)
 	if err != nil {
 		if isUnique(err) {
 			return Download{}, ErrActiveDownload
 		}
 		return Download{}, err
 	}
+	if err := tx.Commit(); err != nil {
+		return Download{}, err
+	}
 	return s.GetDownload(ctx, n.ID)
 }
 
-// ActiveDownloadFor returns the unfinished download of a title or episode.
+// normalizeCovered is the episodes a file holds, sorted and without
+// repeats, with the target among them; a single episode is none at all.
+func normalizeCovered(target int, covered []int) []int {
+	all := slices.Clone(covered)
+	if len(all) > 0 {
+		all = append(all, target)
+	}
+	slices.Sort(all)
+	return slices.Compact(all)
+}
+
+func decodeCovered(stored string) []int {
+	if stored == "" {
+		return nil
+	}
+	var out []int
+	_ = json.Unmarshal([]byte(stored), &out)
+	return out
+}
+
+// coveredBusy reports whether an unfinished download of the season already
+// targets or covers any of the episodes, so that two files never claim the same one.
+func coveredBusy(ctx context.Context, tx *sql.Tx, titleID string, season int, numbers []int) (bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT number, covered_episodes FROM downloads
+		WHERE title_id = ? AND season = ? AND state NOT IN ('done', 'failed')`, titleID, season)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var number int
+		var stored string
+		if err := rows.Scan(&number, &stored); err != nil {
+			return false, err
+		}
+		for _, c := range append(decodeCovered(stored), number) {
+			if slices.Contains(numbers, c) {
+				return true, nil
+			}
+		}
+	}
+	return false, rows.Err()
+}
+
+// ActiveDownloadFor returns the unfinished download of a title or episode,
+// the one that targets it or whose file covers it.
 func (s *Store) ActiveDownloadFor(ctx context.Context, titleID string, season, number int) (Download, error) {
-	return scanDownload(s.r.QueryRowContext(ctx, `SELECT `+downloadColumns+` FROM downloads d JOIN titles t ON t.id = d.title_id
-		WHERE d.title_id = ? AND d.season = ? AND d.number = ? AND d.state NOT IN ('done', 'failed')`, titleID, season, number))
+	ds, err := s.queryDownloads(ctx, `WHERE d.title_id = ? AND d.season = ? AND d.state NOT IN ('done', 'failed')
+		ORDER BY d.number = ? DESC, d.created_at, d.rowid`, titleID, season, number)
+	if err != nil {
+		return Download{}, err
+	}
+	for _, d := range ds {
+		if d.Number == number || slices.Contains(d.Covered, number) {
+			return d, nil
+		}
+	}
+	return Download{}, sql.ErrNoRows
 }
 
 func (s *Store) GetDownload(ctx context.Context, id string) (Download, error) {
@@ -233,31 +318,39 @@ func (s *Store) FinishDownload(ctx context.Context, id string, f File) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var titleID string
+	var titleID, stored string
 	var season, number int
-	if err := tx.QueryRowContext(ctx, `SELECT title_id, season, number FROM downloads WHERE id = ? AND state NOT IN ('done', 'failed')`, id).Scan(&titleID, &season, &number); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT title_id, season, number, covered_episodes FROM downloads WHERE id = ? AND state NOT IN ('done', 'failed')`, id).
+		Scan(&titleID, &season, &number, &stored); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		return err
+	}
+	numbers := []int{number}
+	if c := decodeCovered(stored); len(c) > 0 {
+		numbers = c
 	}
 	now := s.now()
 	if _, err := tx.ExecContext(ctx, `UPDATE downloads SET state = 'done', url = '', bytes_done = bytes_total, updated_at = ?, at_ms = ? WHERE id = ?`,
 		now.UTC().Format(time.RFC3339Nano), now.UnixMilli(), id); err != nil {
 		return err
 	}
-	if season == 0 && number == 0 {
-		_, err = tx.ExecContext(ctx, `UPDATE titles SET have_file = 1, file_path = ?, file_size = ?, file_fingerprint = ? WHERE id = ?`,
-			f.Path, f.Size, f.Fingerprint, titleID)
-	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE episodes SET have_file = 1, file_path = ?, file_size = ?, file_fingerprint = ?
-			WHERE title_id = ? AND season = ? AND number = ?`, f.Path, f.Size, f.Fingerprint, titleID, season, number)
-	}
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM schedule WHERE title_id = ? AND season = ? AND number = ?`, titleID, season, number); err != nil {
-		return err
+	for _, n := range numbers {
+		var err error
+		if season == 0 && number == 0 {
+			_, err = tx.ExecContext(ctx, `UPDATE titles SET have_file = 1, file_path = ?, file_size = ?, file_fingerprint = ? WHERE id = ?`,
+				f.Path, f.Size, f.Fingerprint, titleID)
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE episodes SET have_file = 1, file_path = ?, file_size = ?, file_fingerprint = ?
+				WHERE title_id = ? AND season = ? AND number = ?`, f.Path, f.Size, f.Fingerprint, titleID, season, n)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM schedule WHERE title_id = ? AND season = ? AND number = ?`, titleID, season, n); err != nil {
+			return err
+		}
 	}
 	if err := s.pruneDownloads(ctx, tx); err != nil {
 		return err
@@ -265,16 +358,20 @@ func (s *Store) FinishDownload(ctx context.Context, id string, f File) error {
 	return tx.Commit()
 }
 
-// DuplicateEpisode finds an episode of the series, other than the given one,
-// that has a file with this fingerprint. It reports false when none has.
-func (s *Store) DuplicateEpisode(ctx context.Context, titleID, fingerprint string, season, number int) (int, int, bool, error) {
+// DuplicateEpisode finds an episode of the series, outside the given ones,
+// that has a file with this fingerprint. numbers are the episodes of season
+// the file being checked will hold, so the bytes a multi-episode file shares
+// between its own episodes are no duplicate. It reports false when none has.
+func (s *Store) DuplicateEpisode(ctx context.Context, titleID, fingerprint string, season int, numbers []int) (int, int, bool, error) {
 	if fingerprint == "" {
 		return 0, 0, false, nil
 	}
+	own, _ := json.Marshal(numbers)
 	var sn, nr int
 	err := s.r.QueryRowContext(ctx, `SELECT season, number FROM episodes
-		WHERE title_id = ? AND file_fingerprint = ? AND have_file = 1 AND NOT (season = ? AND number = ?)
-		ORDER BY season, number LIMIT 1`, titleID, fingerprint, season, number).Scan(&sn, &nr)
+		WHERE title_id = ? AND file_fingerprint = ? AND have_file = 1
+		AND NOT (season = ? AND number IN (SELECT value FROM json_each(?)))
+		ORDER BY season, number LIMIT 1`, titleID, fingerprint, season, string(own)).Scan(&sn, &nr)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, 0, false, nil
 	}

@@ -30,10 +30,13 @@ type Options struct {
 }
 
 type episode struct {
-	Number    int    `json:"number"`
-	Name      string `json:"name"`
-	AirDate   string `json:"airDate"`
-	State     string `json:"state"`
+	Number  int    `json:"number"`
+	Name    string `json:"name"`
+	AirDate string `json:"airDate"`
+	State   string `json:"state"`
+	// File names the video file a downloaded episode is in; episodes of one
+	// season that name the same file share it.
+	File      string `json:"file"`
 	monitored bool
 }
 

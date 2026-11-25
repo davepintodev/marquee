@@ -2,6 +2,7 @@ package chooser_test
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -301,5 +302,74 @@ func TestNothingToChooseFromGivesEmptyListsNotNil(t *testing.T) {
 	got := chooser.Choose(nil, chooser.Context{Kind: "movie", Now: now, Profile: anyProfile})
 	if got.Candidates == nil || got.Dropped == nil {
 		t.Errorf("want empty, non-nil lists: %+v", got)
+	}
+}
+
+func TestASingleEpisodeBeatsAMultiEpisodeFileThatOverlapsAnEpisodeOnDisk(t *testing.T) {
+	multi := pf("Show.S01E01E02.mkv", 3000*mb, "1080p", "WEB-DL")
+	multi.ParsedFile.Seasons, multi.ParsedFile.Episodes = []int{1}, []int{1, 2}
+	single := pf("Show.S01E01.mkv", 1500*mb, "1080p", "WEB-DL")
+	single.ParsedFile.Seasons, single.ParsedFile.Episodes = []int{1}, []int{1}
+	triple := pf("Show.S01E01-E03.mkv", 4000*mb, "1080p", "WEB-DL")
+	triple.ParsedFile.Seasons, triple.ParsedFile.Episodes = []int{1}, []int{1, 2, 3}
+	p := profile([]string{"WEBDL-1080p", "WEBDL-720p"}, nil, []string{config.TagDDP})
+	ctx := func(owned ...int) chooser.Context {
+		return chooser.Context{Kind: "series", Season: 1, Episode: 1, Now: now, Profile: p, OwnedEpisodes: owned}
+	}
+	order := func(c chooser.Context, list ...aiostreams.Stream) string {
+		return strings.Join(names(chooser.Choose(list, c).Candidates), ",")
+	}
+
+	if got := order(ctx(2), multi, single); got != "Show.S01E01.mkv,Show.S01E01E02.mkv" {
+		t.Errorf("episode 2 is on disk: the single wins whatever the listing order, got %s", got)
+	}
+	if got := order(ctx(), multi, single); got != "Show.S01E01E02.mkv,Show.S01E01.mkv" {
+		t.Errorf("nothing owned: AIOStreams' order stands, got %s", got)
+	}
+	if got := order(ctx(5), multi, single); got != "Show.S01E01E02.mkv,Show.S01E01.mkv" {
+		t.Errorf("an owned episode the file does not cover is no overlap, got %s", got)
+	}
+	if got := order(ctx(2, 3), triple, multi, single); got != "Show.S01E01.mkv,Show.S01E01E02.mkv,Show.S01E01-E03.mkv" {
+		t.Errorf("the fewer owned episodes a file repeats, the earlier it ranks, got %s", got)
+	}
+	if got := order(ctx(1), multi, single); got != "Show.S01E01E02.mkv,Show.S01E01.mkv" {
+		t.Errorf("the episode wanted itself being listed as owned must not penalise, got %s", got)
+	}
+
+	hd := pf("Show.S01E01E02.2160.mkv", 6000*mb, "2160p", "WEB-DL")
+	hd.ParsedFile.Seasons, hd.ParsedFile.Episodes = []int{1}, []int{1, 2}
+	p2 := profile([]string{"WEBDL-2160p", "WEBDL-1080p"}, nil, nil)
+	c := ctx(2)
+	c.Profile = p2
+	if got := order(c, single, hd); got != "Show.S01E01E02.2160.mkv,Show.S01E01.mkv" {
+		t.Errorf("a better quality tier outranks the tie-breaker, got %s", got)
+	}
+
+	ddp := pf("Show.S01E01E02.ddp.mkv", 3000*mb, "1080p", "WEB-DL", "DD+")
+	ddp.ParsedFile.Seasons, ddp.ParsedFile.Episodes = []int{1}, []int{1, 2}
+	if got := order(ctx(2), single, ddp); got != "Show.S01E01E02.ddp.mkv,Show.S01E01.mkv" {
+		t.Errorf("the profile's prefer boost outranks the tie-breaker, got %s", got)
+	}
+}
+
+func TestCoveredEpisodesAreOnlyTheOnesAReleaseOfOneSeasonNames(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		release aiostreams.Stream
+		season  int
+		want    []int
+	}{
+		{"two episodes", rel("a.mkv", 800*mb, parsed([]int{1}, []int{1, 2})), 1, []int{1, 2}},
+		{"one episode", rel("a.mkv", 800*mb, parsed([]int{1}, []int{4})), 1, []int{4}},
+		{"another season", rel("a.mkv", 800*mb, parsed([]int{2}, []int{1, 2})), 1, nil},
+		{"several seasons", rel("a.mkv", 800*mb, parsed([]int{1, 2}, []int{1, 2})), 1, nil},
+		{"no season", rel("a.mkv", 800*mb, parsed(nil, []int{1, 2})), 1, nil},
+		{"not parsed", rel("a.mkv", 800*mb, noParse), 1, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := chooser.CoveredEpisodes(tc.release, tc.season); !slices.Equal(got, tc.want) {
+				t.Errorf("CoveredEpisodes = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

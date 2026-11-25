@@ -53,6 +53,11 @@ func IsVideoFile(name string) bool { return videoExtensions[strings.ToLower(path
 type Context struct {
 	Kind            string // "movie" or "series"
 	Season, Episode int    // the episode wanted; ignored for a movie
+	// OwnedEpisodes are the episodes of Season that already have a file.
+	// Between releases that tie otherwise, the one that repeats the fewest
+	// of them ranks first, so a single episode beats a multi-episode file
+	// that would download an owned episode again.
+	OwnedEpisodes []int
 	// Profile decides which qualities and formats are allowed and ranks
 	// what is left; a profile with no Qualities allows nothing.
 	Profile config.Profile
@@ -97,14 +102,14 @@ func IdentityOf(infoHash, fileName string, size int64) string {
 // Choose filters releases in a fixed order (cached, video, size, episode,
 // profile, blocklist), so each drop names the first rule it broke. The
 // candidates are ranked by the profile's quality order, then by its prefer
-// boosts, and keep AIOStreams' order where those tie. The same file listed
-// twice keeps its first listing.
+// boosts, then by how few owned episodes they repeat, and keep AIOStreams'
+// order where those tie. The same file listed twice keeps its first listing.
 func Choose(releases []aiostreams.Stream, c Context) Result {
 	out := Result{Candidates: []Candidate{}, Dropped: []Drop{}}
 	seen := map[string]bool{}
 	type ranked struct {
 		Candidate
-		tier, boost int
+		tier, boost, overlap int
 	}
 	var kept []ranked
 	for _, s := range releases {
@@ -118,18 +123,46 @@ func Choose(releases []aiostreams.Stream, c Context) Result {
 			out.Dropped = append(out.Dropped, Drop{cand, reason, msg})
 			continue
 		}
-		kept = append(kept, ranked{cand, slices.Index(c.Profile.Qualities, Tier(s)), boost(c.Profile, ExtractTags(s))})
+		kept = append(kept, ranked{cand, slices.Index(c.Profile.Qualities, Tier(s)), boost(c.Profile, ExtractTags(s)), overlap(s, c)})
 	}
 	sort.SliceStable(kept, func(i, j int) bool {
 		if kept[i].tier != kept[j].tier {
 			return kept[i].tier < kept[j].tier
 		}
-		return kept[i].boost > kept[j].boost
+		if kept[i].boost != kept[j].boost {
+			return kept[i].boost > kept[j].boost
+		}
+		return kept[i].overlap < kept[j].overlap
 	})
 	for _, k := range kept {
 		out.Candidates = append(out.Candidates, k.Candidate)
 	}
 	return out
+}
+
+// overlap counts the episodes a series release covers that are already on
+// disk. The episode being searched for is never one of them.
+func overlap(s aiostreams.Stream, c Context) int {
+	if c.Kind != kindSeries || s.ParsedFile == nil {
+		return 0
+	}
+	n := 0
+	for _, e := range s.ParsedFile.Episodes {
+		if e != c.Episode && slices.Contains(c.OwnedEpisodes, e) {
+			n++
+		}
+	}
+	return n
+}
+
+// CoveredEpisodes are the episodes of season that one file of the release
+// holds. A release that spans several seasons says nothing certain about
+// where its episode numbers belong, so it covers none.
+func CoveredEpisodes(s aiostreams.Stream, season int) []int {
+	if s.ParsedFile == nil || len(s.ParsedFile.Seasons) != 1 || s.ParsedFile.Seasons[0] != season {
+		return nil
+	}
+	return s.ParsedFile.Episodes
 }
 
 // Tier is the canonical quality a profile lists a release under.

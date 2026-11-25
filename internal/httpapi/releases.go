@@ -192,8 +192,15 @@ func (a *api) searchReleases(w http.ResponseWriter, r *http.Request, id, episode
 			return releaseSearch{}, false
 		}
 	}
+	var owned []int
+	if kind == "series" {
+		if owned, err = a.Catalog.OwnedEpisodes(r.Context(), id, out.season); err != nil {
+			a.internal(w, r, err)
+			return releaseSearch{}, false
+		}
+	}
 	out.result = chooser.Choose(streams, chooser.Context{
-		Kind: kind, Season: out.season, Episode: out.episode, Profile: t.profile,
+		Kind: kind, Season: out.season, Episode: out.episode, OwnedEpisodes: owned, Profile: t.profile,
 		Blocklist: blocked, Now: a.Now(),
 	})
 	return out, true
@@ -289,6 +296,7 @@ func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	if p := st.ParsedFile; p != nil {
 		job.Resolution, job.Quality = p.Resolution, p.Quality
+		job.Covered = chooser.CoveredEpisodes(st, found.season)
 	}
 	d, err := a.Transfers.Enqueue(r.Context(), job)
 	switch {

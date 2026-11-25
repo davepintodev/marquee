@@ -996,6 +996,14 @@ components:
         state: { $ref: "#/components/schemas/EpisodeState" }
         percent: { type: integer, minimum: 0, maximum: 100, description: Present when state is downloading. }
         nextSearchAt: { $ref: "#/components/schemas/NextSearchAt" }
+        sharedEpisodes:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/EpisodeId" }
+          description: >
+            Present when one video file holds this episode and others: every
+            episode that shares the file, this one included, in order. Marking
+            the file as the wrong one, or deleting it, affects all of them.
     NextSearchAt:
       description: When marquee searches next. Null unless the item is monitored and searching or missing.
       anyOf:

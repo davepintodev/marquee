@@ -38,7 +38,8 @@ type episodeOut struct {
 	State     string `json:"state"`
 	Percent   *int   `json:"percent,omitempty"`
 
-	NextSearchAt *time.Time `json:"nextSearchAt"`
+	SharedEpisodes []string   `json:"sharedEpisodes,omitempty"`
+	NextSearchAt   *time.Time `json:"nextSearchAt"`
 }
 
 type seasonOut struct {
@@ -234,12 +235,30 @@ func (f *Fake) title(t *entry) titleOut {
 			if st == "downloading" {
 				eo.Percent = &p
 			}
+			if sharers := sharedFile(s, e); len(sharers) > 1 {
+				eo.SharedEpisodes = sharers
+			}
 			if t.InLibrary && e.monitored && t.monitored && searchable(st) {
 				eo.NextSearchAt = &t.nextSearch
 			}
 			so.Episodes = append(so.Episodes, eo)
 		}
 		out.Seasons = append(out.Seasons, so)
+	}
+	return out
+}
+
+// sharedFile lists the downloaded episodes of the season in the same file
+// as e, e included, or nothing for an episode with no file.
+func sharedFile(s *season, e *episode) []string {
+	if e.File == "" || e.State != "downloaded" {
+		return nil
+	}
+	var out []string
+	for _, o := range s.Episodes {
+		if o.File == e.File && o.State == "downloaded" {
+			out = append(out, epID(s, o))
+		}
 	}
 	return out
 }
@@ -474,11 +493,11 @@ func (f *Fake) wrongFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reSearch := req.ReSearch == nil || *req.ReSearch
-	epID := r.PathValue("episodeId")
+	which := r.PathValue("episodeId")
 	var state *string
 	switch {
-	case epID != "":
-		e := f.findEpisode(t, epID)
+	case which != "":
+		e := f.findEpisode(t, which)
 		if e == nil {
 			fail(w, http.StatusNotFound, "no such episode")
 			return
@@ -496,8 +515,17 @@ func (f *Fake) wrongFile(w http.ResponseWriter, r *http.Request) {
 	}
 	*state = "missing"
 	t.monitored = true
-	if epID != "" {
-		setMonitored(f.findEpisode(t, epID), true)
+	if which != "" {
+		asked := f.findEpisode(t, which)
+		setMonitored(asked, true)
+		for _, s := range t.Seasons {
+			for _, e := range s.Episodes {
+				if e != asked && asked.File != "" && e.File == asked.File && e.State == "downloaded" {
+					e.State = "missing"
+					setMonitored(e, true)
+				}
+			}
+		}
 	} else {
 		*state = "searching"
 	}
@@ -506,7 +534,7 @@ func (f *Fake) wrongFile(w http.ResponseWriter, r *http.Request) {
 		msg = "Wrong file: deleted the file. Searching for another release."
 		t.nextSearch = time.Now()
 	}
-	f.addHistory("wrong_file", t, epID, msg, "", false)
+	f.addHistory("wrong_file", t, which, msg, "", false)
 	write(w, http.StatusOK, f.title(t))
 }
 

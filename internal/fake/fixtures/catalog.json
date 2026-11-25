@@ -1201,13 +1201,15 @@
       "number": 1,
       "name": "Reboot",
       "airDate": "2026-10-01",
-      "state": "downloaded"
+      "state": "downloaded",
+      "file": "reboot-memory"
      },
      {
       "number": 2,
       "name": "Memory",
       "airDate": "2026-10-08",
-      "state": "downloaded"
+      "state": "downloaded",
+      "file": "reboot-memory"
      },
      {
       "number": 3,

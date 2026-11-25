@@ -88,6 +88,10 @@ type Episode struct {
 	Monitored bool
 	State     string // downloaded, searching, downloading, stalled, missing or unaired
 	Percent   *int   // set while downloading
+	// Shared lists, in order, the ids of every episode that shares this
+	// episode's file, itself included; it is empty unless the file holds
+	// more than one episode.
+	Shared []string
 }
 
 type Season struct {
@@ -150,7 +154,7 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 	}
 
 	eps := map[string][]epRow{}
-	erows, err := q.QueryContext(ctx, `SELECT title_id, season, number, name, air_date, monitored, have_file FROM episodes WHERE title_id IN (SELECT id FROM titles `+where+`) ORDER BY title_id, season, number`, args...)
+	erows, err := q.QueryContext(ctx, `SELECT title_id, season, number, name, air_date, monitored, have_file, file_path FROM episodes WHERE title_id IN (SELECT id FROM titles `+where+`) ORDER BY title_id, season, number`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +163,7 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 		var id string
 		var e epRow
 		var mon, file int
-		if err := erows.Scan(&id, &e.season, &e.number, &e.name, &e.airDate, &mon, &file); err != nil {
+		if err := erows.Scan(&id, &e.season, &e.number, &e.name, &e.airDate, &mon, &file, &e.path); err != nil {
 			return nil, err
 		}
 		e.monitored, e.haveFile = mon == 1, file == 1
@@ -195,7 +199,7 @@ type target struct {
 // inFlight returns the unfinished downloads of the titles selected by
 // where, by movie or episode.
 func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []any) (map[target]*inFlight, error) {
-	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, updated_at FROM downloads
+	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, updated_at, covered_episodes FROM downloads
 		WHERE state NOT IN ('done', 'failed') AND title_id IN (SELECT id FROM titles `+where+`)`, args...)
 	if err != nil {
 		return nil, err
@@ -206,12 +210,35 @@ func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []an
 	for rows.Next() {
 		var k target
 		var d Download
-		var updated string
-		if err := rows.Scan(&k.titleID, &k.season, &k.number, &d.State, &d.BytesDone, &d.BytesTotal, &updated); err != nil {
+		var updated, covered string
+		if err := rows.Scan(&k.titleID, &k.season, &k.number, &d.State, &d.BytesDone, &d.BytesTotal, &updated, &covered); err != nil {
 			return nil, err
 		}
 		d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-		out[k] = &inFlight{stalled: d.Stalled(now), percent: d.Percent()}
+		fl := &inFlight{stalled: d.Stalled(now), percent: d.Percent()}
+		out[k] = fl
+		for _, n := range decodeCovered(covered) {
+			out[target{k.titleID, k.season, n}] = fl
+		}
+	}
+	return out, rows.Err()
+}
+
+// OwnedEpisodes lists, in order, the numbers of the season's episodes that
+// have a file. A title or season that is not there owns none.
+func (s *Store) OwnedEpisodes(ctx context.Context, titleID string, season int) ([]int, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT number FROM episodes WHERE title_id = ? AND season = ? AND have_file = 1 ORDER BY number`, titleID, season)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []int
+	for rows.Next() {
+		var n int
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
 	}
 	return out, rows.Err()
 }
@@ -436,11 +463,17 @@ func b2i(b bool) int {
 
 type epRow struct {
 	season, number      int
-	name, airDate       string
+	name, airDate, path string
 	monitored, haveFile bool
 }
 
 func buildSeasons(rows []epRow, today string, flying func(season, number int) *inFlight) ([]Season, *Badge) {
+	sharing := map[string][]string{}
+	for _, r := range rows {
+		if r.haveFile && r.path != "" {
+			sharing[r.path] = append(sharing[r.path], EpisodeID(r.season, r.number))
+		}
+	}
 	eps := map[int][]Episode{}
 	views := map[int][]epView{}
 	var numbers []int
@@ -458,6 +491,9 @@ func buildSeasons(rows []epRow, today string, flying func(season, number int) *i
 			}
 		}
 		ep := Episode{Number: r.number, Name: r.name, AirDate: r.airDate, Monitored: r.monitored, State: state}
+		if ids := sharing[r.path]; r.haveFile && r.path != "" && len(ids) > 1 {
+			ep.Shared = ids
+		}
 		if state == "downloading" {
 			ep.Percent = &percent
 		}

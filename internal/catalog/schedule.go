@@ -54,7 +54,8 @@ func nullMillis(t time.Time) any {
 // requests, then targets whose download failed, then the longest waiting.
 // A target is wanted when it has no file and no download in flight, and
 // either the owner asked for it or it is monitored and, for an episode,
-// has aired. Specials (season 0) are not searched.
+// has aired. An episode that an unfinished download's file covers is not
+// wanted either. Specials (season 0) are not searched.
 func (s *Store) Targets(ctx context.Context, now time.Time) ([]Target, error) {
 	rows, err := s.r.QueryContext(ctx, `
 SELECT * FROM (
@@ -72,6 +73,8 @@ SELECT * FROM (
   WHERE e.season > 0 AND e.have_file = 0 AND e.air_date <= ?2
     AND (COALESCE(s.forced, 0) = 1 OR (t.monitored = 1 AND e.monitored = 1 AND (s.next_at IS NULL OR s.next_at <= ?1)))
     AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.title_id = e.title_id AND d.season = e.season AND d.number = e.number AND d.state NOT IN ('done', 'failed'))
+    AND NOT EXISTS (SELECT 1 FROM downloads d, json_each(CASE WHEN d.covered_episodes = '' THEN '[]' ELSE d.covered_episodes END) c
+      WHERE d.title_id = e.title_id AND d.season = e.season AND d.state NOT IN ('done', 'failed') AND c.value = e.number)
 ) ORDER BY forced DESC, follow_up DESC, COALESCE(next_at, 0), id, season, number`,
 		now.UnixMilli(), now.UTC().Format(time.DateOnly))
 	if err != nil {
@@ -152,22 +155,25 @@ func (s *Store) RequestSearch(ctx context.Context, titleID string, ep *EpisodeRe
 	return tx.Commit()
 }
 
-// SearchesToday is how many searches the title has used on day (YYYY-MM-DD)
-// of its daily budget.
-func (s *Store) SearchesToday(ctx context.Context, titleID, day string) (int, error) {
+// SearchesToday is how many searches a movie (season and number 0) or an
+// episode has used on day (YYYY-MM-DD) of its daily budget.
+func (s *Store) SearchesToday(ctx context.Context, titleID string, season, number int, day string) (int, error) {
 	var used int
-	err := s.r.QueryRowContext(ctx, `SELECT used FROM search_budget WHERE title_id = ? AND day = ?`, titleID, day).Scan(&used)
+	err := s.r.QueryRowContext(ctx, `SELECT used FROM search_budget WHERE title_id = ? AND season = ? AND number = ? AND day = ?`,
+		titleID, season, number, day).Scan(&used)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	return used, err
 }
 
-func (s *Store) CountSearch(ctx context.Context, titleID, day string) error {
+// CountSearch spends one search of the movie's or episode's budget for day.
+// A title that was removed meanwhile answers ErrNotFound.
+func (s *Store) CountSearch(ctx context.Context, titleID string, season, number int, day string) error {
 	res, err := s.w.ExecContext(ctx, `
-INSERT INTO search_budget (title_id, day, used) SELECT id, ?2, 1 FROM titles WHERE id = ?1
-ON CONFLICT (title_id) DO UPDATE SET used = CASE WHEN day = excluded.day THEN used + 1 ELSE 1 END, day = excluded.day`,
-		titleID, day)
+INSERT INTO search_budget (title_id, season, number, day, used) SELECT id, ?2, ?3, ?4, 1 FROM titles WHERE id = ?1
+ON CONFLICT (title_id, season, number) DO UPDATE SET used = CASE WHEN day = excluded.day THEN used + 1 ELSE 1 END, day = excluded.day`,
+		titleID, season, number, day)
 	return affected(res, err)
 }
 
