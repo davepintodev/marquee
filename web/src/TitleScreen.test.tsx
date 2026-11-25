@@ -88,6 +88,15 @@ test("cast and 'More like this' come from the about, a similar title opens its o
   expect(screen.getByRole("button", { name: "History" })).toBeTruthy();
 });
 
+test("a similar title with no release year shows no year instead of 0", async () => {
+  const stub = { id: "movie-643376", tmdbId: 643376, kind: "movie" as const, title: "Marley", year: 0, overview: "", posterPath: "/api/images/poster/movie-643376", backdropPath: "", inLibrary: false };
+  await open(house(), undefined, aboutOf({ similar: [stub] }));
+  const tile = screen.getByRole("button", { name: "Marley" });
+  expect(within(tile).getByText("Marley")).toBeTruthy();
+  expect(within(tile).queryByText("0")).toBeNull();
+  expect(tile.querySelector("small")).toBeNull();
+});
+
 test("a broken cast photo falls back to initials", async () => {
   await open(house());
   fireEvent.error(document.querySelector(".ts-face img")!);

@@ -92,11 +92,14 @@ func (c *Client) About(ctx context.Context, kind string, id int) (About, error) 
 		}
 		a.Cast = append(a.Cast, cr)
 	}
+	// TMDB's /similar also lists unannounced stubs with no title or poster.
 	for _, s := range r.Similar.Results {
 		if len(a.Similar) == maxSimilar {
 			break
 		}
-		a.Similar = append(a.Similar, s.summary(kind))
+		if sum := s.summary(kind); sum.Title != "" && sum.PosterPath != "" {
+			a.Similar = append(a.Similar, sum)
+		}
 	}
 	return a, nil
 }

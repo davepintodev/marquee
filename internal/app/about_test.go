@@ -89,8 +89,8 @@ func TestAboutAnswersFromTMDBAloneWhenNoOMDbKeyIsSet(t *testing.T) {
 		t.Errorf("a cast member TMDB has no photo for links none: %v", cast[1])
 	}
 	similar := v["similar"].([]any)
-	if len(similar) != 2 || similar[0].(map[string]any)["id"] != "movie-7" || similar[0].(map[string]any)["posterPath"] != "/api/images/poster/movie-7" {
-		t.Errorf("similar titles are summaries with same-origin art: %v", similar)
+	if len(similar) != 1 || similar[0].(map[string]any)["id"] != "movie-7" || similar[0].(map[string]any)["posterPath"] != "/api/images/poster/movie-7" {
+		t.Errorf("similar titles are summaries with same-origin art, the poster-less one left out: %v", similar)
 	}
 }
 
@@ -154,7 +154,7 @@ func TestAboutCapsCastAndSimilarTitlesAndMarksTheOnesInTheLibrary(t *testing.T) 
 	for i := 1; i <= 30; i++ {
 		cast = append(cast, tmdbfake.Person{ID: 1000 + i, Name: "Actor"})
 		similar = append(similar, 2000+i)
-		tm.Add(tmdbfake.Title{Kind: "movie", ID: 2000 + i, Name: "Similar", Date: "2020-01-01"})
+		tm.Add(tmdbfake.Title{Kind: "movie", ID: 2000 + i, Name: "Similar", Date: "2020-01-01", Poster: "/p.jpg"})
 	}
 	tm.Replace(tmdbfake.Title{Kind: "movie", ID: 600, Name: "Big", Date: "2020-01-01", Cast: cast, Similar: similar})
 	r := startAbout(t, tm, false)
@@ -173,6 +173,32 @@ func TestAboutCapsCastAndSimilarTitlesAndMarksTheOnesInTheLibrary(t *testing.T) 
 	}
 	if second := list[1].(map[string]any); second["inLibrary"] != false {
 		t.Errorf("another is not: %v", second)
+	}
+}
+
+func TestAboutSkipsSimilarStubsWithoutAPosterOrATitleAndFillsFromTheRest(t *testing.T) {
+	tm := aboutTMDB(t)
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 3001, Name: "No Poster", Date: "2020-01-01"})
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 3002, Poster: "/p.jpg", Date: "2020-01-01"})
+	similar := []int{3001, 3002}
+	for i := 1; i <= 6; i++ {
+		tm.Add(tmdbfake.Title{Kind: "movie", ID: 3100 + i, Name: "Complete", Poster: "/p.jpg"})
+		similar = append(similar, 3100+i)
+	}
+	tm.Replace(tmdbfake.Title{Kind: "movie", ID: 601, Name: "Host", Date: "2020-01-01", Similar: similar})
+	r := startAbout(t, tm, false)
+
+	list := r.mustCall("GET", "/api/titles/movie-601/about", "", 200)["similar"].([]any)
+	if len(list) != 6 {
+		t.Fatalf("stubs leave room for six complete titles: %d", len(list))
+	}
+	for _, e := range list {
+		if id := e.(map[string]any)["id"]; id == "movie-3001" || id == "movie-3002" {
+			t.Errorf("a stub without a poster or a title is skipped: %v", id)
+		}
+	}
+	if y := list[0].(map[string]any)["year"]; y != float64(0) {
+		t.Errorf("a complete title with no release date stays, year 0: %v", y)
 	}
 }
 

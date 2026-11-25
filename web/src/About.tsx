@@ -137,12 +137,12 @@ export function AboutSections({ api, about, onOpen }: { api: Api; about: AboutLo
           <ul className="ts-sim">
             {a.similar.map((s) => (
               <li key={s.id}>
-                <button type="button" onClick={() => onOpen?.(s)} aria-label={`${s.title}, ${s.year}`}>
+                <button type="button" onClick={() => onOpen?.(s)} aria-label={s.year > 0 ? `${s.title}, ${s.year}` : s.title}>
                   <span className="ts-sim-art">
                     <Art src={api.imageUrl(s.posterPath)} title={s.title} year={s.year} />
                   </span>
                   <b>{s.title}</b>
-                  <small>{s.year}</small>
+                  {s.year > 0 && <small>{s.year}</small>}
                 </button>
               </li>
             ))}
