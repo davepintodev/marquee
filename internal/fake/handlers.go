@@ -49,11 +49,11 @@ type seasonOut struct {
 
 type titleOut struct {
 	summary
-	Seasons          []seasonOut     `json:"seasons"`
-	PreferredQuality *string         `json:"preferredQuality"`
-	NextSearchAt     *time.Time      `json:"nextSearchAt"`
-	HistorySummary   string          `json:"historySummary"`
-	History          []*historyEntry `json:"history"`
+	Seasons        []seasonOut     `json:"seasons"`
+	Profile        *string         `json:"profile"`
+	NextSearchAt   *time.Time      `json:"nextSearchAt"`
+	HistorySummary string          `json:"historySummary"`
+	History        []*historyEntry `json:"history"`
 }
 
 type downloadOut struct {
@@ -75,6 +75,7 @@ func (f *Fake) routes() http.Handler {
 	}
 	h("GET /api/wall", f.wall)
 	h("GET /api/search", f.search)
+	h("GET /api/profiles", f.listProfiles)
 	h("GET /api/titles", f.list)
 	h("POST /api/titles", f.add)
 	h("GET /api/titles/{id}", f.get)
@@ -218,8 +219,8 @@ func (f *Fake) title(t *entry) titleOut {
 	hs := f.historyFor(t.id())
 	next := f.nextSearch(t)
 	out := titleOut{summary: f.summary(t), Seasons: []seasonOut{}, NextSearchAt: next, HistorySummary: summarize(hs, next), History: hs}
-	if t.quality != "" {
-		out.PreferredQuality = &t.quality
+	if t.profile != "" {
+		out.Profile = &t.profile
 	}
 	for _, s := range t.Seasons {
 		so := seasonOut{Number: s.Number, Badge: f.seasonBadge(t, s), Episodes: []episodeOut{}}
@@ -302,10 +303,10 @@ func (f *Fake) libraryTitle(w http.ResponseWriter, r *http.Request) *entry {
 
 func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Kind             string          `json:"kind"`
-		TmdbID           int             `json:"tmdbId"`
-		PreferredQuality string          `json:"preferredQuality"`
-		Monitor          json.RawMessage `json:"monitor"`
+		Kind    string          `json:"kind"`
+		TmdbID  int             `json:"tmdbId"`
+		Profile json.RawMessage `json:"profile"`
+		Monitor json.RawMessage `json:"monitor"`
 	}
 	if !decode(r, &req) || (req.Kind != "movie" && req.Kind != "series") || req.TmdbID <= 0 {
 		fail(w, http.StatusBadRequest, "kind must be movie or series and tmdbId a positive number")
@@ -319,6 +320,13 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	profile := ""
+	if req.Profile != nil {
+		if json.Unmarshal(req.Profile, &profile) != nil || !f.knownProfile(profile) {
+			fail(w, http.StatusBadRequest, "profile must be the name of a profile from GET /api/profiles")
+			return
+		}
+	}
 	t := f.find(fmt.Sprintf("%s-%d", req.Kind, req.TmdbID))
 	if t == nil {
 		fail(w, http.StatusNotFound, "TMDB has no such title")
@@ -328,15 +336,15 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusOK, f.title(t))
 		return
 	}
-	f.addToLibrary(t, req.PreferredQuality, monitor)
+	f.addToLibrary(t, profile, monitor)
 	write(w, http.StatusCreated, f.title(t))
 }
 
-func (f *Fake) addToLibrary(t *entry, quality, monitor string) {
+func (f *Fake) addToLibrary(t *entry, profile, monitor string) {
 	if t.Kind == "movie" {
 		monitor = "all"
 	}
-	t.InLibrary, t.monitored, t.quality = true, monitor != "none", quality
+	t.InLibrary, t.monitored, t.profile = true, monitor != "none", profile
 	t.nextSearch = time.Now().Add(defaultNextSearch)
 	if t.Kind == "movie" {
 		t.State = "searching"
@@ -393,17 +401,17 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Monitored        *bool           `json:"monitored"`
-		PreferredQuality json.RawMessage `json:"preferredQuality"`
+		Monitored *bool           `json:"monitored"`
+		Profile   json.RawMessage `json:"profile"`
 	}
-	if !decode(r, &req) || (req.Monitored == nil && req.PreferredQuality == nil) {
-		fail(w, http.StatusBadRequest, "send monitored, preferredQuality or both")
+	if !decode(r, &req) || (req.Monitored == nil && req.Profile == nil) {
+		fail(w, http.StatusBadRequest, "send monitored, profile or both")
 		return
 	}
-	quality, clear := "", string(req.PreferredQuality) == "null"
-	if req.PreferredQuality != nil && !clear {
-		if json.Unmarshal(req.PreferredQuality, &quality) != nil || !slices.Contains([]string{"2160p", "1080p", "720p"}, quality) {
-			fail(w, http.StatusBadRequest, "preferredQuality must be 2160p, 1080p, 720p or null")
+	profile, clear := "", string(req.Profile) == "null"
+	if req.Profile != nil && !clear {
+		if json.Unmarshal(req.Profile, &profile) != nil || !f.knownProfile(profile) {
+			fail(w, http.StatusBadRequest, "profile must be the name of a profile from GET /api/profiles, or null")
 			return
 		}
 	}
@@ -416,9 +424,9 @@ func (f *Fake) update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if clear {
-		t.quality = ""
-	} else if quality != "" {
-		t.quality = quality
+		t.profile = ""
+	} else if profile != "" {
+		t.profile = profile
 	}
 	write(w, http.StatusOK, f.title(t))
 }
@@ -428,7 +436,7 @@ func (f *Fake) remove(w http.ResponseWriter, r *http.Request) {
 	if t == nil {
 		return
 	}
-	t.InLibrary, t.monitored, t.quality = false, false, ""
+	t.InLibrary, t.monitored, t.profile = false, false, ""
 	if t.Kind == "movie" {
 		t.State = "missing"
 	}
@@ -544,12 +552,13 @@ func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	type release struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		Quality   string `json:"quality"`
-		SizeBytes int64  `json:"sizeBytes"`
-		Source    string `json:"source"`
-		Cached    bool   `json:"cached"`
+		ID        string   `json:"id"`
+		Name      string   `json:"name"`
+		Quality   string   `json:"quality"`
+		Tags      []string `json:"tags"`
+		SizeBytes int64    `json:"sizeBytes"`
+		Source    string   `json:"source"`
+		Cached    bool     `json:"cached"`
 	}
 	type dropped struct {
 		Release release `json:"release"`
@@ -558,11 +567,11 @@ func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	candidates, drops := []release{}, []dropped{}
 	for _, x := range f.releases[t.Kind] {
-		rel := release{x.ID, x.Name, x.Quality, x.SizeBytes, x.Source, x.Cached}
+		rel := release{x.ID, x.Name, x.Quality, nonNil(x.Tags), x.SizeBytes, x.Source, x.Cached}
 		if ep := r.URL.Query().Get("episode"); len(ep) == 6 {
 			rel.Name = strings.ReplaceAll(strings.ReplaceAll(rel.Name, "S04E03", "S"+strings.ToUpper(ep[1:3])+"E"+nextEp(ep[4:])), "S04E02", strings.ToUpper(ep))
 		}
-		if x.Drop == "" {
+		if x.Drop == "" || (x.Drop == "profile_rejected" && t.profile == openProfile) {
 			candidates = append(candidates, rel)
 		} else {
 			drops = append(drops, dropped{rel, x.Drop, x.Message})
@@ -571,7 +580,7 @@ func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, map[string]any{"candidates": candidates, "dropped": drops})
 }
 
-var ungrabbable = []string{"not_cached", "not_video", "too_small"}
+var ungrabbable = []string{"not_cached", "not_video", "too_small", "wrong_episode"}
 
 func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 	t := f.knownTitle(w, r)
@@ -771,4 +780,11 @@ func (f *Fake) events(w http.ResponseWriter, r *http.Request) {
 func nextEp(n string) string {
 	v, _ := strconv.Atoi(n)
 	return fmt.Sprintf("%02d", v+1)
+}
+
+func nonNil(xs []string) []string {
+	if xs == nil {
+		return []string{}
+	}
+	return xs
 }

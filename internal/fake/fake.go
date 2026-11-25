@@ -55,7 +55,7 @@ type entry struct {
 	NextSearchIn string `json:"nextSearchIn"`
 
 	monitored  bool
-	quality    string
+	profile    string
 	nextSearch time.Time
 }
 
@@ -73,14 +73,15 @@ type download struct {
 }
 
 type release struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Quality   string `json:"quality"`
-	SizeBytes int64  `json:"sizeBytes"`
-	Source    string `json:"source"`
-	Cached    bool   `json:"cached"`
-	Drop      string `json:"drop,omitempty"`
-	Message   string `json:"message,omitempty"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Quality   string   `json:"quality"`
+	Tags      []string `json:"tags"`
+	SizeBytes int64    `json:"sizeBytes"`
+	Source    string   `json:"source"`
+	Cached    bool     `json:"cached"`
+	Drop      string   `json:"drop,omitempty"`
+	Message   string   `json:"message,omitempty"`
 }
 
 type historyEntry struct {

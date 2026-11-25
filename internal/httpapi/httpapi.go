@@ -38,19 +38,22 @@ type Transfers interface {
 type Deps struct {
 	Catalog   *catalog.Store
 	Transfers Transfers
-	TMDB    TMDB
+	TMDB      TMDB
 	// OMDb is nil when no OMDb key is set, which leaves the scores to TMDB's own.
 	OMDb   Scorer
-	Source  Source
-	Images  *metadata.Images
-	Log     *slog.Logger
-	DryRun  bool
+	Source Source
+	Images *metadata.Images
+	Log    *slog.Logger
+	DryRun bool
 	// Now is the clock the blocklist's expiry is judged by; nil is the system clock.
 	Now func() time.Time
 	// Wake tells the scheduler a Search now was asked for; nil does nothing.
 	Wake func()
 	// Paths are the folders Health looks at.
 	Paths config.Paths
+	// Profiles are the quality profiles a title can use; the zero value
+	// has only the built-in default.
+	Profiles config.ProfileSet
 	// Jellyfin is nil when Jellyfin is not set up, which leaves it off Health.
 	Jellyfin Pinger
 	// HealthTimeout bounds each probe a Health read makes; zero is eight seconds.
@@ -67,7 +70,7 @@ type api struct {
 	Deps
 	adds   keylock.Locks
 	abouts keylock.Locks
-	hub  *hub
+	hub    *hub
 }
 
 var (
@@ -88,6 +91,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/history", a.listHistory)
 	mux.HandleFunc("GET /api/wall", a.wall)
 	mux.HandleFunc("GET /api/search", a.search)
+	mux.HandleFunc("GET /api/profiles", a.listProfiles)
 	mux.HandleFunc("GET /api/titles", a.listTitles)
 	mux.HandleFunc("POST /api/titles", a.addTitle)
 	mux.HandleFunc("GET /api/titles/{id}", a.getTitle)

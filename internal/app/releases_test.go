@@ -153,15 +153,6 @@ func TestAnEpisodeIsSearchedByTVDBIdAndOnlyItsOwnEpisodeIsACandidate(t *testing.
 	}
 }
 
-func TestAMissingPreferredQualityStillLeavesTheBestOtherCandidateFirst(t *testing.T) {
-	s, _ := startWithDune(t)
-	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"preferredQuality":"2160p"}`, 201)
-	l := s.releases("/api/titles/movie-438631/releases")
-	if len(l.candidates) == 0 || l.candidates[0]["name"] != "Dune.2021.1080p.BluRay.x264-GROUP.mkv" {
-		t.Errorf("the only 2160p release is uncached; the best other one must lead: %v", l.candidateNames())
-	}
-}
-
 func TestABlocklistedReleaseIsDroppedUntilItsEntryExpires(t *testing.T) {
 	s, _ := startWithDune(t)
 	path := "/api/titles/movie-438631/releases"

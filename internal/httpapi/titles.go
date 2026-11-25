@@ -136,27 +136,32 @@ func (a *api) writeTitle(w http.ResponseWriter, r *http.Request, status int, t c
 		a.internal(w, r, err)
 		return
 	}
-	writeJSON(w, status, titleOf(t, history))
+	_, chosen := a.profileFor(t)
+	writeJSON(w, status, titleOf(t, chosen, history))
 }
 
 func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Kind             string          `json:"kind"`
-		TMDBID           int             `json:"tmdbId"`
-		PreferredQuality string          `json:"preferredQuality"`
-		Monitor          json.RawMessage `json:"monitor"`
+		Kind    string          `json:"kind"`
+		TMDBID  int             `json:"tmdbId"`
+		Profile json.RawMessage `json:"profile"`
+		Monitor json.RawMessage `json:"monitor"`
 	}
 	if err := decode(r, &req); err != nil {
-		fail(w, http.StatusBadRequest, "send kind (movie or series), tmdbId and optionally preferredQuality and monitor")
+		fail(w, http.StatusBadRequest, "send kind (movie or series), tmdbId and optionally profile and monitor")
 		return
 	}
 	if (req.Kind != "movie" && req.Kind != "series") || req.TMDBID < 1 {
 		fail(w, http.StatusBadRequest, "kind must be movie or series and tmdbId a TMDB id")
 		return
 	}
-	if req.PreferredQuality != "" && !isQuality(req.PreferredQuality) {
-		fail(w, http.StatusBadRequest, "preferredQuality must be 2160p, 1080p or 720p")
-		return
+	profile := ""
+	if req.Profile != nil {
+		// null and "" are not choices: only leaving the field out means the default.
+		if err := json.Unmarshal(req.Profile, &profile); err != nil || !a.knownProfile(profile) {
+			fail(w, http.StatusBadRequest, "profile must be the name of a profile from GET /api/profiles")
+			return
+		}
 	}
 	monitor := ""
 	if req.Monitor != nil {
@@ -185,7 +190,7 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := catalog.NewTitleFromTMDB(d)
-	n.PreferredQuality, n.Monitor = req.PreferredQuality, monitor
+	n.Profile, n.Monitor = profile, monitor
 	t, created, err := a.Catalog.Add(r.Context(), n)
 	if err != nil {
 		a.internal(w, r, err)
@@ -215,19 +220,10 @@ func (a *api) ensureTitle(r *http.Request, id, kind string, tmdbID int) error {
 	return err
 }
 
-func isQuality(q string) bool {
-	for _, v := range catalog.Qualities {
-		if v == q {
-			return true
-		}
-	}
-	return false
-}
-
 func (a *api) updateTitle(w http.ResponseWriter, r *http.Request) {
 	var raw map[string]json.RawMessage
 	if err := decode(r, &raw); err != nil || len(raw) == 0 {
-		fail(w, http.StatusBadRequest, "send monitored, preferredQuality or both")
+		fail(w, http.StatusBadRequest, "send monitored, profile or both")
 		return
 	}
 	var p catalog.Patch
@@ -240,17 +236,17 @@ func (a *api) updateTitle(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			p.Monitored = &b
-		case "preferredQuality":
-			q := ""
+		case "profile":
+			name := ""
 			if !bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
-				if err := json.Unmarshal(v, &q); err != nil || !isQuality(q) {
-					fail(w, http.StatusBadRequest, "preferredQuality must be 2160p, 1080p, 720p or null")
+				if err := json.Unmarshal(v, &name); err != nil || !a.knownProfile(name) {
+					fail(w, http.StatusBadRequest, "profile must be the name of a profile from GET /api/profiles, or null")
 					return
 				}
 			}
-			p.Quality = &q
+			p.Profile = &name
 		default:
-			fail(w, http.StatusBadRequest, "send monitored, preferredQuality or both")
+			fail(w, http.StatusBadRequest, "send monitored, profile or both")
 			return
 		}
 	}

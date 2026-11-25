@@ -9,10 +9,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/davepintodev/marquee/internal/aiostreams"
+	"github.com/davepintodev/marquee/internal/config"
+	"github.com/davepintodev/marquee/internal/naming"
 )
 
 // BlockExpiry is how long a blocklist entry holds.
@@ -35,6 +39,9 @@ const (
 	TooSmall     Reason = "too_small"
 	WrongEpisode Reason = "wrong_episode"
 	Blocklisted  Reason = "blocklisted"
+	// ProfileRejected is the one drop Interactive Search may override: the
+	// owner's profile refuses the release, but the file itself is sound.
+	ProfileRejected Reason = "profile_rejected"
 )
 
 var videoExtensions = map[string]bool{
@@ -48,9 +55,9 @@ func IsVideoFile(name string) bool { return videoExtensions[strings.ToLower(path
 type Context struct {
 	Kind            string // "movie" or "series"
 	Season, Episode int    // the episode wanted; ignored for a movie
-	// PreferredQuality is a resolution such as "2160p", or empty. It only
-	// moves matching candidates first; it never drops one.
-	PreferredQuality string
+	// Profile decides which qualities and formats are allowed and ranks
+	// what is left; a profile with no Qualities allows nothing.
+	Profile config.Profile
 	// Blocklist maps a release identity to when it was blocked. Entries
 	// older than BlockExpiry are ignored, so the caller need not purge.
 	Blocklist map[string]time.Time
@@ -90,13 +97,18 @@ func IdentityOf(infoHash, fileName string, size int64) string {
 }
 
 // Choose filters releases in a fixed order (cached, video, size, episode,
-// blocklist), so each drop names the first rule it broke. AIOStreams'
-// order is kept, except that candidates of the preferred quality come
-// first. The same file listed twice keeps its first listing.
+// profile, blocklist), so each drop names the first rule it broke. The
+// candidates are ranked by the profile's quality order, then by its prefer
+// boosts, and keep AIOStreams' order where those tie. The same file listed
+// twice keeps its first listing.
 func Choose(releases []aiostreams.Stream, c Context) Result {
 	out := Result{Candidates: []Candidate{}, Dropped: []Drop{}}
 	seen := map[string]bool{}
-	var preferred, others []Candidate
+	type ranked struct {
+		Candidate
+		tier, boost int
+	}
+	var kept []ranked
 	for _, s := range releases {
 		id := Identity(s)
 		if seen[id] {
@@ -108,14 +120,38 @@ func Choose(releases []aiostreams.Stream, c Context) Result {
 			out.Dropped = append(out.Dropped, Drop{cand, reason, msg})
 			continue
 		}
-		if c.PreferredQuality != "" && s.ParsedFile != nil && strings.EqualFold(s.ParsedFile.Resolution, c.PreferredQuality) {
-			preferred = append(preferred, cand)
-		} else {
-			others = append(others, cand)
+		kept = append(kept, ranked{cand, slices.Index(c.Profile.Qualities, Tier(s)), boost(c.Profile, ExtractTags(s))})
+	}
+	sort.SliceStable(kept, func(i, j int) bool {
+		if kept[i].tier != kept[j].tier {
+			return kept[i].tier < kept[j].tier
+		}
+		return kept[i].boost > kept[j].boost
+	})
+	for _, k := range kept {
+		out.Candidates = append(out.Candidates, k.Candidate)
+	}
+	return out
+}
+
+// Tier is the canonical quality a profile lists a release under.
+func Tier(s aiostreams.Stream) string {
+	if s.ParsedFile == nil {
+		return naming.CanonicalQuality("", "")
+	}
+	return naming.CanonicalQuality(s.ParsedFile.Resolution, s.ParsedFile.Quality)
+}
+
+// boost is the sum of len(prefer)-i over the preferred tags a release has,
+// so a tag earlier in the list counts for more.
+func boost(p config.Profile, tags []string) int {
+	sum := 0
+	for i, t := range p.Prefer {
+		if slices.Contains(tags, t) {
+			sum += len(p.Prefer) - i
 		}
 	}
-	out.Candidates = append(append(out.Candidates, preferred...), others...)
-	return out
+	return sum
 }
 
 func check(s aiostreams.Stream, id string, c Context) (Reason, string) {
@@ -133,10 +169,58 @@ func check(s aiostreams.Stream, id string, c Context) (Reason, string) {
 			return WrongEpisode, msg
 		}
 	}
+	if msg := profileRefuses(s, c.Profile); msg != "" {
+		return ProfileRejected, msg
+	}
 	if at, ok := c.Blocklist[id]; ok && c.Now.Sub(at) < BlockExpiry {
 		return Blocklisted, fmt.Sprintf("failed before, blocked on %s for %d days", at.UTC().Format("2006-01-02"), int(BlockExpiry/(24*time.Hour)))
 	}
 	return "", ""
+}
+
+// tagWords says a rejectable tag the way the owner would.
+var tagWords = map[string]string{
+	config.TagTrueHD:    "TrueHD audio",
+	config.TagDTSHD:     "DTS-HD audio",
+	config.TagDTSX:      "DTS:X audio",
+	config.TagDDPAtmos:  "Dolby Digital Plus Atmos audio",
+	config.TagDDP:       "Dolby Digital Plus audio",
+	config.TagDTS:       "DTS audio",
+	config.TagDD:        "Dolby Digital audio",
+	config.TagAAC:       "AAC audio",
+	config.TagFLAC:      "FLAC audio",
+	config.TagOpus:      "Opus audio",
+	config.TagDVP7:      "DV Profile 7",
+	config.TagDV:        "Dolby Vision",
+	config.TagHDR10Plus: "HDR10+",
+	config.TagHDR10:     "HDR10",
+	config.TagHDR:       "HDR",
+	config.TagAV1:       "AV1 video",
+	config.TagHEVC:      "HEVC video",
+	config.TagAVC:       "AVC video",
+}
+
+func profileRefuses(s aiostreams.Stream, p config.Profile) string {
+	if tier := Tier(s); !slices.Contains(p.Qualities, tier) {
+		return tier + " is not allowed by this profile"
+	}
+	tags := ExtractTags(s)
+	var hit []string
+	for _, t := range p.Reject {
+		if slices.Contains(tags, t) {
+			hit = append(hit, tagWords[t])
+		}
+	}
+	if len(hit) > 0 {
+		return "rejected by profile: " + strings.Join(hit, ", ")
+	}
+	if lo := p.SizeLimits.MinMB; lo > 0 && s.Size < lo*mb {
+		return fmt.Sprintf("%d MB, below this profile's minimum of %d MB", s.Size/mb, lo)
+	}
+	if hi := p.SizeLimits.MaxMB; hi > 0 && s.Size > hi*mb {
+		return fmt.Sprintf("%d MB, above this profile's maximum of %d MB", (s.Size+mb-1)/mb, hi)
+	}
+	return ""
 }
 
 func notVideo(filename string) string {

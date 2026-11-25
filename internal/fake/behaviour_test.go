@@ -182,25 +182,101 @@ func TestStreamSendsKeepAliveCommentsWhenIdle(t *testing.T) {
 	waitFor(t, lines, func(l streamLine) bool { return l.comment == "keep-alive" })
 }
 
-func TestPreferredQualityCanBeSetAndCleared(t *testing.T) {
+func TestProfileCanBeSetAndCleared(t *testing.T) {
 	_, router := loadSpec(t)
 	srv := startFakeTick(t, time.Hour)
-	title := exchange(t, srv, router, "PATCH", "/api/titles/movie-335984", `{"preferredQuality":"1080p"}`, 200)
-	if title["preferredQuality"] != "1080p" {
-		t.Fatalf("set: %v", title["preferredQuality"])
+	title := exchange(t, srv, router, "PATCH", "/api/titles/movie-335984", `{"profile":"everything"}`, 200)
+	if title["profile"] != "everything" {
+		t.Fatalf("set: %v", title["profile"])
 	}
-	title = exchange(t, srv, router, "PATCH", "/api/titles/movie-335984", `{"preferredQuality":null}`, 200)
-	if v, ok := title["preferredQuality"]; !ok || v != nil {
+	title = exchange(t, srv, router, "PATCH", "/api/titles/movie-335984", `{"profile":null}`, 200)
+	if v, ok := title["profile"]; !ok || v != nil {
 		t.Fatalf("clear: %v present=%v", v, ok)
 	}
 	title = exchange(t, srv, router, "GET", "/api/titles/movie-335984", "", 200)
-	if title["preferredQuality"] != nil {
-		t.Fatalf("cleared quality came back: %v", title["preferredQuality"])
+	if title["profile"] != nil {
+		t.Fatalf("cleared profile came back: %v", title["profile"])
 	}
-	resp := do(t, srv, call{"PATCH", "", `{"preferredQuality":"480p"}`, 400}, "/api/titles/movie-335984")
-	_ = resp.Body.Close()
-	if resp.StatusCode != 400 {
-		t.Errorf("an unknown quality: %d, want 400", resp.StatusCode)
+	for _, body := range []string{`{"profile":"nonsense"}`, `{"profile":""}`, `{"preferredQuality":"1080p"}`} {
+		resp := do(t, srv, call{"PATCH", "", body, 400}, "/api/titles/movie-335984")
+		_ = resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("%s: %d, want 400", body, resp.StatusCode)
+		}
+	}
+}
+
+func TestATitleIsAddedWithAKnownProfileOnly(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	title := exchange(t, srv, router, "POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"profile":"everything"}`, 201)
+	if title["profile"] != "everything" {
+		t.Errorf("added with a profile: %v", title["profile"])
+	}
+	for _, body := range []string{`{"kind":"movie","tmdbId":438631,"profile":"nonsense"}`, `{"kind":"movie","tmdbId":438631,"preferredQuality":"1080p"}`} {
+		resp := do(t, srv, call{"POST", "", body, 400}, "/api/titles")
+		_ = resp.Body.Close()
+		if resp.StatusCode != 400 {
+			t.Errorf("%s: %d, want 400", body, resp.StatusCode)
+		}
+	}
+}
+
+func TestProfilesListsTheDefaultAndAnOpenOne(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	out := exchange(t, srv, router, "GET", "/api/profiles", "", 200)
+	names := map[string]map[string]any{}
+	for _, p := range out["profiles"].([]any) {
+		names[p.(map[string]any)["name"].(string)] = p.(map[string]any)
+	}
+	if names["default"] == nil || names["everything"] == nil || out["defaultMovieProfile"] != "default" || out["defaultSeriesProfile"] != "default" {
+		t.Fatalf("%v", out)
+	}
+	if len(names["default"]["reject"].([]any)) == 0 || len(names["everything"]["reject"].([]any)) != 0 {
+		t.Errorf("default rejects the TV-unsafe formats, everything none: %v", names)
+	}
+}
+
+func TestReleasesShowTheirTagsAndTheProfileRejectedOnesAreDropped(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	reasons := func() (map[string]string, map[string][]any) {
+		out := exchange(t, srv, router, "GET", "/api/titles/movie-335984/releases", "", 200)
+		drops, tags := map[string]string{}, map[string][]any{}
+		for _, d := range out["dropped"].([]any) {
+			rel := d.(map[string]any)["release"].(map[string]any)
+			drops[rel["id"].(string)] = d.(map[string]any)["reason"].(string)
+			tags[rel["id"].(string)], _ = rel["tags"].([]any)
+		}
+		for _, c := range out["candidates"].([]any) {
+			rel := c.(map[string]any)
+			tags[rel["id"].(string)], _ = rel["tags"].([]any)
+		}
+		return drops, tags
+	}
+	drops, tags := reasons()
+	for _, id := range []string{"rel-movie-9", "rel-movie-7"} {
+		if drops[id] != "profile_rejected" {
+			t.Errorf("%s: dropped as %q, want profile_rejected", id, drops[id])
+		}
+	}
+	if len(tags["rel-movie-9"]) == 0 || tags["rel-movie-2"] == nil {
+		t.Errorf("tags are listed, empty when there are none: %v", tags)
+	}
+	exchange(t, srv, router, "PATCH", "/api/titles/movie-335984", `{"profile":"everything"}`, 200)
+	if drops, _ = reasons(); drops["rel-movie-9"] != "" || drops["rel-movie-7"] != "" {
+		t.Errorf("the open profile keeps them as candidates: %v", drops)
+	}
+}
+
+func TestGrabTakesAProfileRejectedReleaseButNotAWrongEpisode(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	exchange(t, srv, router, "POST", "/api/titles/movie-335984/releases/rel-movie-7/grab", "", 202)
+	out := exchange(t, srv, router, "POST", "/api/titles/series-1408/releases/rel-series-3/grab", `{"episode":"s04e02"}`, 409)
+	if msg, _ := out["error"].(string); msg == "" {
+		t.Error("409 must carry the drop reason")
 	}
 }
 

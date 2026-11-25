@@ -63,6 +63,7 @@ var calls = map[string]call{
 	"streamEvents":      {"GET", "/api/events", "", 200},
 	"getImage":          {"GET", "/api/images/poster/movie-438631", "", 200},
 	"getHealth":         {"GET", "/api/health", "", 200},
+	"listProfiles":      {"GET", "/api/profiles", "", 200},
 	"getTitleAbout":     {"GET", "/api/titles/series-95396/about", "", 200},
 	"getPersonImage":    {"GET", "/api/people/9/image", "", 404},
 }

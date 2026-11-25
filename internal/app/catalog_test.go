@@ -349,17 +349,17 @@ func TestTheLibraryListNamesTheSearchingEpisodesOfASeries(t *testing.T) {
 	}
 }
 
-func TestAddingAMovieMonitorsItAndAcceptsAPreferredQuality(t *testing.T) {
+func TestAddingAMovieMonitorsItAndAcceptsAProfile(t *testing.T) {
 	s := startReal(t, newTMDB(t))
-	v := s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"preferredQuality":"2160p"}`, 201)
-	if v["monitored"] != true || v["preferredQuality"] != "2160p" || v["inLibrary"] != true || v["title"] != "Dune" {
+	v := s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"profile":"default"}`, 201)
+	if v["monitored"] != true || v["profile"] != "default" || v["inLibrary"] != true || v["title"] != "Dune" {
 		t.Errorf("%v", v)
 	}
 	if len(v["seasons"].([]any)) != 0 {
 		t.Errorf("a movie has no seasons: %v", v["seasons"])
 	}
-	if s.bad("POST", "/api/titles", `{"kind":"movie","tmdbId":1,"preferredQuality":"480p"}`).status != 400 {
-		t.Error("an unknown quality must be refused")
+	if s.bad("POST", "/api/titles", `{"kind":"movie","tmdbId":1,"profile":"nonsense"}`).status != 400 {
+		t.Error("an unknown profile must be refused")
 	}
 	for _, body := range []string{`{}`, `{"kind":"book","tmdbId":1}`, `{"kind":"movie","tmdbId":0}`, `{"kind":"movie","tmdbId":1,"x":1}`, `nope`} {
 		if r := s.bad("POST", "/api/titles", body); r.status != 400 {
@@ -370,14 +370,14 @@ func TestAddingAMovieMonitorsItAndAcceptsAPreferredQuality(t *testing.T) {
 
 func TestAddingAgainChangesNothingAndAsksTMDBNothing(t *testing.T) {
 	tm := newTMDB(t)
-	s := startReal(t, tm)
+	s := startRealWith(t, tm, "", withConfigFile(t, twoProfilesConfig))
 	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
-	s.mustCall("PATCH", "/api/titles/movie-438631", `{"monitored":false,"preferredQuality":"720p"}`, 200)
+	s.mustCall("PATCH", "/api/titles/movie-438631", `{"monitored":false,"profile":"tv-safe"}`, 200)
 	before := tm.Hits("/3/")
 	tm.Down("/", 500)
 
-	v := s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"preferredQuality":"2160p"}`, 200)
-	if v["monitored"] != false || v["preferredQuality"] != "720p" {
+	v := s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"profile":"anything"}`, 200)
+	if v["monitored"] != false || v["profile"] != "tv-safe" {
 		t.Errorf("a second add must not change the title: %v", v)
 	}
 	if tm.Hits("/3/") != before {
@@ -712,12 +712,12 @@ func TestReMonitoringAnEpisodeOfAnUnmonitoredSeriesMonitorsTheSeriesAgain(t *tes
 	}
 }
 
-func TestMonitoringAndPreferredQualityCanBeChanged(t *testing.T) {
+func TestMonitoringAndTheProfileCanBeChanged(t *testing.T) {
 	s := startReal(t, newTMDB(t))
-	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408,"preferredQuality":"1080p"}`, 201)
+	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408,"profile":"default"}`, 201)
 
 	v := s.mustCall("PATCH", "/api/titles/series-1408", `{"monitored":false}`, 200)
-	if v["monitored"] != false || v["preferredQuality"] != "1080p" {
+	if v["monitored"] != false || v["profile"] != "default" {
 		t.Errorf("%v", v)
 	}
 	for id, e := range episodes(t, v) {
@@ -732,12 +732,12 @@ func TestMonitoringAndPreferredQualityCanBeChanged(t *testing.T) {
 	if e := episodes(t, v)["s01e02"]; e["monitored"] != true || episodes(t, v)["s01e01"]["monitored"] != false {
 		t.Errorf("only the one episode: %v", e)
 	}
-	v = s.mustCall("PATCH", "/api/titles/series-1408", `{"preferredQuality":null}`, 200)
-	if v["preferredQuality"] != nil {
-		t.Errorf("null clears the preference: %v", v["preferredQuality"])
+	v = s.mustCall("PATCH", "/api/titles/series-1408", `{"profile":null}`, 200)
+	if v["profile"] != nil {
+		t.Errorf("null returns the title to its kind's default: %v", v["profile"])
 	}
 	for _, c := range []struct{ path, body string }{
-		{"/api/titles/series-1408", `{}`}, {"/api/titles/series-1408", `{"preferredQuality":"480p"}`},
+		{"/api/titles/series-1408", `{}`}, {"/api/titles/series-1408", `{"profile":"nonsense"}`},
 		{"/api/titles/series-1408/episodes/s01e02", `{}`},
 	} {
 		if r := s.bad("PATCH", c.path, c.body); r.status != 400 {

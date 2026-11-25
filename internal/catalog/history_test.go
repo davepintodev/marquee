@@ -26,7 +26,13 @@ func openClock(t *testing.T, at time.Time) (*catalog.Store, *clock) {
 	return s, c
 }
 
-const dropFileColumns = `DROP INDEX episodes_by_fingerprint;
+// dropProfile turns a current database back into one before the profile
+// migration, which replaced the preferred_quality column.
+const dropProfile = `ALTER TABLE titles DROP COLUMN profile; ALTER TABLE titles ADD COLUMN preferred_quality TEXT; `
+
+// dropFileColumns turns a current database back into one before the file
+// columns (and so before every later migration).
+const dropFileColumns = dropProfile + `DROP INDEX episodes_by_fingerprint;
 	ALTER TABLE titles DROP COLUMN file_path; ALTER TABLE titles DROP COLUMN file_size; ALTER TABLE titles DROP COLUMN file_fingerprint;
 	ALTER TABLE episodes DROP COLUMN file_path; ALTER TABLE episodes DROP COLUMN file_size; ALTER TABLE episodes DROP COLUMN file_fingerprint; `
 

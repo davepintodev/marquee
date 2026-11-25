@@ -427,9 +427,10 @@ func TestAReleaseBlockedAfterAFailedDownloadIsDroppedByTheChooser(t *testing.T) 
 	// The search lists the same release again, with another link.
 	listed := aiostreams.Stream{
 		URL: "http://other.invalid/new-link", Filename: "bad.mkv", Size: size, Cached: true,
-		InfoHash: strings.ToLower(hash),
+		InfoHash:   strings.ToLower(hash),
+		ParsedFile: &aiostreams.ParsedFile{Resolution: "1080p", Quality: "WEB-DL"},
 	}
-	ctx := chooser.Context{Kind: "movie", Blocklist: blocked, Now: today}
+	ctx := chooser.Context{Kind: "movie", Profile: config.DefaultProfile(), Blocklist: blocked, Now: today}
 	got := chooser.Choose([]aiostreams.Stream{listed}, ctx)
 	if len(got.Candidates) != 0 || len(got.Dropped) != 1 || got.Dropped[0].Reason != chooser.Blocklisted {
 		t.Fatalf("the chooser kept a release the pipeline blocked: %+v", got)
