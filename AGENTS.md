@@ -30,6 +30,7 @@ MARQUEE_LISTEN=:8080 bin/marquee --fake
 ```
 
 - Serve over Tailscale with plain HTTP: the person looking opens `http://<machine-tailscale-name-or-ip>:8080` from a device on the tailnet. Bind to all interfaces (`:8080`, no host before the colon), no TLS, no `tailscale serve --https`, no public tunnel or funnel. Hand over that address and the tab, never `localhost`.
+- TorBox: `MARQUEE_FAKE_TORBOX=1` adds the TorBox Health check and lists uncached releases as pickable; a grab then shows as Caching before Downloading. The fixtures always include one caching download.
 - Real art: the fake draws gradients unless `MARQUEE_FAKE_ART_DIR` points at a folder of `poster-<titleId>.jpg` and `backdrop-<titleId>.jpg` (a title without a file keeps its gradient). Fill it once with `MARQUEE_TMDB_KEY=<your-tmdb-key> make fake-art ART_DIR=<art-dir>`, then run `MARQUEE_FAKE_ART_DIR=<art-dir> MARQUEE_LISTEN=:8080 bin/marquee --fake`. The art is TMDB's: keep the folder outside the repo and never commit it.
 - Preview against the fake (`--fake`) unless the ticket needs real mode; real mode needs the essential settings, which never go in a command line you print, a log or a PR.
 - `make smoke` also runs `web/e2e/real.spec.ts` against the real service with its outside world faked (`cmd/smokeserve`: TMDB, AIOStreams, the debrid file server and Jellyfin in one dev-only process); `bin/smokeserve --fakes-only --dir <dir>` instead seeds a small library and prints the settings that point the real binary at the fakes, for the idle-memory measurement.

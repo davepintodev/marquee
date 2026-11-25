@@ -330,3 +330,18 @@ test("closing an episode collapses it in place and a second click opens it again
   fireEvent.click(row);
   expect(await screen.findByRole("list", { name: /^Releases for/ })).toBeTruthy();
 });
+
+test("an uncached candidate is badged Uncached next to the Cached ones, and can be picked", async () => {
+  const uncached: Releases = {
+    candidates: [rels.candidates[0], release("rel-6", "Dune.2021.720p.HDTV", "HDTV-720p", 3_221_225_472, "Comet", false)],
+    dropped: [],
+  };
+  const { writes } = await openMovie(uncached);
+  const rows = within(await table()).getAllByRole("listitem");
+
+  expect(within(rows[0]).getByText("Cached")).toBeTruthy();
+  expect(within(rows[1]).getByText("Uncached")).toBeTruthy();
+  expect(rows[1].querySelector(".rt-c")?.getAttribute("data-cached")).toBe("false");
+  fireEvent.click(within(rows[1]).getByRole("button", { name: "Pick Dune.2021.720p.HDTV" }));
+  await waitFor(() => expect(writes.map((w) => w.path)).toEqual(["/api/titles/movie-1/releases/rel-6/grab"]));
+});

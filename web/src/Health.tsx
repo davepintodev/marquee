@@ -18,7 +18,7 @@ const STATUS_WORD = { ok: "OK", warning: "Warning", error: "Problem" } as const;
 const REASON_WORD = { unmatched: "No match", ambiguous: "More than one match", unparsed_file: "Ignored file" } as const;
 
 // The path a title takes, in the order it takes it. A check this list does not know goes at the end.
-const PATH = ["fake_data", "tmdb", "aiostreams", "dry_run", "temp_path", "library_paths", "jellyfin"];
+const PATH = ["fake_data", "tmdb", "aiostreams", "torbox", "dry_run", "temp_path", "library_paths", "jellyfin"];
 
 type Stop = { check: Check; gate: boolean; out: "flow" | "paused" | "broken" | "end" };
 

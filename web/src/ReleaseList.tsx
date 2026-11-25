@@ -129,7 +129,7 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, hasFile,
         <span className="rt-src">{r.source}</span>
         <span className="rt-c" data-cached={r.cached}>
           <i aria-hidden="true" />
-          {r.cached ? "Cached" : "No"}
+          {r.cached ? "Cached" : "Uncached"}
         </span>
         <span className="rt-size">{bytesOf(r.sizeBytes)}</span>
         <span className="rt-act">{act(r, opts.pick, i)}</span>
