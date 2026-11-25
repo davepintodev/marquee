@@ -7,7 +7,7 @@ import { Health } from "./Health";
 import { Library } from "./Library";
 import { EmptyState, ErrorState } from "./State";
 import { Results, ResultsSkeleton } from "./Results";
-import { leaveTitle, leaveTo, parseRoute, pushTo, useRoute } from "./route";
+import { goHome, leaveTitle, leaveTo, parseRoute, pushTo, useRoute } from "./route";
 import { TitleScreen } from "./TitleScreen";
 import { Toaster, type ToastMsg, type ToastRaise } from "./Toast";
 import { useLive } from "./useLive";
@@ -74,6 +74,13 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   const openPage = (name: "activity" | "health") => (e: React.MouseEvent) => {
     e.preventDefault();
     pushTo({ name }, "page");
+  };
+
+  const home = (e: React.MouseEvent) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    setQuery("");
+    goHome();
   };
 
   const q = atFront ? "" : query.trim();
@@ -253,7 +260,9 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
 
       <div ref={gridScreen} className="grid-screen" inert={atFront}>
         <header className="top" inert={onPage}>
-          <span className="mark">marquee</span>
+          <a className="mark" href="#/" onClick={home}>
+            marquee
+          </a>
           <div className="search">
             <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="11" cy="11" r="7" />

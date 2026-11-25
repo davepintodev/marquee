@@ -461,3 +461,70 @@ test("posters whose colour cannot be read leave the words in their default colou
 
   expect(front().querySelector<HTMLElement>(".slot-text")!.style.getPropertyValue("--th")).toBe("");
 });
+
+const logo = () => screen.getByRole("link", { name: "marquee", hidden: true });
+
+test("the logo is a link by its name on the grid, so Enter on it works", async () => {
+  await wallUp();
+  fireEvent.click(words());
+
+  expect(screen.getByRole("link", { name: "marquee" }).getAttribute("href")).toBe("#/");
+});
+
+test("the logo from the grid with a search typed returns to the wall with the search cleared", async () => {
+  await wallUp();
+  fireEvent.click(words());
+  fireEvent.change(searchbox(), { target: { value: "dune" } });
+  expect((searchbox() as HTMLInputElement).value).toBe("dune");
+
+  const entries = window.history.length;
+  fireEvent.click(logo());
+
+  await waitFor(onWall);
+  expect(window.location.hash).toBe("#/");
+  expect(window.history.length).toBe(entries + 1);
+  expect((screen.getByRole("searchbox", { name: /search movies and series/i, hidden: true }) as HTMLInputElement).value).toBe("");
+});
+
+test("a modified click on the logo is left to the browser", async () => {
+  await wallUp();
+  fireEvent.click(words());
+
+  fireEvent.click(screen.getByRole("link", { name: "marquee" }), { ctrlKey: true });
+
+  inApp();
+});
+
+test("the logo from a title's page lands on the wall, with the page closed", async () => {
+  await wallUp(onlyPages);
+  fireEvent.click(posters().find((t) => /^Dune/.test(t.getAttribute("aria-label")!))!);
+  await screen.findByRole("heading", { name: "Dune", level: 1 });
+
+  fireEvent.click(logo());
+
+  await waitFor(onWall);
+  expect(screen.queryByRole("heading", { name: "Dune", level: 1 })).toBeNull();
+  expect(front().hasAttribute("inert")).toBe(false);
+});
+
+test("the logo from Activity lands on the wall, with Activity closed", async () => {
+  await wallUp(serve(wall, () => json({ downloads: [], waiting: [], history: [] })));
+  fireEvent.click(words());
+  fireEvent.click(await screen.findByRole("link", { name: "Activity" }));
+  await screen.findByRole("heading", { name: "Activity", level: 1 });
+
+  fireEvent.click(logo());
+
+  await waitFor(onWall);
+  expect(screen.queryByRole("heading", { name: "Activity", level: 1 })).toBeNull();
+  expect(window.location.hash).toBe("#/");
+});
+
+test("the logo with the wall already showing leaves it showing", async () => {
+  await wallUp();
+
+  fireEvent.click(logo());
+
+  onWall();
+  expect(posters().length).toBeGreaterThan(5);
+});
