@@ -373,6 +373,13 @@ func TestARefreshOfASeriesAddedWithNoneStaysUnmonitoredUntilTheOwnerMonitorsTheS
 	}
 	refresh(4)
 	checkMonitored(t, monitoredEpisodes(t, s, "series-1"), map[string]bool{"s01e03": true, "s01e04": true})
+
+	no := false
+	if _, err := s.Update(ctx, "series-1", catalog.Patch{Monitored: &no}); err != nil {
+		t.Fatal(err)
+	}
+	refresh(5)
+	checkMonitored(t, monitoredEpisodes(t, s, "series-1"), map[string]bool{"s01e05": false})
 }
 
 func TestTheMonitorNewMigrationKeepsExistingSeriesMonitoringNewEpisodes(t *testing.T) {

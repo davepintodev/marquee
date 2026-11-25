@@ -241,8 +241,8 @@ func (s *Store) ApplyRefresh(ctx context.Context, titleID string, r Refresh) err
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var monitorNew, adopted int
-	if err := tx.QueryRowContext(ctx, `SELECT monitor_new, adopted FROM titles WHERE id = ?`, titleID).Scan(&monitorNew, &adopted); errors.Is(err, sql.ErrNoRows) {
+	var monitored, monitorNew, adopted int
+	if err := tx.QueryRowContext(ctx, `SELECT monitored, monitor_new, adopted FROM titles WHERE id = ?`, titleID).Scan(&monitored, &monitorNew, &adopted); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
@@ -271,7 +271,7 @@ func (s *Store) ApplyRefresh(ctx context.Context, titleID string, r Refresh) err
 		return err
 	}
 	for _, e := range r.Episodes {
-		mon := monitorNew
+		mon := monitored & monitorNew
 		if adopted == 1 && !ownedSeasons[e.Season] && e.AirDate <= today {
 			mon = 0
 		}
