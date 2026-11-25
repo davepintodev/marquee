@@ -185,11 +185,13 @@ func (m *Manager) Enqueue(ctx context.Context, j Job) (catalog.Download, error) 
 		Covered: covered,
 	})
 	if errors.Is(err, catalog.ErrActiveDownload) {
-		existing, gerr := m.cat.ActiveDownloadFor(ctx, j.TitleID, j.Season, j.Number)
-		if gerr != nil {
-			return catalog.Download{}, err
+		// The busy episode may be one the file covers rather than the one asked for.
+		for _, n := range append([]int{j.Number}, covered...) {
+			if existing, gerr := m.cat.ActiveDownloadFor(ctx, j.TitleID, j.Season, n); gerr == nil {
+				return existing, catalog.ErrActiveDownload
+			}
 		}
-		return existing, catalog.ErrActiveDownload
+		return catalog.Download{}, err
 	}
 	if err != nil {
 		return catalog.Download{}, err
