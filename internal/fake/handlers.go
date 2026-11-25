@@ -619,9 +619,15 @@ func (f *Fake) searchNow(w http.ResponseWriter, r *http.Request) {
 			f.startSearch(t, nil)
 		}
 	} else {
+		anyMonitored := false
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
-				if e.monitored && waiting(e.State) {
+				anyMonitored = anyMonitored || (s.Number > 0 && e.monitored)
+			}
+		}
+		for _, s := range t.Seasons {
+			for _, e := range s.Episodes {
+				if s.Number > 0 && e.State != "downloaded" && e.State != "unaired" && (e.monitored || !anyMonitored) {
 					f.startSearch(t, e)
 				}
 			}

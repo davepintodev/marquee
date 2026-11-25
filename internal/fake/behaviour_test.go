@@ -812,3 +812,18 @@ func episodes(title map[string]any) []map[string]any {
 	}
 	return out
 }
+
+func TestSearchNowOnASeriesWithNothingMonitoredSearchesEveryAiredEpisode(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: time.Hour, SearchFor: time.Hour})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+
+	exchange(t, srv, router, "PATCH", "/api/titles/series-226745", `{"monitored":false}`, 200)
+	camp := exchange(t, srv, router, "POST", "/api/titles/series-226745/search", "", 200)
+	for _, e := range episodes(camp) {
+		if e["state"] != "searching" {
+			t.Errorf("as the real service does, an aired episode is searched when none is monitored: %v", e)
+		}
+	}
+}
