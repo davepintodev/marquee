@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Title, TitleAbout } from "./api/types";
 import { aboutOf, dune, house, profiles } from "./fixtures";
-import { FakeEventSource, json, setupApp, titleApi } from "./testkit";
+import { createApi } from "./api/client";
+import { BASE, FakeEventSource, json, setupApp, titleApi } from "./testkit";
+import { TitleScreen } from "./TitleScreen";
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -561,4 +563,20 @@ test("without profiles from the API the screen has no picker", async () => {
   await open(dune());
   await screen.findByRole("button", { name: "Search automatically" });
   expect(screen.queryByRole("combobox", { name: "Quality profile" })).toBeNull();
+});
+
+test("a title with no release year shows just its kind in the facts line", async () => {
+  await open(dune({ year: 0 }));
+  expect(document.querySelector(".ts-facts")!.textContent).toBe("Movie");
+  cleanup();
+
+  await open(house({ year: 0 }));
+  expect(document.querySelector(".ts-facts")!.textContent).toMatch(/^Series · 2 seasons · 6 episodes/);
+});
+
+test("the facts line of the title still loading shows no year 0 either", () => {
+  const seed = { id: "movie-9", tmdbId: 9, kind: "movie" as const, title: "Marley", year: 0, overview: "", posterPath: "", backdropPath: "", inLibrary: false };
+  const api = createApi({ baseUrl: BASE, fetch: (() => new Promise(() => {})) as unknown as typeof fetch });
+  render(<TitleScreen api={api} id={seed.id} seed={seed} onClose={() => {}} onChanged={() => {}} onRemoved={() => {}} onToast={() => {}} />);
+  expect(document.querySelector(".ts-facts")!.textContent).toBe("Movie");
 });
