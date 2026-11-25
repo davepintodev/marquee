@@ -364,7 +364,6 @@ func (f *Fake) advance() {
 	f.endSearches()
 }
 
-// endSearches ends the searches whose time is up, each having found nothing.
 func (f *Fake) endSearches() {
 	now := time.Now()
 	for _, t := range f.titles {
@@ -390,9 +389,6 @@ func endSearch(until *time.Time, now time.Time) bool {
 
 func running(until time.Time) bool { return !until.IsZero() && time.Now().Before(until) }
 
-// startSearch searches for the movie, or for the episode when e is set, as
-// Search now does: it shows as searching for a while and then as having
-// found nothing, with the next try in six hours.
 func (f *Fake) startSearch(t *entry, e *episode) {
 	until := time.Now().Add(f.opts.SearchFor)
 	t.nextSearch = time.Now().Add(defaultNextSearch)

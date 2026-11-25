@@ -584,7 +584,7 @@ func episodeState(r epRow, today string, in episodeInfo) (string, time.Time) {
 		return "unaired", time.Time{}
 	case r.season == 0 && r.monitored:
 		return "wanted", time.Time{}
-	case r.season > 0 && (r.monitored || in.running || in.sched.asked):
+	case r.season > 0 && (r.monitored || in.running || in.sched.searchNow):
 		return waitState(in.sched, in.running, in.now)
 	}
 	return "missing", time.Time{}

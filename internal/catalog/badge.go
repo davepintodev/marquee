@@ -35,7 +35,7 @@ var badgeLabels = map[string]string{
 func simpleBadge(state string) *Badge { return &Badge{State: state, Label: badgeLabels[state]} }
 
 func movieBadge(monitored, haveFile bool, dl *inFlight, p pending, running bool, now time.Time) (*Badge, time.Time) {
-	if dl == nil && !haveFile && (monitored || running || p.asked) {
+	if dl == nil && !haveFile && (monitored || running || p.searchNow) {
 		state, next := waitState(p, running, now)
 		return simpleBadge(state), next
 	}

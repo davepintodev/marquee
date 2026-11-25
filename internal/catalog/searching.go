@@ -57,16 +57,14 @@ func (s *Store) isHeld(k target) bool {
 }
 
 type pending struct {
-	// asked is a Search now request the scheduler has not run yet.
-	asked     bool
+	searchNow bool
 	searching bool
 	nothing   bool
 	nextAt    time.Time
 }
 
-// schedules reads where each movie or episode stands with the scheduler. A
-// Search now request reads as searching only while nothing keeps it from
-// starting: during the source's backoff it is due when the backoff ends.
+// A Search now request reads as searching only while nothing keeps it from
+// starting, or a source outage would leave it pulsing for hours.
 func (s *Store) schedules(ctx context.Context, q queryer, where string, args []any, now time.Time) (map[target]pending, error) {
 	backoffEnds, err := sourceBackoffEnds(ctx, q)
 	if err != nil {
@@ -86,12 +84,12 @@ func (s *Store) schedules(ctx context.Context, q queryer, where string, args []a
 		if err := rows.Scan(&k.titleID, &k.season, &k.number, &attempts, &next, &forced); err != nil {
 			return nil, err
 		}
-		p := pending{asked: forced == 1, nothing: attempts > 0}
+		p := pending{searchNow: forced == 1, nothing: attempts > 0}
 		if next.Valid {
 			p.nextAt = time.UnixMilli(next.Int64).UTC()
 		}
 		switch {
-		case !p.asked:
+		case !p.searchNow:
 		case now.Before(backoffEnds):
 			p.nextAt = backoffEnds
 		case !s.isHeld(k):
@@ -117,8 +115,6 @@ func sourceBackoffEnds(ctx context.Context, q queryer) (time.Time, error) {
 	return time.UnixMilli(until).UTC(), rows.Err()
 }
 
-// waitState also answers when the next search is: now when it is already
-// due, zero while it is searching.
 func waitState(p pending, running bool, now time.Time) (string, time.Time) {
 	if running || p.searching {
 		return "searching", time.Time{}

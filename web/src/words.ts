@@ -55,7 +55,6 @@ export type WaitState = "wanted" | "searching" | "not_found";
 
 const SOON_MS = 60_000;
 
-// What a wanted item is waiting for, such as "Next search in 2h" or "Nothing found · next try in 6h".
 export function waitLine(state: WaitState, next?: string | null, now = new Date()) {
   if (state === "searching") return "Searching now";
   if (!next) return state === "not_found" ? "Nothing found" : null;
@@ -64,9 +63,8 @@ export function waitLine(state: WaitState, next?: string | null, now = new Date(
   return soon ? "Nothing found · trying again shortly" : `Nothing found · next try in ${inHours(next, now)}`;
 }
 
-const isWait = (s: string | undefined): s is WaitState => s === "wanted" || s === "searching" || s === "not_found";
+export const isWait = (s: string | undefined): s is WaitState => s === "wanted" || s === "searching" || s === "not_found";
 
-// A series waits as a whole: searching while any episode is, nothing found only when every waiting episode found nothing.
 export function waitOf(t: Pick<Title, "kind" | "badge" | "seasons">): WaitState | null {
   if (t.kind === "movie") return isWait(t.badge?.state) ? t.badge.state : null;
   const eps = t.seasons.flatMap((s) => s.episodes);

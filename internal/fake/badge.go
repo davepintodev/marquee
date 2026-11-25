@@ -35,8 +35,6 @@ func (f *Fake) epState(t *entry, s *season, e *episode) (state string, percent i
 	return e.State, 0
 }
 
-// movieState is a movie's state without a download: an unmonitored movie
-// with no file is missing, whatever it last was.
 func movieState(t *entry) string {
 	switch {
 	case t.State == "downloaded":
@@ -51,7 +49,6 @@ func movieState(t *entry) string {
 	return t.State
 }
 
-// waiting is a stored state of a monitored item with no file.
 func waiting(state string) bool { return state == "wanted" || state == "not_found" }
 
 func (f *Fake) badge(t *entry) *badge {

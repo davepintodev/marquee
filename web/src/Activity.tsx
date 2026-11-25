@@ -10,7 +10,7 @@ import { Notice } from "./Notice";
 import { EmptyState, ErrorState } from "./State";
 import type { ToastRaise } from "./Toast";
 import { ActivitySkeleton } from "./Skeleton";
-import type { WaitState } from "./words";
+import { isWait, type WaitState } from "./words";
 
 interface Props {
   api: Api;
@@ -56,12 +56,10 @@ const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortEr
 
 const BURST = 250;
 
-const isWaiting = (s: string | undefined): s is WaitState => s === "wanted" || s === "searching" || s === "not_found";
-
 function waitingOf(library: TitleSummary[]): Waiting[] {
   return library.flatMap((t): Waiting[] => {
     const episodes = t.searchingEpisodes ?? [];
-    const state = t.badge && isWaiting(t.badge.state) ? t.badge.state : null;
+    const state = t.badge && isWait(t.badge.state) ? t.badge.state : null;
     const label = state ? (t.badge?.label ?? "Wanted") : "Wanted";
     if (episodes.length > 0) return [{ id: t.id, name: t.title, note: `Waiting for ${episodes.map((e) => e.toUpperCase()).join(", ")} to appear.`, label, state: state ?? "wanted" }];
     if (state) return [{ id: t.id, name: t.title, note: "Waiting for a release to appear.", label, state }];
