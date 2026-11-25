@@ -34,13 +34,11 @@ const (
 type Reason string
 
 const (
-	NotCached    Reason = "not_cached"
-	NotVideo     Reason = "not_video"
-	TooSmall     Reason = "too_small"
-	WrongEpisode Reason = "wrong_episode"
-	Blocklisted  Reason = "blocklisted"
-	// ProfileRejected is the one drop Interactive Search may override: the
-	// owner's profile refuses the release, but the file itself is sound.
+	NotCached       Reason = "not_cached"
+	NotVideo        Reason = "not_video"
+	TooSmall        Reason = "too_small"
+	WrongEpisode    Reason = "wrong_episode"
+	Blocklisted     Reason = "blocklisted"
 	ProfileRejected Reason = "profile_rejected"
 )
 
@@ -142,8 +140,6 @@ func Tier(s aiostreams.Stream) string {
 	return naming.CanonicalQuality(s.ParsedFile.Resolution, s.ParsedFile.Quality)
 }
 
-// boost is the sum of len(prefer)-i over the preferred tags a release has,
-// so a tag earlier in the list counts for more.
 func boost(p config.Profile, tags []string) int {
 	sum := 0
 	for i, t := range p.Prefer {
@@ -178,7 +174,6 @@ func check(s aiostreams.Stream, id string, c Context) (Reason, string) {
 	return "", ""
 }
 
-// tagWords says a rejectable tag the way the owner would.
 var tagWords = map[string]string{
 	config.TagTrueHD:    "TrueHD audio",
 	config.TagDTSHD:     "DTS-HD audio",

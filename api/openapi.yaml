@@ -765,11 +765,13 @@ components:
         kind: { $ref: "#/components/schemas/Kind" }
         tmdbId: { type: integer }
         profile:
-          type: string
-          minLength: 1
           description: >
-            A profile name from `GET /api/profiles`; leave it out for the
-            default of the title's kind. An unknown name answers 400.
+            A profile name from `GET /api/profiles`; leave it out, or send
+            null, for the default of the title's kind. An unknown name
+            answers 400.
+          anyOf:
+            - { type: string, minLength: 1 }
+            - { type: "null" }
         monitor: { $ref: "#/components/schemas/MonitorChoice" }
     MonitorChoice:
       type: string

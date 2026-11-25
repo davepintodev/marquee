@@ -156,8 +156,7 @@ func (a *api) addTitle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	profile := ""
-	if req.Profile != nil {
-		// null and "" are not choices: only leaving the field out means the default.
+	if req.Profile != nil && !bytes.Equal(bytes.TrimSpace(req.Profile), []byte("null")) {
 		if err := json.Unmarshal(req.Profile, &profile); err != nil || !a.knownProfile(profile) {
 			fail(w, http.StatusBadRequest, "profile must be the name of a profile from GET /api/profiles")
 			return

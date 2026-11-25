@@ -495,8 +495,8 @@ export interface components {
         AddTitleRequest: {
             kind: components["schemas"]["Kind"];
             tmdbId: number;
-            /** @description A profile name from `GET /api/profiles`; leave it out for the default of the title's kind. An unknown name answers 400. */
-            profile?: string;
+            /** @description A profile name from `GET /api/profiles`; leave it out, or send null, for the default of the title's kind. An unknown name answers 400. */
+            profile?: string | null;
             monitor?: components["schemas"]["MonitorChoice"];
         };
         /**

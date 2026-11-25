@@ -321,7 +321,7 @@ func (f *Fake) add(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	profile := ""
-	if req.Profile != nil {
+	if req.Profile != nil && string(bytes.TrimSpace(req.Profile)) != "null" {
 		if json.Unmarshal(req.Profile, &profile) != nil || !f.knownProfile(profile) {
 			fail(w, http.StatusBadRequest, "profile must be the name of a profile from GET /api/profiles")
 			return

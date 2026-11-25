@@ -81,6 +81,9 @@ var (
 // New returns the handler for every /api/ request.
 func New(d Deps) http.Handler {
 	a := &api{Deps: d}
+	if len(a.Profiles.Profiles) == 0 {
+		a.Profiles.Profiles = map[string]config.Profile{config.DefaultProfileName: config.DefaultProfile()}
+	}
 	a.hub = newHub(a, d.EventsEvery)
 	if a.Now == nil {
 		a.Now = time.Now

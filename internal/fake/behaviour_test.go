@@ -213,12 +213,21 @@ func TestATitleIsAddedWithAKnownProfileOnly(t *testing.T) {
 	if title["profile"] != "everything" {
 		t.Errorf("added with a profile: %v", title["profile"])
 	}
-	for _, body := range []string{`{"kind":"movie","tmdbId":438631,"profile":"nonsense"}`, `{"kind":"movie","tmdbId":438631,"preferredQuality":"1080p"}`} {
+	for _, body := range []string{`{"kind":"movie","tmdbId":438631,"profile":"nonsense"}`, `{"kind":"movie","tmdbId":438631,"profile":""}`, `{"kind":"movie","tmdbId":438631,"preferredQuality":"1080p"}`} {
 		resp := do(t, srv, call{"POST", "", body, 400}, "/api/titles")
 		_ = resp.Body.Close()
 		if resp.StatusCode != 400 {
 			t.Errorf("%s: %d, want 400", body, resp.StatusCode)
 		}
+	}
+}
+
+func TestATitleAddedWithANullProfileUsesTheKindsDefault(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	title := exchange(t, srv, router, "POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"profile":null}`, 201)
+	if v, ok := title["profile"]; !ok || v != nil {
+		t.Errorf("a null profile stays null: %v", title)
 	}
 }
 

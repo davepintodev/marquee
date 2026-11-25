@@ -25,7 +25,6 @@ const twoProfilesConfig = `{
   "default_series_profile": "anything"
 }`
 
-// withConfigFile lays the JSON config file a test starts the service with.
 func withConfigFile(t *testing.T, body string) func(map[string]string) {
 	t.Helper()
 	return func(env map[string]string) {
@@ -91,6 +90,9 @@ func TestATitleTakesAProfileByNameAndNullMeansTheKindsDefault(t *testing.T) {
 	if v := s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408}`, 201); v["profile"] != nil {
 		t.Errorf("no profile is null, not the default's name: %v", v["profile"])
 	}
+	if v := s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":7,"profile":null}`, 201); v["profile"] != nil {
+		t.Errorf("a null profile is the kind's default, so null again: %v", v["profile"])
+	}
 	if v := s.getTitle("movie-438631"); v["profile"] != "anything" {
 		t.Errorf("get: %v", v["profile"])
 	}
@@ -111,7 +113,6 @@ func TestAnUnknownProfileOrTheOldPreferredQualityIsRefused(t *testing.T) {
 	for _, c := range [][3]string{
 		{"POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"profile":"nonsense"}`},
 		{"POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"profile":""}`},
-		{"POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"profile":null}`},
 		{"POST", "/api/titles", `{"kind":"movie","tmdbId":438631,"preferredQuality":"1080p"}`},
 	} {
 		if r := s.bad(c[0], c[1], c[2]); r.status != 400 {

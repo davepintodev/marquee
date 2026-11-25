@@ -159,7 +159,6 @@ func profile(qualities []string, reject, prefer []string) config.Profile {
 	return config.Profile{Qualities: qualities, Reject: reject, Prefer: prefer}
 }
 
-// pf builds a release whose canonical tier and tags come from its parsed fields.
 func pf(name string, size int64, resolution, quality string, tags ...string) aiostreams.Stream {
 	s := rel(name, size, res(resolution))
 	s.ParsedFile.Quality = quality
