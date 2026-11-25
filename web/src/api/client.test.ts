@@ -76,6 +76,39 @@ test("removing a title accepts the 204 with no body and turns an error body into
   await expect(api.removeTitle("series-1")).rejects.toThrow("that title is not in the library");
 });
 
+test("removing with deleteFiles says so in the query and without it never mentions it", async () => {
+  const urls: string[] = [];
+  const fetchStub = vi.fn(async (input: Request) => {
+    urls.push(input.url);
+    return new Response(null, { status: 204 });
+  });
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  await api.removeTitle("series-1");
+  await api.removeTitle("series-1", false);
+  await api.removeTitle("series-1", true);
+
+  expect(urls).toEqual(["http://host.test/api/titles/series-1", "http://host.test/api/titles/series-1", "http://host.test/api/titles/series-1?deleteFiles=true"]);
+});
+
+test("a grab sends only what was asked: nothing, the episode, replace, or both", async () => {
+  const bodies: unknown[] = [];
+  const fetchStub = vi.fn(async (input: Request) => {
+    const text = await input.text();
+    bodies.push(text ? JSON.parse(text) : undefined);
+    return new Response(JSON.stringify({ id: "dl-1" }), { status: 202, headers: { "Content-Type": "application/json" } });
+  });
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  await api.grab("movie-1", "rel-1");
+  await api.grab("movie-1", "rel-1", undefined, false);
+  await api.grab("series-1", "rel-1", "s01e02");
+  await api.grab("movie-1", "rel-1", undefined, true);
+  await api.grab("series-1", "rel-1", "s01e02", true);
+
+  expect(bodies).toEqual([undefined, undefined, { episode: "s01e02" }, { replace: true }, { episode: "s01e02", replace: true }]);
+});
+
 class Stream {
   closed = false;
   private fns = new Map<string, (e: Event) => void>();

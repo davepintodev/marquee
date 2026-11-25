@@ -32,6 +32,8 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   const [query, setQuery] = useState("");
   const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
+  // Set by a rescan: the wall it fetches next is newer than the edits and events held in `changed` and `live`.
+  const wallIsNewer = useRef(false);
   const [searchTry, setSearchTry] = useState(0);
   const [answer, setAnswer] = useState<{ query: string; load: Load<TitleSummary[]> }>({ query: "", load: { status: "loading" } });
   // The title the owner last clicked: the title screen opens on it and uses it when the service does not know the title yet.
@@ -59,6 +61,11 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     pushTo({ name: "grid" }, "grid");
   }, []);
   const leave = useCallback(() => leaveTo({ name: "wall" }, "grid"), []);
+  // A rescan can adopt titles the wall has not seen; refetching in place keeps the posters on screen meanwhile.
+  const refreshWall = useCallback(() => {
+    wallIsNewer.current = true;
+    setWallTry((n) => n + 1);
+  }, []);
   const retryWall = useCallback(() => {
     setWall({ status: "loading" });
     setWallTry((n) => n + 1);
@@ -74,8 +81,19 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
 
   useEffect(() => {
     const ctl = new AbortController();
+    const dropStale = wallIsNewer.current;
+    wallIsNewer.current = false;
     api.wall(ctl.signal).then(
-      (items) => !ctl.signal.aborted && setWall({ status: "ok", data: items.map((i) => i.title) }),
+      (items) => {
+        if (ctl.signal.aborted) return;
+        if (dropStale) {
+          const ids = new Set(items.map((i) => i.title.id));
+          const rest = <T,>(o: Record<string, T>) => Object.fromEntries(Object.entries(o).filter(([id]) => !ids.has(id)));
+          setChanged(rest);
+          setLive(rest);
+        }
+        setWall({ status: "ok", data: items.map((i) => i.title) });
+      },
       (e) => !ctl.signal.aborted && !isAbort(e) && setWall({ status: "error", message: messageOf(e) }),
     );
     return () => ctl.abort();
@@ -325,16 +343,16 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
           seed={selected?.id === route.id ? current(selected) : undefined}
           onClose={closePage}
           onChanged={keep}
-          onRemoved={(t: Title) => {
+          onRemoved={(t: Title, deletedFiles: boolean) => {
             keep({ ...t, inLibrary: false, monitored: undefined, badge: undefined });
             closePage();
-            notify(`Removed “${t.title}” from marquee. Its files are still on disk.`);
+            notify(deletedFiles ? `Removed “${t.title}” from marquee and deleted its files from disk.` : `Removed “${t.title}” from marquee. Its files are still on disk.`);
           }}
           onToast={notify}
           onOpenTitle={openTitle}
         />
       )}
-      {route.name === "health" && <Health api={api} onClose={closePage} onForget={onForget} />}
+      {route.name === "health" && <Health api={api} onClose={closePage} onForget={onForget} onToast={notify} onRescanned={refreshWall} />}
       {route.name === "activity" && <Activity api={api} onClose={closePage} onChanged={keep} onToast={notify} />}
       <Toaster toast={toast} onDismiss={dismissToast} />
     </div>

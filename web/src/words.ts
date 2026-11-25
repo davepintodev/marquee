@@ -1,4 +1,4 @@
-import type { Badge, Episode, FailureReason } from "./api/types";
+import type { Badge, Episode, FailureReason, LibraryRescan, Title } from "./api/types";
 
 const reasons: Record<FailureReason, string> = {
   stalled: "Stalled",
@@ -94,3 +94,25 @@ const TAG_WORDS: Record<string, string> = {
 };
 
 export const tagWord = (tag: string) => TAG_WORDS[tag] ?? tag.toUpperCase();
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+export function rescanSummary(r: LibraryRescan) {
+  const head = `Rescanned ${count(r.titlesScanned, "title", "titles")}`;
+  const parts = [r.adopted > 0 && `${r.adopted} adopted`, r.foundOnDisk > 0 && `${r.foundOnDisk} found on disk`, r.missingOnDisk > 0 && `${r.missingOnDisk} gone from disk`].filter(Boolean);
+  return parts.length > 0 ? `${head}: ${parts.join(", ")}.` : `${head}. Nothing changed.`;
+}
+
+const haveOf = (t: Pick<Title, "kind" | "badge" | "seasons">) =>
+  new Set(t.kind === "movie" ? (t.badge?.state === "downloaded" ? ["movie"] : []) : t.seasons.flatMap((s) => s.episodes.filter((e) => e.state === "downloaded").map((e) => e.id)));
+
+export function titleRescanSummary(before: Title, after: Title) {
+  const had = haveOf(before);
+  const has = haveOf(after);
+  const found = [...has].filter((id) => !had.has(id)).length;
+  const gone = [...had].filter((id) => !has.has(id)).length;
+  const head = `Rescanned “${after.title}”`;
+  if (after.kind === "movie") return found ? `${head}: its file is on disk.` : gone ? `${head}: its file is gone from disk.` : `${head}. Nothing changed.`;
+  const parts = [found > 0 && `${count(found, "file", "files")} found on disk`, gone > 0 && `${count(gone, "file", "files")} gone from disk`].filter(Boolean);
+  return parts.length > 0 ? `${head}: ${parts.join(", ")}.` : `${head}. Nothing changed.`;
+}

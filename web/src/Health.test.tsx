@@ -44,7 +44,7 @@ function setup(answers: (() => Response)[], props: { onClose?: () => void; onFor
   let n = 0;
   const fetchStub = vi.fn(async () => answers[Math.min(n++, answers.length - 1)]());
   const api = createApi({ baseUrl: BASE, fetch: fetchStub as unknown as typeof fetch });
-  render(<Health api={api} onClose={props.onClose ?? (() => {})} onForget={props.onForget} />);
+  render(<Health api={api} onClose={props.onClose ?? (() => {})} onForget={props.onForget} onToast={() => {}} onRescanned={() => {}} />);
   return fetchStub;
 }
 
@@ -224,15 +224,15 @@ test("a library with no problems says so and has nothing to unfold; an empty one
   const lib = await screen.findByRole("region", { name: /library/i });
   expect(within(lib).getByText("No problems")).toBeTruthy();
   expect(within(lib).getByText("0 movies · 0 episodes")).toBeTruthy();
-  expect(within(lib).queryByRole("button")).toBeNull();
+  expect(within(lib).getAllByRole("button").map((b) => b.textContent)).toEqual(["Rescan library"]);
 });
 
-test("the controls come in the order Close, Check again, Show details, Show problems", async () => {
+test("the controls come in the order Close, Check again, Show details, Show problems, Rescan library", async () => {
   setup([() => json(sick)], { onForget: () => {} });
   await line();
 
   const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent);
-  expect(names).toEqual(["Close", "Check again", "Show details", "Show problems", "Forget on this device"]);
+  expect(names).toEqual(["Close", "Check again", "Show details", "Show problems", "Rescan library", "Forget on this device"]);
 });
 
 test("Close closes the page", async () => {
@@ -263,7 +263,7 @@ test("Check again probes once more, keeps the answer on screen meanwhile and sho
     await held;
     return json(fine());
   });
-  render(<Health api={createApi({ baseUrl: BASE, fetch: slow as unknown as typeof fetch })} onClose={() => {}} />);
+  render(<Health api={createApi({ baseUrl: BASE, fetch: slow as unknown as typeof fetch })} onClose={() => {}} onToast={() => {}} onRescanned={() => {}} />);
   await line();
 
   fireEvent.click(screen.getByRole("button", { name: /check again/i }));

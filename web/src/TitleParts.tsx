@@ -21,8 +21,9 @@ export function BackBar({ title, solid, onClose, back }: { title?: string; solid
 }
 
 // Keep takes focus when the question opens, so a stray Enter cannot remove anything.
-export function RemoveBlock({ title, busy, onRemove }: { title: Title; busy: boolean; onRemove: () => void }) {
+export function RemoveBlock({ title, busy, onRemove }: { title: Title; busy: boolean; onRemove: (deleteFiles: boolean) => void }) {
   const [confirming, setConfirming] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
   const open = useRef<HTMLButtonElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
   const moved = useRef(false);
@@ -35,6 +36,7 @@ export function RemoveBlock({ title, busy, onRemove }: { title: Title; busy: boo
   const ask = (on: boolean) => {
     moved.current = true;
     setConfirming(on);
+    setDeleteFiles(false);
   };
 
   return (
@@ -52,7 +54,17 @@ export function RemoveBlock({ title, busy, onRemove }: { title: Title; busy: boo
     >
       <div className="rm-text">
         <p className="rm-title">{confirming ? `Remove “${title.title}”?` : "Remove from marquee"}</p>
-        <p className="rm-sub">marquee stops searching for it. The files on disk stay.</p>
+        <p className="rm-sub">
+          {confirming && deleteFiles
+            ? "marquee stops searching for it and deletes every file it has on disk, with the subtitles beside them. This cannot be undone."
+            : "marquee stops searching for it. The files on disk stay."}
+        </p>
+        {confirming && (
+          <label className="rm-check">
+            <input type="checkbox" checked={deleteFiles} onChange={(e) => setDeleteFiles(e.target.checked)} />
+            Also delete files from disk
+          </label>
+        )}
       </div>
       <div className="rm-act" aria-live="polite">
         {!confirming ? (
@@ -65,7 +77,14 @@ export function RemoveBlock({ title, busy, onRemove }: { title: Title; busy: boo
             <button ref={keep} type="button" className="rm-btn" onClick={() => ask(false)}>
               Keep it
             </button>
-            <button type="button" className="rm-btn" data-danger="true" aria-label={`Yes, remove “${title.title}”`} aria-disabled={busy} onClick={onRemove}>
+            <button
+              type="button"
+              className="rm-btn"
+              data-danger="true"
+              aria-label={`Yes, remove “${title.title}”${deleteFiles ? " and delete its files" : ""}`}
+              aria-disabled={busy}
+              onClick={() => onRemove(deleteFiles)}
+            >
               <IconTrash />
               Remove
             </button>

@@ -1,4 +1,4 @@
-import { Fragment, useId, useState } from "react";
+import { Fragment, useId, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Health as HealthData } from "./api/types";
 import { ForgetToken } from "./ForgetToken";
@@ -7,6 +7,8 @@ import { Page } from "./Page";
 import { useHealth } from "./useHealth";
 import { useViewport } from "./useViewport";
 import { Busy, HealthSkeleton, Say } from "./Skeleton";
+import type { ToastRaise } from "./Toast";
+import { rescanSummary } from "./words";
 import { ErrorState } from "./State";
 
 type Check = HealthData["checks"][number];
@@ -74,7 +76,16 @@ function Fold({ open, onToggle, controls, children }: { open: boolean; onToggle:
   );
 }
 
-export function Health({ api, onClose, onForget }: { api: Api; onClose: () => void; onForget?: () => void }) {
+interface Props {
+  api: Api;
+  onClose: () => void;
+  onForget?: () => void;
+  onToast: ToastRaise;
+  // The scan can adopt titles, so whoever lists the library fetches it again.
+  onRescanned: () => void;
+}
+
+export function Health({ api, onClose, onForget, onToast, onRescanned }: Props) {
   const { load, again } = useHealth(api);
   return (
     <Page heading="Health" onClose={onClose} className="page-board">
@@ -90,13 +101,13 @@ export function Health({ api, onClose, onForget }: { api: Api; onClose: () => vo
             {load.message}
           </ErrorState>
         )}
-        {load.status === "ok" && <Board data={load.data} busy={load.busy} again={again} onForget={onForget} />}
+        {load.status === "ok" && <Board data={load.data} busy={load.busy} again={again} onForget={onForget} api={api} onToast={onToast} onRescanned={onRescanned} />}
       </div>
     </Page>
   );
 }
 
-function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolean; again: () => void; onForget?: () => void }) {
+function Board({ data, busy, again, onForget, api, onToast, onRescanned }: { data: HealthData; busy: boolean; again: () => void; onForget?: () => void } & Pick<Props, "api" | "onToast" | "onRescanned">) {
   const v = verdict(data.checks);
   const line = stops(data.checks);
   const n = (s: Status) => data.checks.filter((c) => c.status === s).length;
@@ -106,6 +117,8 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
   const lineId = useId();
   const [pathOpen, setPathOpen] = useState(false);
   const [libOpen, setLibOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const scanLock = useRef(false);
   const pathId = useId();
   const libId = useId();
   // Matches `.bd-wrap` `@container (min-width: 56rem)` inside `.page-layer`'s 2 * 16px edge padding so
@@ -115,6 +128,21 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
   const wide = width >= 56 * rootPx + 32;
   const problems = data.libraryProblems;
   const totals = data.libraryTotals;
+  const rescan = async () => {
+    if (scanLock.current) return;
+    scanLock.current = true;
+    setScanning(true);
+    try {
+      onToast(rescanSummary(await api.rescanLibrary()));
+      onRescanned();
+      again();
+    } catch (e) {
+      onToast(e instanceof Error ? e.message : "Something went wrong.", { kind: "error" });
+    } finally {
+      scanLock.current = false;
+      setScanning(false);
+    }
+  };
   const columns = line.map((s) => `minmax(0, ${s.gate ? 1.4 : s.check.status === "error" ? 1.3 : 1}fr)`).join(" ");
 
   return (
@@ -182,6 +210,9 @@ function Board({ data, busy, again, onForget }: { data: HealthData; busy: boolea
               {libOpen ? "Hide problems" : "Show problems"}
             </Fold>
           )}
+          <button type="button" className="bd-act" aria-disabled={scanning} onClick={rescan}>
+            {scanning ? <Busy say="Rescanning" width={88} /> : "Rescan library"}
+          </button>
         </p>
         {libOpen && problems.length > 0 && (
           <div id={libId} className="bd-libbody">

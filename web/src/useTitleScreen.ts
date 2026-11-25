@@ -20,7 +20,7 @@ interface Opts {
   id: string;
   seed?: TitleSummary;
   onChanged: (title: TitleSummary) => void;
-  onRemoved: (title: Title) => void;
+  onRemoved: (title: Title, deletedFiles: boolean) => void;
   onToast: (text: string) => void;
 }
 
@@ -65,8 +65,9 @@ export function useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast }:
     setLoad((l) => (l.status === "ok" ? { status: "ok", title: withProgress(l.title, e.data.episode, e.data.percent, e.data.state === "caching" ? "caching" : "downloading") } : l));
   });
 
-  const run = async (key: string, act: () => Promise<Title>, toast?: string) => {
-    if (working.current) return;
+  // Resolves to whether the action went through; a refusal is left in `error`.
+  const run = async (key: string, act: () => Promise<Title>, toast?: string | ((title: Title) => string)): Promise<boolean> => {
+    if (working.current) return false;
     working.current = true;
     setBusy(key);
     setError(null);
@@ -74,23 +75,25 @@ export function useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast }:
       const title = await act();
       setLoad({ status: "ok", title });
       onChanged(title);
-      if (toast) onToast(toast);
+      if (toast) onToast(typeof toast === "function" ? toast(title) : toast);
+      return true;
     } catch (e) {
       setError(messageOf(e));
+      return false;
     } finally {
       working.current = false;
       setBusy(null);
     }
   };
 
-  const remove = async (title: Title) => {
+  const remove = async (title: Title, deleteFiles: boolean) => {
     if (working.current) return false;
     working.current = true;
     setBusy("remove");
     setError(null);
     try {
-      await api.removeTitle(title.id);
-      onRemoved(title);
+      await api.removeTitle(title.id, deleteFiles);
+      onRemoved(title, deleteFiles);
       return true;
     } catch (e) {
       setError(messageOf(e));

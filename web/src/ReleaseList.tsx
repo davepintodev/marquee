@@ -27,13 +27,14 @@ interface Props {
   titleName: string;
   episodeId?: string;
   what: string;
+  hasFile?: boolean;
   // Waits for a click before asking AIOStreams, which rate-limits.
   manual?: boolean;
   onChanged: (title: TitleSummary) => void;
   onToast: (text: string) => void;
 }
 
-export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, onChanged, onToast }: Props) {
+export function ReleaseList({ api, titleId, titleName, episodeId, what, hasFile, manual, onChanged, onToast }: Props) {
   const key = `${titleId}/${episodeId ?? ""}`;
   const [started, setStarted] = useState<string | null>(manual ? null : key);
   const [attempt, setAttempt] = useState(0);
@@ -79,7 +80,7 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
     setBusy(r.id);
     setError(null);
     try {
-      await api.grab(titleId, r.id, episodeId);
+      await api.grab(titleId, r.id, episodeId, hasFile);
       setQueued((q) => new Set(q).add(`${key}/${r.id}`));
       onToast(`Queued ${r.name}.`);
       api.title(titleId).then(onChanged, () => {});
@@ -91,16 +92,18 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
     }
   };
 
-  const act = (r: Release, pick: "plain" | "anyway" | undefined, i: number) =>
-    queued.has(`${key}/${r.id}`) ? (
+  const act = (r: Release, pick: "plain" | "anyway" | undefined, i: number) => {
+    const word = hasFile ? (pick === "anyway" ? "Replace anyway" : "Replace file") : pick === "anyway" ? "Pick anyway" : "Pick";
+    return queued.has(`${key}/${r.id}`) ? (
       <span className="rl-queued">Queued</span>
     ) : (
       pick && (
-        <button type="button" className="btn-small" data-pick={i} aria-label={`${pick === "anyway" ? "Pick anyway" : "Pick"} ${r.name}`} aria-disabled={busy === r.id} onClick={() => grab(r)}>
-          {pick === "anyway" ? "Pick anyway" : "Pick"}
+        <button type="button" className="btn-small" data-pick={i} aria-label={`${word} ${r.name}`} aria-disabled={busy === r.id} onClick={() => grab(r)}>
+          {word}
         </button>
       )
     );
+  };
 
   const tableRow = (r: Release, i: number, opts: { top?: boolean; why?: string; pick?: "plain" | "anyway" }) => {
     const { res: q, src } = split(r.quality);
