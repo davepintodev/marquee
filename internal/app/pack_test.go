@@ -1,7 +1,10 @@
 package app_test
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -12,7 +15,12 @@ import (
 	"github.com/davepintodev/marquee/internal/torboxfake"
 )
 
-const packName = "Dune.Prophecy.S01.1080p.WEB-DL.mkv"
+const (
+	packName  = "Dune.Prophecy.S01.1080p.WEB-DL.mkv"
+	packDir   = "Dune.Prophecy.S01"
+	hashC     = "cccccccccccccccccccccccccccccccccccccccc"
+	sampleLen = 1 << 20
+)
 
 // packBody is an episode's bytes, distinct per episode so the
 // duplicate-episode check passes.
@@ -24,8 +32,6 @@ func packBody(b byte) []byte {
 	return data
 }
 
-// packOf makes TorBox's torrent of hash hold the named episode files, in
-// folder; only the ones in bodies can be downloaded.
 func (r *tbRig) packOf(hash, folder string, names []string, bodies map[string]bool) {
 	var files []torboxfake.File
 	for i, n := range names {
@@ -38,7 +44,6 @@ func (r *tbRig) packOf(hash, folder string, names []string, bodies map[string]bo
 	r.tb.SetFiles(hash, files...)
 }
 
-// torrentOf lists the TorBox torrent every download row reads from.
 func (r *tbRig) torrentOf() map[string]int {
 	r.t.Helper()
 	rows, err := r.db().Query(`SELECT season || 'x' || number, torbox_torrent_id FROM downloads`)
@@ -242,4 +247,222 @@ func TestDryRunNamesTheSeasonPackItWouldGrabAndNeverTouchesTorBox(t *testing.T) 
 	if d := r.downloads(); len(d) != 0 {
 		t.Fatalf("dry-run queued %v", d)
 	}
+}
+
+func (r *tbRig) episodeStates(titleID string) map[string]string {
+	r.t.Helper()
+	out := map[string]string{}
+	for _, se := range r.getTitle(titleID)["seasons"].([]any) {
+		for _, e := range se.(map[string]any)["episodes"].([]any) {
+			m := e.(map[string]any)
+			out[m["id"].(string)] = m["state"].(string)
+		}
+	}
+	return out
+}
+
+func (r *tbRig) emptyPacks() int {
+	r.t.Helper()
+	var n int
+	if err := r.db().QueryRow(`SELECT COUNT(*) FROM blocklist WHERE reason = 'empty_pack'`).Scan(&n); err != nil {
+		r.t.Fatal(err)
+	}
+	return n
+}
+
+func (r *tbRig) settled(n int) {
+	r.t.Helper()
+	waitFor(r.t, fmt.Sprintf("%d downloads to end", n), 30*time.Second, func() bool {
+		return len(r.entries("imported"))+len(r.entries("failed")) >= n
+	})
+}
+
+func TestAPackAIOStreamsCallsCachedButTorBoxMustFetchWaitsForAFreeSlot(t *testing.T) {
+	r := newTBRig(t, map[string]string{"MARQUEE_TORBOX_MAX_ACTIVE": "1"})
+	r.aio.Answer("movie", duneID, results(listed{name: "Dune.2021.1080p.WEB-DL.mkv", size: 2 << 30, uncached: true, hash: hashC}))
+	r.addMovie()
+	r.step()
+	r.torrentIDs(1)
+
+	r.packOf(hashA, packDir, []string{ep1Name, ep2Name}, nil)
+	r.aio.Answer("series", ep1ID, results(
+		listed{name: packName, size: 2 * epSize, hash: hashA, season: 1, pack: true},
+		listed{name: ep1Name, size: epSize, url: r.cdn.Add("e1.mkv", debridfake.File{Data: packBody('1')}), hash: hashB, season: 1, ep: 1},
+	))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.advance(10 * time.Second)
+	r.step()
+	waitFor(t, "E01 on its own", 30*time.Second, func() bool { return len(r.entries("imported")) == 1 })
+	var fetching, fromPack int
+	if err := r.db().QueryRow(`SELECT COUNT(*) FROM downloads WHERE cached = 0 AND state IN ('queued', 'caching')`).Scan(&fetching); err != nil || fetching != 1 {
+		t.Fatalf("%d downloads wait for TorBox with a cap of 1 (%v)", fetching, err)
+	}
+	if err := r.db().QueryRow(`SELECT COUNT(*) FROM downloads WHERE info_hash = ?`, hashA).Scan(&fromPack); err != nil || fromPack != 0 {
+		t.Fatalf("%d downloads read the pack (%v)", fromPack, err)
+	}
+	for i, m := range r.tb.Magnets() {
+		if strings.Contains(m, hashA) && !slices.Contains(r.tb.Deleted(), i+1) {
+			t.Fatalf("the pack's torrent %d was left caching on TorBox: deleted %v", i+1, r.tb.Deleted())
+		}
+	}
+}
+
+func TestWithOneEpisodeMissingThePackIsLeftForTheSingleRelease(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.packOf(hashA, packDir, []string{ep1Name, ep2Name}, nil)
+	r.tb.Cached(hashA)
+	r.aio.Answer("series", ep1ID, results(
+		listed{name: packName, size: 2 * epSize, hash: hashA, season: 1, pack: true},
+		listed{name: ep1Name, size: epSize, url: r.cdn.Add("e1.mkv", debridfake.File{Data: packBody('1')}), hash: hashB, season: 1, ep: 1},
+	))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	if _, err := r.db().Exec(`UPDATE episodes SET have_file = 1, file_path = 'Dune/Season 01/e2.mkv' WHERE title_id = 'series-1408' AND season = 1 AND number = 2`); err != nil {
+		t.Fatal(err)
+	}
+	r.step()
+	waitFor(t, "E01 on its own", 30*time.Second, func() bool { return len(r.entries("imported")) == 1 })
+	r.noMutations("one episode missing")
+}
+
+func TestAnUncachedPackTakesTheFirstEpisodeAndNotItsSample(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.tb.SetFiles(hashA,
+		torboxfake.File{ID: 0, Name: packDir + "/Sample/Dune.Prophecy.S01E01.sample.mkv", Size: sampleLen, Body: debridfake.MKV(sampleLen)},
+		torboxfake.File{ID: 1, Name: packDir + "/" + ep1Name, Size: epSize, Body: packBody('1')},
+		torboxfake.File{ID: 2, Name: packDir + "/" + ep2Name, Size: epSize, Body: packBody('2')})
+	r.aio.Answer("series", ep1ID, results(listed{name: packName, size: 2 * epSize, uncached: true, hash: hashA, season: 1, pack: true}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	r.tb.Present(r.torrentIDs(1)[0])
+	r.settled(2)
+	if n := len(r.entries("imported")); n != 2 {
+		t.Fatalf("%d imports, want both episodes", n)
+	}
+	root := r.env["MARQUEE_SERIES_PATH"]
+	for _, f := range tree(t, root) {
+		if st, err := os.Stat(filepath.Join(root, f)); err != nil || st.Size() != epSize {
+			t.Errorf("%s is not the episode's file (%v)", f, err)
+		}
+	}
+}
+
+func TestAnUncachedPackWhoseFirstFileHoldsTwoEpisodesFillsBoth(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.tb.SetFiles(hashA, torboxfake.File{ID: 0, Name: packDir + "/Dune.Prophecy.S01E01E02.1080p.WEB-DL.mkv", Size: epSize, Body: packBody('m')})
+	r.aio.Answer("series", ep1ID, results(listed{name: packName, size: epSize, uncached: true, hash: hashA, season: 1, pack: true}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	r.tb.Present(r.torrentIDs(1)[0])
+	r.settled(1)
+	if got := tree(t, r.env["MARQUEE_SERIES_PATH"]); len(got) != 1 || !strings.Contains(got[0], "S01E01-E02") {
+		t.Fatalf("library = %v, want one file of E01 and E02", got)
+	}
+	if st := r.episodeStates("series-1408"); st["s01e01"] != "downloaded" || st["s01e02"] != "downloaded" {
+		t.Fatalf("episodes = %v", st)
+	}
+	var n int
+	if err := r.db().QueryRow(`SELECT COUNT(*) FROM downloads`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("%d downloads, want the one file (%v)", n, err)
+	}
+}
+
+func TestACachedPackTakesTheFileItChoseWhenTwoShareAName(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.tb.SetFiles(hashA,
+		torboxfake.File{ID: 0, Name: "Extras/" + ep1Name, Size: sampleLen, Body: debridfake.MKV(sampleLen)},
+		torboxfake.File{ID: 1, Name: packDir + "/" + ep1Name, Size: epSize, Body: packBody('1')},
+		torboxfake.File{ID: 2, Name: packDir + "/" + ep2Name, Size: epSize, Body: packBody('2')})
+	r.tb.Cached(hashA)
+	r.aio.Answer("series", ep1ID, results(listed{name: packName, size: 2 * epSize, hash: hashA, season: 1, pack: true}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	r.settled(2)
+	if n := len(r.entries("imported")); n != 2 {
+		t.Fatalf("%d imports, want both episodes: %v", n, r.entries("failed"))
+	}
+}
+
+func TestAPackWhoseEpisodesWereAllGrabbedMeanwhileIsNotBlocklisted(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.packOf(hashA, packDir, []string{ep1Name, ep2Name}, nil)
+	r.tb.Cached(hashA)
+	r.aio.Answer("series", ep1ID, results(
+		listed{name: packName, size: 2 * epSize, hash: hashA, season: 1, pack: true},
+		listed{name: ep1Name, size: epSize, url: r.cdn.Add("e1.mkv", debridfake.File{Data: packBody('1')}), hash: hashB, season: 1, ep: 1},
+	))
+	r.aio.Answer("series", ep2ID, results(
+		listed{name: ep2Name, size: epSize, url: r.cdn.Add("e2.mkv", debridfake.File{Data: packBody('2')}), hash: hashC, season: 1, ep: 2},
+	))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	hold := make(chan struct{})
+	r.tb.Script("/torrents/mylist", torboxfake.Step{Until: hold})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.sch.Step(context.Background())
+	}()
+	waitFor(t, "the pack lookup", 10*time.Second, func() bool { return r.tb.Hits("/torrents/mylist") >= 1 })
+	for _, ep := range []struct{ id, name string }{{"s01e01", ep1Name}, {"s01e02", ep2Name}} {
+		cands, _ := r.releases("/api/titles/series-1408/releases?episode=" + ep.id)
+		i := slices.IndexFunc(cands, func(c map[string]any) bool { return c["name"] == ep.name })
+		if i < 0 {
+			t.Fatalf("no %s among %v", ep.name, cands)
+		}
+		r.mustCall("POST", "/api/titles/series-1408/releases/"+cands[i]["id"].(string)+"/grab", `{"episode":"`+ep.id+`"}`, 202)
+	}
+	close(hold)
+	<-done
+	if n := r.emptyPacks(); n != 0 {
+		t.Fatalf("a pack that held both episodes was blocklisted as empty")
+	}
+	waitFor(t, "the pack's torrent to be deleted", 10*time.Second, func() bool { return slices.Equal(r.tb.Deleted(), []int{1}) })
+}
+
+func TestAnUncachedPackWithoutTheSearchedEpisodeStillFillsTheOthers(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.packOf(hashA, packDir, []string{ep2Name}, nil)
+	r.aio.Answer("series", ep1ID, results(listed{name: packName, size: epSize, uncached: true, hash: hashA, season: 1, pack: true}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	id := r.torrentIDs(1)[0]
+	r.tb.Present(id)
+	r.settled(2)
+	if n, f := len(r.entries("imported")), len(r.entries("failed")); n != 1 || f != 1 {
+		t.Fatalf("imported %d and failed %d; want E02 imported and the E01 lead failed", n, f)
+	}
+	if st := r.episodeStates("series-1408"); st["s01e02"] != "downloaded" {
+		t.Fatalf("episodes = %v", st)
+	}
+	waitFor(t, "the torrent to be deleted", 10*time.Second, func() bool { return len(r.tb.Deleted()) >= 1 })
+	time.Sleep(100 * time.Millisecond)
+	if d := r.tb.Deleted(); !slices.Equal(d, []int{id}) {
+		t.Fatalf("deleted %v, want the torrent once", d)
+	}
+}
+
+func TestAPackTorrentStaysOnTorBoxWhenDeleteOnCompleteIsOff(t *testing.T) {
+	r := newTBRig(t, map[string]string{"MARQUEE_TORBOX_DELETE_ON_COMPLETE": "false"})
+	r.packOf(hashA, packDir, []string{ep1Name, ep2Name}, nil)
+	r.tb.Cached(hashA)
+	r.aio.Answer("series", ep1ID, results(listed{name: packName, size: 2 * epSize, hash: hashA, season: 1, pack: true}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	waitFor(t, "both imports", 30*time.Second, func() bool { return len(r.entries("imported")) == 2 })
+	time.Sleep(100 * time.Millisecond)
+	if d := r.tb.Deleted(); len(d) != 0 {
+		t.Fatalf("deleted %v", d)
+	}
+}
+
+func TestDryRunNamesNoUncachedSeasonPack(t *testing.T) {
+	r := newTBRig(t, map[string]string{"MARQUEE_DRY_RUN": "true"})
+	r.aio.Answer("series", ep1ID, results(listed{name: packName, size: 2 * epSize, uncached: true, hash: hashA, season: 1, pack: true}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	for _, e := range r.entries("would_grab") {
+		if strings.HasPrefix(e["message"].(string), "Would grab season pack") {
+			t.Fatalf("dry-run named an uncached pack: %v", e["message"])
+		}
+	}
+	r.noMutations("dry-run")
 }

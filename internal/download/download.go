@@ -5,10 +5,10 @@ package download
 import (
 	"context"
 	"errors"
-	"github.com/davepintodev/marquee/internal/torbox"
 	"time"
 
 	"github.com/davepintodev/marquee/internal/config"
+	"github.com/davepintodev/marquee/internal/torbox"
 )
 
 // Reason is why a download failed, in the vocabulary of the API's
@@ -66,6 +66,10 @@ type Request struct {
 	// TorBoxTorrentID is the torrent an earlier run already created, which
 	// this run keeps watching; zero starts one.
 	TorBoxTorrentID int
+	// TorBoxFileID is the file of the torrent to take. It is trusted only
+	// when that file is named FileName, since zero is both a real file id
+	// and none at all.
+	TorBoxFileID int
 	// StartedAt is when TorBox began caching the torrent, for the longest
 	// time it may take; zero is now.
 	StartedAt time.Time
@@ -78,9 +82,10 @@ type Request struct {
 	// download is gone.
 	OnCaching func(percent, torrentID, fileID int) error
 	// OnPresent is shown the torrent's files once TorBox holds them all,
-	// before one is picked. An error it returns ends the download; a
-	// *Failure also deletes the torrent unless Keep says otherwise.
-	OnPresent func(torrentID int, files []torbox.File) error
+	// before one is picked, and may name the file to take; an empty name
+	// leaves the choice to the downloader. An error it returns ends the
+	// download; a *Failure also deletes the torrent unless Keep says otherwise.
+	OnPresent func(torrentID int, files []torbox.File) (fileName string, fileID int, err error)
 	// Progress is called every second or so with the bytes written so far
 	// and the total the server reported.
 	Progress func(done, total int64)

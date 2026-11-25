@@ -92,7 +92,7 @@ type Options struct {
 	// TorBox resolves season packs into their episodes; nil leaves packs out.
 	TorBox TorBox
 	Log    *slog.Logger
-	Tuning          Tuning
+	Tuning Tuning
 }
 
 // Scheduler searches for what is missing. Every time it reads is the

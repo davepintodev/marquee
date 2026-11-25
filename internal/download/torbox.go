@@ -96,11 +96,15 @@ func (t *TorBox) Download(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 	if req.OnPresent != nil {
-		if err := req.OnPresent(id, tor.Files); err != nil {
+		name, fileID, err := req.OnPresent(id, tor.Files)
+		if err != nil {
 			if _, ok := AsFailure(err); ok {
 				t.delete(ctx, req, id)
 			}
 			return Result{}, err
+		}
+		if name != "" {
+			req.FileName, req.TorBoxFileID = name, fileID
 		}
 	}
 	file, err := pickFile(tor.Files, req)
@@ -212,9 +216,10 @@ func (t *TorBox) failure(ctx context.Context, err error) error {
 }
 
 // pickFile chooses the file of the torrent that is the release: the one
-// named as the release is, else, for an episode, the one whose name says
-// that episode, else the only video the torrent holds. Its size must be the
-// size the release was listed with, when that is known.
+// with the release's file id and name, else the one at the release's path,
+// else the first named as the release is, else, for an episode, the first
+// whose name says that episode, else the only video the torrent holds. Its
+// size must be the size the release was listed with, when that is known.
 func pickFile(files []torbox.File, req Request) (torbox.File, error) {
 	var videos []torbox.File
 	for _, f := range files {
@@ -222,30 +227,27 @@ func pickFile(files []torbox.File, req Request) (torbox.File, error) {
 			videos = append(videos, f)
 		}
 	}
-	var pick *torbox.File
-	for i, f := range videos {
-		if req.FileName != "" && strings.EqualFold(path.Base(f.Name), path.Base(req.FileName)) {
-			pick = &videos[i]
-			break
-		}
+	named := func(f torbox.File) bool {
+		return req.FileName != "" && strings.EqualFold(path.Base(f.Name), path.Base(req.FileName))
 	}
-	if pick == nil && req.Number > 0 {
-		for i, f := range videos {
+	tests := []func(torbox.File) bool{
+		func(f torbox.File) bool { return f.ID == req.TorBoxFileID && named(f) },
+		func(f torbox.File) bool { return req.FileName != "" && strings.EqualFold(f.Name, req.FileName) },
+		named,
+		func(f torbox.File) bool {
 			tok, ok := naming.ParseEpisodeToken(path.Base(f.Name))
-			if ok && tok.Season == req.Season && slices.Contains(tok.Episodes, req.Number) {
-				pick = &videos[i]
-				break
+			return req.Number > 0 && ok && tok.Season == req.Season && slices.Contains(tok.Episodes, req.Number)
+		},
+		func(torbox.File) bool { return len(videos) == 1 },
+	}
+	for _, test := range tests {
+		if i := slices.IndexFunc(videos, test); i >= 0 {
+			pick := videos[i]
+			if r := req.ReleaseSize; r > 0 && pick.Size != r {
+				return torbox.File{}, &Failure{ReasonSizeMismatch, fmt.Sprintf("TorBox has a %d-byte file but the release is listed at %d bytes, so it is not the file that was asked for", pick.Size, r)}
 			}
+			return pick, nil
 		}
 	}
-	if pick == nil && len(videos) == 1 {
-		pick = &videos[0]
-	}
-	if pick == nil {
-		return torbox.File{}, &Failure{ReasonNotVideo, "TorBox's copy has no video file that matches the release"}
-	}
-	if r := req.ReleaseSize; r > 0 && pick.Size != r {
-		return torbox.File{}, &Failure{ReasonSizeMismatch, fmt.Sprintf("TorBox has a %d-byte file but the release is listed at %d bytes, so it is not the file that was asked for", pick.Size, r)}
-	}
-	return *pick, nil
+	return torbox.File{}, &Failure{ReasonNotVideo, "TorBox's copy has no video file that matches the release"}
 }

@@ -53,11 +53,19 @@ type Tuning struct {
 	Download download.Options
 }
 
-// PackExpander queues the other wanted episodes of a season pack whose
-// torrent TorBox has just finished caching. It answers how many it queued
-// and whether the pack holds the episode of the download that fetched it.
+// PackExpander resolves a season pack whose torrent TorBox has just finished
+// caching for download d: it records the file of the pack d takes, then
+// queues the pack's other wanted episodes.
 type PackExpander interface {
-	ExpandPack(ctx context.Context, d catalog.Download, torrentID int, files []torbox.File) (queued int, holdsOwn bool, err error)
+	ExpandPack(ctx context.Context, d catalog.Download, torrentID int, files []torbox.File) (PackExpansion, error)
+}
+
+type PackExpansion struct {
+	// Own is d as it now stands, naming its file of the pack; Holds is false
+	// when the pack has no usable file of d's episode, and Own is then unset.
+	Own    catalog.Download
+	Holds  bool
+	Queued int
 }
 
 type TorrentDeleter interface {
@@ -165,35 +173,39 @@ func packLead(d catalog.Download) bool {
 	return d.Release.FileName == "" && d.TorBoxTorrentID != 0 && d.Number > 0
 }
 
-// onPresent queues the pack's other wanted episodes for a pack lead. A pack
-// that holds no wanted episode at all fails the lead, which blocklists the
-// pack and has its torrent deleted.
-func (m *Manager) onPresent(ctx context.Context, d catalog.Download) func(int, []torbox.File) error {
-	if !packLead(d) {
+// onPresent fails a pack lead whose pack holds none of the missing episodes
+// or lacks its own, which blocklists the whole pack: its file name is
+// still empty, so its release is the pack.
+func (m *Manager) onPresent(ctx context.Context, d *catalog.Download) func(int, []torbox.File) (string, int, error) {
+	if !packLead(*d) {
 		return nil
 	}
-	return func(torrentID int, files []torbox.File) error {
+	return func(torrentID int, files []torbox.File) (string, int, error) {
 		m.packMu.RLock()
 		p := m.packs
 		m.packMu.RUnlock()
 		if p == nil {
-			return nil
+			return "", 0, nil
 		}
-		n, own, err := p.ExpandPack(ctx, d, torrentID, files)
+		x, err := p.ExpandPack(ctx, *d, torrentID, files)
 		if err != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return "", 0, ctx.Err()
 			}
 			m.log.Warn("cannot queue a season pack's episodes", "download", d.ID, "err", err)
-			return nil
+			return "", 0, &download.Failure{Reason: download.ReasonLocalError, Detail: "the season pack's episodes could not be queued"}
 		}
-		if n > 0 {
-			m.log.Info("queued a season pack's episodes", "download", d.ID, "episodes", n)
+		if x.Queued > 0 {
+			m.log.Info("queued a season pack's episodes", "download", d.ID, "episodes", x.Queued)
 		}
-		if n == 0 && !own {
-			return &download.Failure{Reason: download.ReasonNotVideo, Detail: "the season pack holds none of the missing episodes"}
+		switch {
+		case !x.Holds && x.Queued == 0:
+			return "", 0, &download.Failure{Reason: download.ReasonNotVideo, Detail: "the season pack holds none of the missing episodes"}
+		case !x.Holds:
+			return "", 0, &download.Failure{Reason: download.ReasonNotVideo, Detail: "the season pack has no usable file of this episode"}
 		}
-		return nil
+		d.Release, d.Covered, d.TorBoxFileID = x.Own.Release, x.Own.Covered, x.Own.TorBoxFileID
+		return d.Release.FileName, d.TorBoxFileID, nil
 	}
 }
 
@@ -269,7 +281,7 @@ func (m *Manager) Enqueue(ctx context.Context, j Job) (catalog.Download, error) 
 	}
 	var covered []int
 	if t.Kind == "series" {
-		covered = listedEpisodes(t, j.Season, j.Number, j.Covered)
+		covered = ListedEpisodes(t, j.Season, j.Number, j.Covered)
 	}
 	d, err := m.cat.AddDownload(ctx, catalog.NewDownload{
 		ID: m.idSource(), TitleID: j.TitleID, Season: j.Season, Number: j.Number, Release: j.Release,
@@ -490,8 +502,8 @@ func (m *Manager) fetch(ctx context.Context, d *catalog.Download) bool {
 	res, err := m.dl.Download(fctx, download.Request{
 		URL: d.URL, Dest: m.partPath(d.ID), ReleaseSize: d.Release.Size,
 		Cached: !d.Uncached, InfoHash: d.Release.InfoHash, FileName: d.Release.FileName,
-		Season: d.Season, Number: d.Number, TorBoxTorrentID: d.TorBoxTorrentID, StartedAt: d.CachingStartedAt, Keep: m.keepTorrent(d.ID),
-		OnPresent: m.onPresent(fctx, *d),
+		Season: d.Season, Number: d.Number, TorBoxTorrentID: d.TorBoxTorrentID, TorBoxFileID: d.TorBoxFileID,
+		StartedAt: d.CachingStartedAt, Keep: m.keepTorrent(d.ID), OnPresent: m.onPresent(fctx, d),
 		OnCaching: func(percent, torrentID, fileID int) error {
 			err := m.cat.SetDownloadCaching(fctx, d.ID, percent, torrentID, fileID)
 			if errors.Is(err, catalog.ErrNotFound) {
@@ -899,10 +911,10 @@ func episodesOf(d catalog.Download) []int {
 	return []int{d.Number}
 }
 
-// listedEpisodes is what a release's file covers among the episodes the
+// ListedEpisodes is what a release's file covers among the episodes the
 // series lists for the season, with the target counted in; nothing when
 // that is the target alone.
-func listedEpisodes(t catalog.Title, season, number int, wanted []int) []int {
+func ListedEpisodes(t catalog.Title, season, number int, wanted []int) []int {
 	covered := []int{number}
 	for _, n := range wanted {
 		if _, ok := episodeName(t, season, n); ok && !slices.Contains(covered, n) {

@@ -147,15 +147,6 @@ func MatchPack(files []PackFile, infoHash string, season int, wanted, owned []in
 	return kept
 }
 
-// HoldsEpisode reports whether any video file of a pack is the episode.
-func HoldsEpisode(files []PackFile, season, episode int) bool {
-	return slices.ContainsFunc(files, func(f PackFile) bool {
-		base := path.Base(f.Name)
-		tok, ok := naming.ParseEpisodeToken(base)
-		return IsVideoFile(base) && ok && tok.Season == season && slices.Contains(tok.Episodes, episode)
-	})
-}
-
 func sizeRefused(size int64, p config.Profile) bool {
 	lo, hi := p.SizeLimits.MinMB, p.SizeLimits.MaxMB
 	return (lo > 0 && size < lo*mb) || (hi > 0 && size > hi*mb)

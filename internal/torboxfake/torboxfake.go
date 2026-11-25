@@ -28,12 +28,14 @@ type File struct {
 	Body []byte
 }
 
-// Step scripts one answer: a status, an optional Retry-After, or a hang
-// that holds the request until the fake closes.
+// Step scripts one answer: a status, an optional Retry-After, a hang
+// that holds the request until the fake closes, or a wait that holds it
+// until Until is closed and then answers as usual.
 type Step struct {
 	Status     int
 	RetryAfter string
 	Hang       bool
+	Until      <-chan struct{}
 }
 
 type rule struct {
@@ -213,6 +215,14 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	release := f.release
 	f.mu.Unlock()
 
+	if step != nil && step.Until != nil {
+		select {
+		case <-step.Until:
+		case <-r.Context().Done():
+			return
+		}
+		step = nil
+	}
 	if step != nil {
 		if step.Hang {
 			select {

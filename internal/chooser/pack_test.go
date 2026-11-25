@@ -87,7 +87,4 @@ func TestMatchPackTakesEveryWantedEpisodeAndNothingElse(t *testing.T) {
 	if want := []int{1, 7}; !slices.Equal(ids, want) {
 		t.Fatalf("matched files %v, want %v", ids, want)
 	}
-	if !chooser.HoldsEpisode(files, 1, 3) || chooser.HoldsEpisode(files, 1, 10) {
-		t.Error("HoldsEpisode must see E03 in E03E04 and no E10")
-	}
 }
