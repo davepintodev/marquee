@@ -81,6 +81,9 @@ func start(t *testing.T, env map[string]string, logs io.Writer) string {
 		done <- app.RunWith(ctx, app.Options{TMDBAPIBase: unreachableTMDB, TMDBImageBase: unreachableTMDB}, func(k string) string { return env[k] }, logs, ui, func(a net.Addr) { addrc <- a })
 	}()
 	t.Cleanup(func() {
+		// The client dials spare connections that never carry a request; the
+		// server keeps those as new for 5 s, which Shutdown would wait out.
+		http.DefaultClient.CloseIdleConnections()
 		cancel()
 		select {
 		case err := <-done:
