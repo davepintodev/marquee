@@ -229,7 +229,8 @@ type Refresh struct {
 
 // ApplyRefresh adds the episodes the series has gained, updates the name and
 // air date of those it had, and fills in an id the series lacked. A new
-// episode is monitored like the title's own, except in an adopted series,
+// episode is monitored when the series monitors new episodes (the owner's
+// choice when adding it), except in an adopted series,
 // where it follows the adoption rule: monitored when it is still to air or
 // its season has a file. It never changes whether an existing episode is
 // monitored or has a file, and never removes one. The title having gone
@@ -240,8 +241,8 @@ func (s *Store) ApplyRefresh(ctx context.Context, titleID string, r Refresh) err
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var monitored, adopted int
-	if err := tx.QueryRowContext(ctx, `SELECT monitored, adopted FROM titles WHERE id = ?`, titleID).Scan(&monitored, &adopted); errors.Is(err, sql.ErrNoRows) {
+	var monitored, monitorNew, adopted int
+	if err := tx.QueryRowContext(ctx, `SELECT monitored, monitor_new, adopted FROM titles WHERE id = ?`, titleID).Scan(&monitored, &monitorNew, &adopted); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
@@ -270,7 +271,7 @@ func (s *Store) ApplyRefresh(ctx context.Context, titleID string, r Refresh) err
 		return err
 	}
 	for _, e := range r.Episodes {
-		mon := monitored
+		mon := monitored & monitorNew
 		if adopted == 1 && !ownedSeasons[e.Season] && e.AirDate <= today {
 			mon = 0
 		}

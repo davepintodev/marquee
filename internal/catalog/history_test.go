@@ -27,9 +27,11 @@ func openClock(t *testing.T, at time.Time) (*catalog.Store, *clock) {
 }
 
 // dropAtMs turns a current database back into one before the migration
-// that added the at_ms columns, for a test to reopen it.
+// that added the at_ms columns (and so before every later one), for a test
+// to reopen it.
 const dropAtMs = `DROP INDEX downloads_finished; DROP INDEX downloads_finished_by_target; DROP INDEX activity_by_at;
-	ALTER TABLE downloads DROP COLUMN at_ms; ALTER TABLE activity DROP COLUMN at_ms; `
+	ALTER TABLE downloads DROP COLUMN at_ms; ALTER TABLE activity DROP COLUMN at_ms;
+	ALTER TABLE titles DROP COLUMN monitor_new; `
 
 func addMovie(t *testing.T, s *catalog.Store, tmdb int) string {
 	t.Helper()

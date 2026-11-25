@@ -248,6 +248,7 @@ func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
 		return Title{}, false, ErrInvalid
 	}
 	monitored := n.Kind != "series" || n.Monitor != MonitorNone
+	monitorsNew := n.Kind != "series" || n.Monitor == "" || n.Monitor == MonitorAll || n.Monitor == MonitorFuture
 	picked := monitorRule(MonitorAll, "", nil)
 	if n.Kind == "series" {
 		picked = monitorRule(n.Monitor, s.now().UTC().Format(time.DateOnly), n.Episodes)
@@ -263,9 +264,9 @@ func (s *Store) Add(ctx context.Context, n NewTitle) (Title, bool, error) {
 	if n.PreferredQuality != "" {
 		quality = n.PreferredQuality
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO titles (id, kind, tmdb_id, title, year, overview, imdb_id, tvdb_id, monitored, preferred_quality, added_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
-		id, n.Kind, n.TMDBID, n.Title, n.Year, n.Overview, n.IMDbID, n.TVDBID, b2i(monitored), quality, s.now().UTC().Format(time.RFC3339Nano))
+	res, err := tx.ExecContext(ctx, `INSERT INTO titles (id, kind, tmdb_id, title, year, overview, imdb_id, tvdb_id, monitored, monitor_new, preferred_quality, added_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+		id, n.Kind, n.TMDBID, n.Title, n.Year, n.Overview, n.IMDbID, n.TVDBID, b2i(monitored), b2i(monitorsNew), quality, s.now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return Title{}, false, err
 	}
@@ -322,7 +323,7 @@ func (s *Store) Update(ctx context.Context, id string, p Patch) (Title, error) {
 		return Title{}, err
 	}
 	if p.Monitored != nil {
-		if _, err := tx.ExecContext(ctx, `UPDATE titles SET monitored = ? WHERE id = ?`, b2i(*p.Monitored), id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE titles SET monitored = ?, monitor_new = monitor_new OR ? WHERE id = ?`, b2i(*p.Monitored), b2i(*p.Monitored), id); err != nil {
 			return Title{}, err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE episodes SET monitored = ? WHERE title_id = ?`, b2i(*p.Monitored), id); err != nil {

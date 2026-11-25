@@ -317,3 +317,111 @@ func TestSetSeasonMonitoredRollsBackOnAnUnknownSeason(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestARefreshMonitorsNewEpisodesByTheRuleTheSeriesWasAddedWith(t *testing.T) {
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		monitor string
+		want    map[string]bool
+	}{
+		{"", map[string]bool{"s01e03": true, "s05e01": true, "s05e02": true}},
+		{catalog.MonitorAll, map[string]bool{"s01e03": true, "s05e01": true, "s05e02": true}},
+		{catalog.MonitorFuture, map[string]bool{"s01e03": true, "s05e01": true, "s05e02": true}},
+		{catalog.MonitorFirstSeason, map[string]bool{"s01e03": false, "s05e01": false, "s05e02": false}},
+		{catalog.MonitorLatestSeason, map[string]bool{"s01e03": false, "s05e01": false, "s05e02": false}},
+	}
+	for _, c := range cases {
+		t.Run(c.monitor, func(t *testing.T) {
+			ctx := context.Background()
+			s := openAt(t, now)
+			if _, _, err := s.Add(ctx, catalog.NewTitle{Kind: "series", TMDBID: 1, Title: "House", Monitor: c.monitor, Episodes: houseEpisodes()}); err != nil {
+				t.Fatal(err)
+			}
+			err := s.ApplyRefresh(ctx, "series-1", catalog.Refresh{Episodes: append(houseEpisodes(),
+				catalog.NewEpisode{Season: 1, Number: 3, Name: "Late", AirDate: "2005-01-15"},
+				catalog.NewEpisode{Season: 5, Number: 1, Name: "New season aired", AirDate: "2026-11-01"},
+				catalog.NewEpisode{Season: 5, Number: 2, Name: "New season future", AirDate: "2027-01-01"},
+			)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkMonitored(t, monitoredEpisodes(t, s, "series-1"), c.want)
+		})
+	}
+}
+
+func TestARefreshOfASeriesAddedWithNoneStaysUnmonitoredUntilTheOwnerMonitorsTheSeries(t *testing.T) {
+	ctx := context.Background()
+	s := openAt(t, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	if _, _, err := s.Add(ctx, catalog.NewTitle{Kind: "series", TMDBID: 1, Title: "House", Monitor: catalog.MonitorNone, Episodes: houseEpisodes()}); err != nil {
+		t.Fatal(err)
+	}
+	refresh := func(number int) {
+		t.Helper()
+		err := s.ApplyRefresh(ctx, "series-1", catalog.Refresh{Episodes: append(houseEpisodes(),
+			catalog.NewEpisode{Season: 1, Number: number, Name: "New", AirDate: "2027-01-01"})})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	refresh(3)
+	checkMonitored(t, monitoredEpisodes(t, s, "series-1"), map[string]bool{"s01e03": false})
+
+	yes := true
+	if _, err := s.Update(ctx, "series-1", catalog.Patch{Monitored: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	refresh(4)
+	checkMonitored(t, monitoredEpisodes(t, s, "series-1"), map[string]bool{"s01e03": true, "s01e04": true})
+
+	no := false
+	if _, err := s.Update(ctx, "series-1", catalog.Patch{Monitored: &no}); err != nil {
+		t.Fatal(err)
+	}
+	refresh(5)
+	checkMonitored(t, monitoredEpisodes(t, s, "series-1"), map[string]bool{"s01e05": false})
+}
+
+func TestTheMonitorNewMigrationKeepsExistingSeriesMonitoringNewEpisodes(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	s, err := catalog.Open(dir, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Add(ctx, catalog.NewTitle{Kind: "series", TMDBID: 1, Title: "Watched", Episodes: houseEpisodes()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Add(ctx, catalog.NewTitle{Kind: "series", TMDBID: 2, Title: "Paused", Monitor: catalog.MonitorNone, Episodes: houseEpisodes()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", filepath.Join(dir, catalog.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(dropAtMs + `PRAGMA user_version = 8`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = catalog.Open(dir, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("the migration must run on a library from before it: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	for id, want := range map[string]bool{"series-1": true, "series-2": false} {
+		err := s.ApplyRefresh(ctx, id, catalog.Refresh{Episodes: append(houseEpisodes(),
+			catalog.NewEpisode{Season: 5, Number: 1, Name: "New", AirDate: "2027-01-01"})})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkMonitored(t, monitoredEpisodes(t, s, id), map[string]bool{"s05e01": want})
+	}
+}
