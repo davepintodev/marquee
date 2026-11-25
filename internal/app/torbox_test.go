@@ -292,8 +292,15 @@ func TestATorrentStillCachingAfterTheMaxLifetimeIsDeletedAndFailsAsCachingTimeou
 	r.advance(20 * time.Minute)
 	r.tb.Step(id, 0.2, 100)
 	r.waitCaching(20)
-	r.advance(100 * time.Minute)
-	r.tb.Step(id, 0.3, 100)
+	// Each jump stays under the 30m stall timeout and waits for a poll that saw
+	// progress, so a poll between a jump and the next Step cannot read the
+	// whole gap as a stall.
+	for i := 1; i <= 3; i++ {
+		r.advance(27 * time.Minute)
+		r.tb.Step(id, 0.2+0.1*float64(i), 100)
+		r.waitCaching(20 + 10*i)
+	}
+	r.advance(27 * time.Minute)
 	waitFor(t, "the failure", 10*time.Second, func() bool { return len(r.entries("failed")) == 1 })
 	if e := r.entries("failed")[0]; e["reason"] != "caching_timeout" {
 		t.Errorf("failure = %v", e)
