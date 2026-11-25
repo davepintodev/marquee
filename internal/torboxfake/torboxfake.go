@@ -30,7 +30,7 @@ type File struct {
 
 // Step scripts one answer: a status, an optional Retry-After, a hang
 // that holds the request until the fake closes, or a wait that holds it
-// until Until is closed and then answers as usual.
+// until Until is closed (or the fake closes) and then answers as usual.
 type Step struct {
 	Status     int
 	RetryAfter string
@@ -218,6 +218,8 @@ func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	if step != nil && step.Until != nil {
 		select {
 		case <-step.Until:
+		case <-release:
+			return
 		case <-r.Context().Done():
 			return
 		}

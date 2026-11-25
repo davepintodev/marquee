@@ -382,16 +382,21 @@ func TestACachedPackTakesTheFileItChoseWhenTwoShareAName(t *testing.T) {
 	}
 }
 
-func TestAPackWhoseEpisodesWereAllGrabbedMeanwhileIsNotBlocklisted(t *testing.T) {
-	r := newTBRig(t, nil)
+// grabMeanwhile holds the cached pack's TorBox lookup while both episodes
+// are grabbed by hand from rival releases, runs settle, and then lets the
+// lookup answer.
+func (r *tbRig) grabMeanwhile(rival debridfake.File, settle func()) {
+	r.t.Helper()
 	r.packOf(hashA, packDir, []string{ep1Name, ep2Name}, nil)
 	r.tb.Cached(hashA)
 	r.aio.Answer("series", ep1ID, results(
 		listed{name: packName, size: 2 * epSize, hash: hashA, season: 1, pack: true},
-		listed{name: ep1Name, size: epSize, url: r.cdn.Add("e1.mkv", debridfake.File{Data: packBody('1')}), hash: hashB, season: 1, ep: 1},
+		listed{name: ep1Name, size: epSize, url: r.cdn.Add("e1.mkv", rival), hash: hashB, season: 1, ep: 1},
 	))
+	rival2 := rival
+	rival2.Data = packBody('2')
 	r.aio.Answer("series", ep2ID, results(
-		listed{name: ep2Name, size: epSize, url: r.cdn.Add("e2.mkv", debridfake.File{Data: packBody('2')}), hash: hashC, season: 1, ep: 2},
+		listed{name: ep2Name, size: epSize, url: r.cdn.Add("e2.mkv", rival2), hash: hashC, season: 1, ep: 2},
 	))
 	r.mustCall("POST", "/api/titles", seriesBody, 201)
 	hold := make(chan struct{})
@@ -401,21 +406,55 @@ func TestAPackWhoseEpisodesWereAllGrabbedMeanwhileIsNotBlocklisted(t *testing.T)
 		defer close(done)
 		r.sch.Step(context.Background())
 	}()
-	waitFor(t, "the pack lookup", 10*time.Second, func() bool { return r.tb.Hits("/torrents/mylist") >= 1 })
+	waitFor(r.t, "the pack lookup", 10*time.Second, func() bool { return r.tb.Hits("/torrents/mylist") >= 1 })
 	for _, ep := range []struct{ id, name string }{{"s01e01", ep1Name}, {"s01e02", ep2Name}} {
 		cands, _ := r.releases("/api/titles/series-1408/releases?episode=" + ep.id)
 		i := slices.IndexFunc(cands, func(c map[string]any) bool { return c["name"] == ep.name })
 		if i < 0 {
-			t.Fatalf("no %s among %v", ep.name, cands)
+			r.t.Fatalf("no %s among %v", ep.name, cands)
 		}
 		r.mustCall("POST", "/api/titles/series-1408/releases/"+cands[i]["id"].(string)+"/grab", `{"episode":"`+ep.id+`"}`, 202)
 	}
+	settle()
 	close(hold)
 	<-done
+}
+
+func (r *tbRig) packUnused() {
+	r.t.Helper()
 	if n := r.emptyPacks(); n != 0 {
-		t.Fatalf("a pack that held both episodes was blocklisted as empty")
+		r.t.Fatalf("a pack that held both episodes was blocklisted as empty")
 	}
-	waitFor(t, "the pack's torrent to be deleted", 10*time.Second, func() bool { return slices.Equal(r.tb.Deleted(), []int{1}) })
+	waitFor(r.t, "the pack's torrent to be deleted", 10*time.Second, func() bool { return slices.Equal(r.tb.Deleted(), []int{1}) })
+	var all, fromPack int
+	if err := r.db().QueryRow(`SELECT COUNT(*), COUNT(*) FILTER (WHERE info_hash = ?) FROM downloads`, hashA).Scan(&all, &fromPack); err != nil {
+		r.t.Fatal(err)
+	}
+	if all != 2 || fromPack != 0 {
+		r.t.Fatalf("%d downloads, %d from the pack; want only the two grabbed by hand", all, fromPack)
+	}
+}
+
+func TestAPackWhoseEpisodesAreBeingGrabbedMeanwhileIsDroppedUnblocklisted(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.grabMeanwhile(debridfake.File{Data: packBody('1'), StallAt: epSize / 2}, func() {
+		waitFor(t, "both rivals downloading", 10*time.Second, func() bool {
+			var n int
+			if err := r.db().QueryRow(`SELECT COUNT(*) FROM downloads WHERE state = 'downloading'`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n == 2
+		})
+	})
+	r.packUnused()
+}
+
+func TestAPackWhoseEpisodesWereAllImportedMeanwhileIsDroppedUnblocklisted(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.grabMeanwhile(debridfake.File{Data: packBody('1')}, func() {
+		waitFor(t, "both rivals imported", 30*time.Second, func() bool { return len(r.entries("imported")) == 2 })
+	})
+	r.packUnused()
 }
 
 func TestAnUncachedPackWithoutTheSearchedEpisodeStillFillsTheOthers(t *testing.T) {
@@ -465,4 +504,24 @@ func TestDryRunNamesNoUncachedSeasonPack(t *testing.T) {
 		}
 	}
 	r.noMutations("dry-run")
+}
+
+func TestAPackLeadKeepsItsFileWhenQueueingThePacksOtherEpisodesFails(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.packOf(hashA, packDir, []string{ep1Name, ep2Name}, nil)
+	r.aio.Answer("series", ep1ID, results(listed{name: packName, size: 2 * epSize, uncached: true, hash: hashA, season: 1, pack: true}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	id := r.torrentIDs(1)[0]
+	if _, err := r.db().Exec(`CREATE TRIGGER no_e02 BEFORE INSERT ON downloads WHEN NEW.number = 2 BEGIN SELECT RAISE(ABORT, 'disk full'); END`); err != nil {
+		t.Fatal(err)
+	}
+	r.tb.Present(id)
+	r.settled(1)
+	if n, f := len(r.entries("imported")), r.entries("failed"); n != 1 || len(f) != 0 {
+		t.Fatalf("imported %d and failed %v; want the lead's own episode imported", n, f)
+	}
+	if st := r.episodeStates("series-1408"); st["s01e01"] != "downloaded" {
+		t.Fatalf("episodes = %v", st)
+	}
 }

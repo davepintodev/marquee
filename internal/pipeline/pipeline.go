@@ -63,6 +63,7 @@ type PackExpander interface {
 type PackExpansion struct {
 	// Own is d as it now stands, naming its file of the pack; Holds is false
 	// when the pack has no usable file of d's episode, and Own is then unset.
+	// Holds and Own stay set when queueing the other episodes then fails.
 	Own    catalog.Download
 	Holds  bool
 	Queued int
@@ -193,7 +194,9 @@ func (m *Manager) onPresent(ctx context.Context, d *catalog.Download) func(int, 
 				return "", 0, ctx.Err()
 			}
 			m.log.Warn("cannot queue a season pack's episodes", "download", d.ID, "err", err)
-			return "", 0, &download.Failure{Reason: download.ReasonLocalError, Detail: "the season pack's episodes could not be queued"}
+			if !x.Holds {
+				return "", 0, &download.Failure{Reason: download.ReasonLocalError, Detail: "the season pack's episodes could not be queued"}
+			}
 		}
 		if x.Queued > 0 {
 			m.log.Info("queued a season pack's episodes", "download", d.ID, "episodes", x.Queued)

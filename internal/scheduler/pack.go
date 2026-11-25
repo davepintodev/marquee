@@ -47,14 +47,22 @@ func (s *Scheduler) tryPack(ctx context.Context, now time.Time, t catalog.Target
 	case s.dry, !p.Stream.Cached && s.noRoomOnTorBox(ctx):
 		return false
 	}
-	return s.grabPack(ctx, t, p, missing, cc)
+	return s.grabPack(ctx, now, t, p, cc)
+}
+
+func (s *Scheduler) seasonNow(ctx context.Context, now time.Time, t catalog.Target) (missing, owned []int, err error) {
+	if missing, err = s.cat.MissingEpisodes(ctx, t.TitleID, t.Season, now); err != nil {
+		return nil, nil, err
+	}
+	owned, err = s.cat.OwnedEpisodes(ctx, t.TitleID, t.Season)
+	return missing, owned, err
 }
 
 func (s *Scheduler) wouldGrabPack(ctx context.Context, now time.Time, t catalog.Target, p chooser.Candidate, missing int) {
 	s.wouldGrabAs(ctx, now, t, p.ID, fmt.Sprintf("Would grab season pack %s for %d missing episodes", chooser.PackName(p.Stream), missing))
 }
 
-func (s *Scheduler) grabPack(ctx context.Context, t catalog.Target, p chooser.Candidate, missing []int, cc chooser.Context) bool {
+func (s *Scheduler) grabPack(ctx context.Context, now time.Time, t catalog.Target, p chooser.Candidate, cc chooser.Context) bool {
 	st := p.Stream
 	created, err := s.tb.CreateTorrent(ctx, st.InfoHash)
 	if err != nil {
@@ -67,16 +75,23 @@ func (s *Scheduler) grabPack(ctx context.Context, t catalog.Target, p chooser.Ca
 	job := packJob{titleID: t.TitleID, infoHash: st.InfoHash, resolution: resolution, quality: quality, torrentID: created.ID, cc: cc}
 	tor, err := s.tb.GetTorrent(ctx, created.ID)
 	if err == nil && tor.DownloadPresent {
-		owned, err := s.cat.OwnedEpisodes(ctx, t.TitleID, t.Season)
+		// Episodes can be grabbed or imported while TorBox answers, so the
+		// season is read again rather than trusted from before the lookup.
+		missing, owned, err := s.seasonNow(ctx, now, t)
 		if err != nil {
-			s.logErr(ctx, "cannot read the episodes on disk", err)
+			s.logErr(ctx, "cannot read a season's episodes", err)
 			s.dropTorrent(ctx, created.ID)
 			return false
 		}
+		done := !slices.Contains(missing, t.Number)
 		matches := chooser.MatchPack(packFiles(tor.Files), st.InfoHash, t.Season, missing, owned, cc)
-		if len(matches) == 0 {
+		switch {
+		case len(missing) == 0:
+			s.dropTorrent(ctx, created.ID)
+			return true
+		case len(matches) == 0:
 			s.dropPack(ctx, t, p, created.ID)
-			return false
+			return done
 		}
 		queued, err := s.queuePack(ctx, job, matches, missing)
 		if err != nil && ctx.Err() == nil {
@@ -84,11 +99,11 @@ func (s *Scheduler) grabPack(ctx context.Context, t catalog.Target, p chooser.Ca
 		}
 		if len(queued) == 0 {
 			s.dropTorrent(ctx, created.ID)
-			return false
+			return done
 		}
 		s.log.Info("queued a season pack", "title", t.TitleID, "season", t.Season, "episodes", len(queued))
 		if !slices.Contains(queued, t.Number) {
-			return false
+			return done
 		}
 		s.ignoreGone(s.cat.SetSchedule(ctx, t, catalog.Schedule{Attempts: t.Attempts, FollowUp: true, ClearForced: t.Forced}))
 		return true
