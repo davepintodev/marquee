@@ -58,6 +58,13 @@ export function pushTo(r: Route, marker: "grid" | "page") {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+// The wall is the first screen, so reaching it from anywhere is a step forward in history, not a Back through the screens in between.
+export function goHome() {
+  if (parseRoute(window.location.hash).name === "wall") return;
+  window.history.pushState(null, "", hrefOf({ name: "wall" }));
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
 // Where Back on a title screen goes: "library" is always the grid; "origin" is whichever screen opened the title.
 export const BACK_FROM_TITLE: "library" | "origin" = "library";
 
