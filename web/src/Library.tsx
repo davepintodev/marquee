@@ -48,8 +48,9 @@ export function Library({ api, items, onSelect, notice, active = true }: Props) 
   const cols = colsOf(width);
   const owned = useMemo(() => (items ?? []).filter((t) => t.inLibrary), [items]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.key, owned.filter(f.test).length])) as Record<Filter, number>, [owned]);
-  const shown = useMemo(() => owned.filter(FILTERS.find((f) => f.key === filter)!.test), [owned, filter]);
-  const trending = useMemo(() => (KIND_FILTERS.has(filter) ? (items ?? []).filter((t) => !t.inLibrary && FILTERS.find((f) => f.key === filter)!.test(t)) : []), [items, filter]);
+  const current = FILTERS.find((f) => f.key === filter)!;
+  const shown = useMemo(() => owned.filter(current.test), [owned, current]);
+  const trending = useMemo(() => (KIND_FILTERS.has(filter) ? (items ?? []).filter((t) => !t.inLibrary && current.test(t)) : []), [items, filter, current]);
   const loaded = items !== null && items.length > 0;
 
   useLayoutEffect(() => {
@@ -96,7 +97,7 @@ export function Library({ api, items, onSelect, notice, active = true }: Props) 
       {loaded ? (
         <>
           {shown.length === 0 ? (
-            <EmptyState fit="area">{FILTERS.find((f) => f.key === filter)!.none}</EmptyState>
+            <EmptyState fit="area">{current.none}</EmptyState>
           ) : (
             <ul className="tiles" aria-label="Library titles" style={{ ["--cols" as string]: cols }}>
               {shown.map((t, i) => (
