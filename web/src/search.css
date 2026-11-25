@@ -161,6 +161,45 @@
   color: var(--fg);
 }
 
+.chip:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.chip:disabled:hover {
+  color: var(--mute);
+}
+
+/* The section after the kind chips: ruled off, and pinned to the strip's right edge so a narrow screen never scrolls it away. */
+.chip-section {
+  --pad: var(--space-5);
+  position: sticky;
+  right: 0;
+  margin-right: calc(var(--edge) * -1);
+  padding: 0 var(--edge) 0 var(--pad);
+  background: var(--bg);
+  box-shadow:
+    inset 1px 0 0 var(--line-subtle),
+    inset 0 -1px 0 var(--line-subtle);
+}
+
+.chip-section::after {
+  content: "";
+  position: absolute;
+  left: var(--pad);
+  right: var(--edge);
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--fg);
+  opacity: 0;
+  transition: opacity var(--dur-med) var(--ease-out);
+}
+
+.chip-section[aria-pressed="true"]::after {
+  opacity: 1;
+}
+
 .chip:active {
   transform: scale(0.97);
 }
@@ -194,5 +233,9 @@
 
   .chips {
     gap: 0 var(--space-4);
+  }
+
+  .chip-section {
+    --pad: var(--space-4);
   }
 }

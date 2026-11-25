@@ -226,11 +226,11 @@ test("every control on the front and in the app is reachable by keyboard", async
 
   await openApp(page);
   const inApp = new Set<string>();
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 13; i++) {
     await page.keyboard.press("Tab");
     inApp.add(await page.evaluate(() => document.activeElement?.textContent?.trim().split(/\d/)[0] || document.activeElement?.getAttribute("aria-label") || ""));
   }
-  for (const want of ["Activity", "Health", "All", "Movies", "Series", "Downloading", "Missing"]) expect([...inApp].some((n) => n.startsWith(want)), want).toBe(true);
+  for (const want of ["Activity", "Health", "Library", "Movies", "Series", "Downloading", "Missing", "Trending"]) expect([...inApp].some((n) => n.startsWith(want)), want).toBe(true);
 });
 
 for (const s of screens.slice(0, 2)) {
@@ -246,7 +246,7 @@ for (const s of screens.slice(0, 2)) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 
     const chips = page.getByRole("group", { name: "Filter the library" }).getByRole("button");
-    await expect(chips).toHaveText([/^All\d+$/, /^Movies\d+$/, /^Series\d+$/, /^Downloading\d+$/, /^Missing\d+$/]);
+    await expect(chips).toHaveText([/^Library\d+$/, /^Movies\d+$/, /^Series\d+$/, /^Downloading\d+$/, /^Missing\d+$/, /^Trending\d+$/]);
     await expect(chips.first()).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".meter").first()).toBeVisible();
     await expect(page.locator(".nav-link", { hasText: "Activity" })).toBeVisible();
@@ -258,20 +258,55 @@ for (const s of screens.slice(0, 2)) {
     await chips.nth(1).click();
     await expect(chips.nth(1)).toHaveAttribute("aria-pressed", "true");
     for (const label of await page.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""))) expect(label).toMatch(/\(\d{4}\)/);
+
+    const trending = chips.last();
+    const box = await trending.boundingBox();
+    expect(box!.x + box!.width, "the Trending chip stays on screen").toBeLessThanOrEqual(s.width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   });
 }
 
 const inLibrary = /Downloaded|missing|Searching|Downloading|Stalled|Caching/i;
 
-test("the library grid holds only library titles and trending sits on its own shelf below", async ({ page }) => {
+for (const s of screens.slice(0, 2)) {
+  test(`Library and Trending are separate sections that share the Movies and Series choice on ${s.name}`, async ({ page }) => {
+    await page.setViewportSize({ width: s.width, height: s.height });
+    await openApp(page);
+    const strip = page.getByRole("group", { name: "Filter the library" });
+    const library = page.getByRole("list", { name: "Library titles" });
+    const trending = page.getByRole("list", { name: "Trending titles" });
+    for (const label of await library.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""))) expect(label).toMatch(inLibrary);
+    await expect(trending).toHaveCount(0);
+
+    await strip.getByRole("button", { name: /^Series/ }).click();
+    await page.getByRole("button", { name: /^Trending/ }).click();
+
+    await expect(library).toHaveCount(0);
+    await expect(strip.getByRole("button", { name: /^Series/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(strip.getByRole("button", { name: /^Trending/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(strip.getByRole("button", { name: /^Downloading/ })).toBeDisabled();
+    const names = await trending.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
+    expect(names.length).toBeGreaterThan(0);
+    for (const label of names) expect(label).not.toMatch(inLibrary);
+    for (const label of names) expect(label).toMatch(/\(\d{4}\)/);
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: join(shots, `trending-${s.name}.png`) });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+
+    await strip.getByRole("button", { name: /^Library/ }).click();
+    await expect(library).toBeVisible();
+    await expect(trending).toHaveCount(0);
+  });
+}
+
+test("a trending title opens its page with Add & monitor and no Remove", async ({ page }) => {
+  await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await openApp(page);
-  const grid = page.getByRole("list", { name: "Library titles" });
-  for (const label of await grid.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""))) expect(label).toMatch(inLibrary);
-  const shelf = page.getByRole("region", { name: "Trending" });
-  await expect(shelf.getByRole("heading", { name: "Trending" })).toBeVisible();
-  await expect(shelf.getByText("Not in your library yet")).toBeVisible();
-  const [g, sh] = [await grid.boundingBox(), await shelf.boundingBox()];
-  expect(sh!.y).toBeGreaterThan(g!.y + g!.height - 1);
+  await page.getByRole("button", { name: /^Trending/ }).click();
+  await page.getByRole("list", { name: "Trending titles" }).locator(".cell").first().click();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add & monitor" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove…" })).toHaveCount(0);
 });
 
 for (const s of screens.slice(0, 2)) {

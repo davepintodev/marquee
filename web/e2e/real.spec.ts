@@ -4,7 +4,9 @@ import { expect, test } from "@playwright/test";
 // TMDB, AIOStreams, the debrid file server, TorBox and Jellyfin are fakes.
 test("a title added from its page downloads, imports and reads Downloaded in the grid without a reload", async ({ page }) => {
   await page.goto("/#/grid");
+  await page.getByRole("button", { name: /^Trending/ }).click();
   await expect(page.getByRole("button", { name: /^Arrival/ }).first()).toBeVisible();
+  await page.getByRole("button", { name: /^Library/ }).click();
 
   await page.getByRole("searchbox").fill("dune");
   await page.getByRole("list", { name: "Results" }).getByRole("button", { name: /Dune/ }).click();
@@ -27,6 +29,7 @@ test("a title added from its page downloads, imports and reads Downloaded in the
 
 test("a release picked by hand on the title page is queued and shows in Activity", async ({ page }) => {
   await page.goto("/#/grid");
+  await page.getByRole("button", { name: /^Trending/ }).click();
   await page.getByRole("button", { name: /^Arrival/ }).first().click();
   const title = page.getByRole("main");
   await title.getByRole("button", { name: "Search releases" }).click();

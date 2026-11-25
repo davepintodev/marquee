@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Api } from "./api/client";
-import type { Badge, LiveEvent, Title, TitleSummary } from "./api/types";
+import type { Badge, LiveEvent, Title, TitleSummary, Wall } from "./api/types";
 import { Activity } from "./Activity";
 import { Front } from "./Front";
 import { Health } from "./Health";
@@ -30,7 +30,7 @@ function isAbort(e: unknown) {
 // keys off: the screen is over the app, so the keyboard is not its to act on.
 export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; onForget?: () => void }) {
   const [query, setQuery] = useState("");
-  const [wall, setWall] = useState<Load<TitleSummary[]>>({ status: "loading" });
+  const [wall, setWall] = useState<Load<Wall["items"]>>({ status: "loading" });
   const [wallTry, setWallTry] = useState(0);
   // Set by a rescan: the wall it fetches next is newer than the edits and events held in `changed` and `live`.
   const wallIsNewer = useRef(false);
@@ -92,7 +92,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
           setChanged(rest);
           setLive(rest);
         }
-        setWall({ status: "ok", data: items.map((i) => i.title) });
+        setWall({ status: "ok", data: items });
       },
       (e) => !ctl.signal.aborted && !isAbort(e) && setWall({ status: "error", message: messageOf(e) }),
     );
@@ -184,7 +184,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   const wallIds = useRef<Set<string> | null>(null);
   const asked = useRef(new Set<string>());
   useEffect(() => {
-    wallIds.current = wall.status === "ok" ? new Set(wall.data.map((t) => t.id)) : null;
+    wallIds.current = wall.status === "ok" ? new Set(wall.data.map((i) => i.title.id)) : null;
     if (wall.status === "ok") asked.current.clear();
   }, [wall]);
   const joinWall = useCallback((id: string) => {
@@ -220,7 +220,9 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     },
     [changed, live],
   );
-  const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map(current) : wall.status === "error" ? [] : null), [wall, current]);
+  const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map((i) => current(i.title)) : wall.status === "error" ? [] : null), [wall, current]);
+  // What the last wall fetch called trending; a title the owner removes since is not on this list, so it never lands in Trending.
+  const trendingIds = useMemo(() => new Set(wall.status === "ok" ? wall.data.filter((i) => i.source === "trending").map((i) => i.title.id) : []), [wall]);
   const results: Load<TitleSummary[]> =
     answer.query !== q ? { status: "loading" } : answer.load.status === "ok" ? { status: "ok", data: answer.load.data.map(current) } : answer.load;
 
@@ -300,6 +302,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
             <Library
               api={api}
               items={wallTitles}
+              trending={trendingIds}
               onSelect={openTitle}
               active={!atFront && !onPage}
               notice={

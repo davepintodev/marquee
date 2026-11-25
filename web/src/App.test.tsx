@@ -72,12 +72,18 @@ afterEach(() => {
 });
 
 const libraryGrid = () => within(grid().getByRole("list", { name: "Library titles" }));
-const shelf = () => within(grid().getByRole("region", { name: "Trending" }));
+const trendingGrid = () => within(grid().getByRole("list", { name: "Trending titles" }));
+const strip = () => within(grid().getByRole("group", { name: /filter the library/i }));
+const chip = (name: RegExp) => strip().getByRole("button", { name });
+const pressed = () => strip().getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent);
+const labels = (list: { getAllByRole: (role: "button") => HTMLElement[] }) => list.getAllByRole("button").map((t) => t.getAttribute("aria-label"));
+const severance = title({ tmdbId: 9, kind: "series", title: "Severance", year: 2022 });
+const withSeverance: Wall = { items: [...wall.items, { source: "trending", title: severance }] };
 
 test("the library grid lists only the library's titles, each with its state as a bar and no pill", async () => {
   setup((url) => (url.pathname === "/api/wall" ? json(wall) : json({ error: "nope" }, 404)));
 
-  await grid().findByRole("region", { name: "Trending" });
+  await grid().findByRole("list", { name: "Library titles" });
   const tiles = libraryGrid().getAllByRole("button");
   const names = tiles.map((t) => t.getAttribute("aria-label"));
   expect(names).toEqual(["House (2004), Season 4 · 3 missing", "Project Hail Mary (2026), Downloaded"]);
@@ -86,60 +92,114 @@ test("the library grid lists only the library's titles, each with its state as a
   expect(tiles[0].querySelector(".badge")).toBeNull();
   expect(within(tiles[0]).getByText("House")).toBeTruthy();
   expect(within(tiles[0]).getByText("2004 · Series")).toBeTruthy();
-  expect(tiles[0].querySelector("img")!.getAttribute("src")).toBe(`${BASE}/api/images/poster/series-2`);
+  expect(grid().queryByRole("button", { name: /dune/i })).toBeNull();
   expect(root().dataset.mode).toBe("library");
 });
 
-test("trending titles sit on their own labelled shelf below the library grid, never inside it", async () => {
-  setup(() => json(wall));
+test("the strip reads Library, Movies, Series, Downloading, Missing, then Trending set apart, with counts of what each holds", async () => {
+  setup(() => json(withSeverance));
+  await grid().findByRole("list", { name: "Library titles" });
 
-  const region = await grid().findByRole("region", { name: "Trending" });
-  expect(within(region).getByRole("heading", { name: "Trending" })).toBeTruthy();
-  expect(within(region).getByText("Not in your library yet")).toBeTruthy();
-  expect(shelf().getAllByRole("button").map((t) => t.getAttribute("aria-label"))).toEqual(["Dune (2021)"]);
-  expect(libraryGrid().queryByRole("button", { name: /dune/i })).toBeNull();
-  const list = grid().getByRole("list", { name: "Library titles" });
-  expect(list.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(strip().getAllByRole("button").map((c) => c.textContent)).toEqual(["Library2", "Movies1", "Series1", "Downloading0", "Missing1", "Trending2"]);
+  expect(pressed()).toEqual(["Library2"]);
+  expect(chip(/^trending/i).className).toContain("chip-section");
 });
 
-test("the filter chips count the library's titles only and narrow them, trending excluded", async () => {
+test("Movies and Series narrow the library, and Downloading and Missing filter it, with their own empty lines", async () => {
   setup(() => json(wall));
-  await grid().findAllByRole("button", { name: /house/i });
-  const chips = within(grid().getByRole("group", { name: /filter the library/i }));
+  await grid().findByRole("list", { name: "Library titles" });
 
-  expect(chips.getAllByRole("button").map((c) => c.textContent)).toEqual(["All2", "Movies1", "Series1", "Downloading0", "Missing1"]);
-  fireEvent.click(chips.getByRole("button", { name: /^movies/i }));
-
-  expect(chips.getByRole("button", { name: /^movies/i }).getAttribute("aria-pressed")).toBe("true");
-  expect(libraryGrid().getAllByRole("button").map((t) => t.getAttribute("aria-label"))).toEqual(["Project Hail Mary (2026), Downloaded"]);
-  fireEvent.click(chips.getByRole("button", { name: /^missing/i }));
-  expect(libraryGrid().getAllByRole("button").map((t) => t.getAttribute("aria-label"))).toEqual(["House (2004), Season 4 · 3 missing"]);
-  expect(grid().queryByRole("region", { name: "Trending" })).toBeNull();
-  fireEvent.click(chips.getByRole("button", { name: /^downloading/i }));
+  fireEvent.click(chip(/^movies/i));
+  expect(pressed()).toEqual(["Movies1"]);
+  expect(labels(libraryGrid())).toEqual(["Project Hail Mary (2026), Downloaded"]);
+  fireEvent.click(chip(/^missing/i));
+  expect(pressed()).toEqual(["Missing1"]);
+  expect(labels(libraryGrid())).toEqual(["House (2004), Season 4 · 3 missing"]);
+  fireEvent.click(chip(/^downloading/i));
   expect(grid().getByText("Nothing is downloading right now.")).toBeTruthy();
-  expect(grid().queryByRole("region", { name: "Trending" })).toBeNull();
+  fireEvent.click(chip(/^library/i));
+  expect(pressed()).toEqual(["Library2"]);
+  expect(labels(libraryGrid())).toHaveLength(2);
 });
 
-test("the Movies and Series chips filter the trending shelf by kind too", async () => {
-  const trendingShow = title({ tmdbId: 9, kind: "series", title: "Severance", year: 2022 });
-  setup(() => json({ items: [...wall.items, { source: "trending", title: trendingShow }] }));
-  await grid().findByRole("region", { name: "Trending" });
-  const chips = within(grid().getByRole("group", { name: /filter the library/i }));
+test("Trending is its own section: only trending titles, no library title, and Library brings the library back", async () => {
+  setup(() => json(withSeverance));
+  await grid().findByRole("list", { name: "Library titles" });
 
-  expect(shelf().getAllByRole("button").map((t) => t.getAttribute("aria-label"))).toEqual(["Dune (2021)", "Severance (2022)"]);
-  fireEvent.click(chips.getByRole("button", { name: /^series/i }));
-  expect(shelf().getAllByRole("button").map((t) => t.getAttribute("aria-label"))).toEqual(["Severance (2022)"]);
-  fireEvent.click(chips.getByRole("button", { name: /^movies/i }));
-  expect(shelf().getAllByRole("button").map((t) => t.getAttribute("aria-label"))).toEqual(["Dune (2021)"]);
+  fireEvent.click(chip(/^trending/i));
+
+  expect(grid().queryByRole("list", { name: "Library titles" })).toBeNull();
+  expect(labels(trendingGrid())).toEqual(["Dune (2021)", "Severance (2022)"]);
+  expect(pressed()).toEqual(["Trending2"]);
+  fireEvent.click(chip(/^library/i));
+  expect(grid().queryByRole("list", { name: "Trending titles" })).toBeNull();
+  expect(labels(libraryGrid())).toEqual(["House (2004), Season 4 · 3 missing", "Project Hail Mary (2026), Downloaded"]);
+  fireEvent.click(chip(/^trending/i));
+  fireEvent.click(chip(/^trending/i));
+  expect(grid().getByRole("list", { name: "Library titles" })).toBeTruthy();
 });
 
-test("an empty library still shows the trending shelf, with the library's own empty line above it", async () => {
+test("the kind you chose carries over when you switch sections, and the counts follow the section shown", async () => {
+  setup(() => json(withSeverance));
+  await grid().findByRole("list", { name: "Library titles" });
+
+  fireEvent.click(chip(/^series/i));
+  expect(labels(libraryGrid())).toEqual(["House (2004), Season 4 · 3 missing"]);
+  fireEvent.click(chip(/^trending/i));
+
+  expect(pressed()).toEqual(["Series1", "Trending2"]);
+  expect(labels(trendingGrid())).toEqual(["Severance (2022)"]);
+  expect(strip().getAllByRole("button").map((c) => c.textContent)).toEqual(["Library", "Movies1", "Series1", "Downloading", "Missing", "Trending2"]);
+  fireEvent.click(chip(/^movies/i));
+  expect(labels(trendingGrid())).toEqual(["Dune (2021)"]);
+  fireEvent.click(chip(/^trending/i));
+  expect(pressed()).toEqual(["Movies1"]);
+  expect(labels(libraryGrid())).toEqual(["Project Hail Mary (2026), Downloaded"]);
+});
+
+test("Downloading and Missing belong to the library: they sit disabled while Trending is open and come back with their filter's counts", async () => {
+  setup(() => json(wall));
+  await grid().findByRole("list", { name: "Library titles" });
+
+  fireEvent.click(chip(/^trending/i));
+  expect((chip(/^downloading/i) as HTMLButtonElement).disabled).toBe(true);
+  expect((chip(/^missing/i) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(chip(/^trending/i));
+  expect((chip(/^missing/i) as HTMLButtonElement).disabled).toBe(false);
+  expect(chip(/^missing/i).textContent).toBe("Missing1");
+});
+
+test("Library in Trending means all kinds and goes back to the library", async () => {
+  setup(() => json(withSeverance));
+  await grid().findByRole("list", { name: "Library titles" });
+  fireEvent.click(chip(/^series/i));
+  fireEvent.click(chip(/^trending/i));
+
+  fireEvent.click(chip(/^library/i));
+
+  expect(pressed()).toEqual(["Library2"]);
+  expect(labels(libraryGrid())).toHaveLength(2);
+});
+
+test("an empty library says so in its own section while Trending still holds its titles", async () => {
   setup(() => json({ items: [{ source: "trending", title: dune }] }));
 
-  await grid().findByRole("region", { name: "Trending" });
-  expect(grid().getByText("Nothing here yet.")).toBeTruthy();
+  await grid().findByText("Nothing here yet.");
   expect(grid().queryByRole("list", { name: "Library titles" })).toBeNull();
-  expect(shelf().getAllByRole("button")).toHaveLength(1);
+  fireEvent.click(chip(/^trending/i));
+  expect(labels(trendingGrid())).toEqual(["Dune (2021)"]);
+});
+
+test("a wall with no trending titles says so in the Trending section", async () => {
+  setup(() => json({ items: [{ source: "library", title: hail }] }));
+  await grid().findByRole("list", { name: "Library titles" });
+
+  fireEvent.click(chip(/^trending/i));
+
+  expect(grid().getByText("No trending titles right now.")).toBeTruthy();
+  expect(chip(/^trending/i).textContent).toBe("Trending0");
+  fireEvent.click(chip(/^series/i));
+  expect(grid().getByText("No trending series right now.")).toBeTruthy();
 });
 
 test("typing switches to search mode and shows the results in the same grid, with year, kind and state", async () => {
@@ -381,7 +441,12 @@ function pageApi(extra: Handler = notFound): Handler {
 const isAdd = (url: URL, init: Request) => init.method === "POST" && url.pathname === "/api/titles";
 const addAnswering = (answer: () => Response | Promise<Response>): Handler => (url, init) => (isAdd(url, init) ? answer() : notFound());
 
-const openTile = async (name: RegExp) => fireEvent.click((await grid().findAllByRole("button", { name }))[0]);
+// Opens a title from wherever the wall shows it: the library grid, or the Trending section when the library does not hold it.
+const openTile = async (name: RegExp) => {
+  await grid().findByRole("list", { name: "Library titles" });
+  if (!grid().queryByRole("button", { name })) fireEvent.click(chip(/^trending/i));
+  fireEvent.click((await grid().findAllByRole("button", { name }))[0]);
+};
 const page = () => within(screen.getByRole("main"));
 
 test("clicking a wall tile opens the title's page with poster, year, kind and summary, and adds nothing", async () => {
@@ -400,16 +465,49 @@ test("clicking a wall tile opens the title's page with poster, year, kind and su
   expect(writes).toEqual([]);
 });
 
-test("a trending title opened from the shelf offers Add & monitor and no Remove", async () => {
+test("a trending title opened from the Trending section offers Add & monitor and no Remove", async () => {
   setup(pageApi());
 
-  await grid().findByRole("region", { name: "Trending" });
-  fireEvent.click(shelf().getByRole("button", { name: /^Dune \(2021\)/ }));
+  fireEvent.click(await grid().findByRole("button", { name: /^trending/i }));
+  fireEvent.click(trendingGrid().getByRole("button", { name: /^Dune \(2021\)/ }));
 
   expect(await screen.findByRole("heading", { name: "Dune", level: 1 })).toBeTruthy();
   expect(page().getByRole("button", { name: "Add & monitor" })).toBeTruthy();
   expect(page().queryByRole("button", { name: "Remove…" })).toBeNull();
   expect(page().queryByRole("group", { name: "Remove from marquee" })).toBeNull();
+});
+
+test("a library title removed in this session never turns up in Trending", async () => {
+  const gone = (url: URL, init: Request) => {
+    if (init.method === "DELETE" && url.pathname === "/api/titles/series-2") return new Response(null, { status: 204 });
+    if (url.pathname === "/api/titles/series-2") return json(houseOut);
+    return notFound();
+  };
+  setup(pageApi(gone));
+  fireEvent.click(await grid().findByRole("button", { name: /^House \(2004\)/ }));
+  const group = await screen.findByRole("group", { name: "Remove from marquee" });
+  fireEvent.click(within(group).getByRole("button", { name: "Remove…" }));
+  fireEvent.click(within(group).getByRole("button", { name: "Yes, remove “House”" }));
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
+
+  expect(strip().getAllByRole("button").map((c) => c.textContent)).toEqual(["Library0", "Movies0", "Series0", "Downloading0", "Missing0", "Trending1"]);
+  fireEvent.click(chip(/^trending/i));
+  expect(labels(trendingGrid())).toEqual(["Dune (2021)"]);
+  expect(grid().queryByRole("button", { name: /house/i })).toBeNull();
+});
+
+test("a trending title that is added leaves Trending and joins the library", async () => {
+  setup(pageApi(addAnswering(() => json(duneAdded, 201))));
+  fireEvent.click(await grid().findByRole("button", { name: /^trending/i }));
+  fireEvent.click(trendingGrid().getByRole("button", { name: /^Dune \(2021\)/ }));
+  fireEvent.click(await within(await screen.findByRole("main")).findByRole("button", { name: "Add & monitor" }));
+  await screen.findByRole("group", { name: "Remove from marquee" });
+  fireEvent.keyDown(window, { key: "Escape" });
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
+
+  expect(grid().getByText("No trending titles right now.")).toBeTruthy();
+  fireEvent.click(chip(/^library/i));
+  expect(labels(libraryGrid())).toEqual(expect.arrayContaining([expect.stringMatching(/^Dune \(2021\)/)]));
 });
 
 test("clicking a search result opens the title's page and adds nothing", async () => {
@@ -606,11 +704,9 @@ test("the clear button empties the search and brings the library back", async ()
 test("exactly one filter is pressed, and it follows the click", async () => {
   setup(() => json(wall));
   await grid().findAllByRole("button", { name: /house/i });
-  const chips = within(grid().getByRole("group", { name: /filter the library/i }));
-  const pressed = () => chips.getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent);
 
-  expect(pressed()).toEqual(["All2"]);
-  fireEvent.click(chips.getByRole("button", { name: /^series/i }));
+  expect(pressed()).toEqual(["Library2"]);
+  fireEvent.click(chip(/^series/i));
   expect(pressed()).toEqual(["Series1"]);
 });
 
