@@ -95,8 +95,17 @@ func (t *TorBox) Download(ctx context.Context, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if req.OnPresent != nil {
+		if err := req.OnPresent(id, tor.Files); err != nil {
+			if _, ok := AsFailure(err); ok {
+				t.delete(ctx, req, id)
+			}
+			return Result{}, err
+		}
+	}
 	file, err := pickFile(tor.Files, req)
 	if err != nil {
+		t.delete(ctx, req, id)
 		return Result{}, err
 	}
 	if err := t.report(ctx, req, 100, id, file.ID); err != nil {

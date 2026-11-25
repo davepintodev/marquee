@@ -81,6 +81,10 @@ type NewDownload struct {
 	// Uncached marks a release the debrid service does not hold, which TorBox
 	// must fetch before the file can be downloaded; it has no playback link.
 	Uncached bool
+	// PackTorrentID and PackFileID name the TorBox torrent of a season pack
+	// and the file of it the download takes, when the scheduler resolved the
+	// pack before queueing; zero otherwise.
+	PackTorrentID, PackFileID int
 }
 
 type Download struct {
@@ -164,9 +168,11 @@ func (s *Store) AddDownload(ctx context.Context, n NewDownload) (Download, error
 	}
 	now := s.stamp()
 	_, err = tx.ExecContext(ctx, `INSERT INTO downloads (id, title_id, season, number, state, info_hash, file_name, size,
-		release_name, resolution, quality, url, replace_existing, covered_episodes, cached, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		release_name, resolution, quality, url, replace_existing, covered_episodes, cached, torbox_torrent_id, torbox_file_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		n.ID, n.TitleID, n.Season, n.Number, n.Release.InfoHash, n.Release.FileName, n.Release.Size,
-		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), stored, b2i(!n.Uncached), now, now)
+		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), stored, b2i(!n.Uncached),
+		n.PackTorrentID, n.PackFileID, now, now)
 	if err != nil {
 		if isUnique(err) {
 			return Download{}, ErrActiveDownload

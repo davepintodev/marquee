@@ -224,6 +224,33 @@ func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []an
 	return out, rows.Err()
 }
 
+// MissingEpisodes lists, in order, the aired episodes of a season that the
+// scheduler would search for: monitored, without a file, and neither the
+// target of an unfinished download nor covered by one.
+func (s *Store) MissingEpisodes(ctx context.Context, titleID string, season int, now time.Time) ([]int, error) {
+	rows, err := s.r.QueryContext(ctx, `
+SELECT e.number FROM episodes e JOIN titles t ON t.id = e.title_id
+WHERE e.title_id = ?1 AND e.season = ?2 AND e.season > 0 AND e.have_file = 0 AND e.air_date <= ?3
+  AND t.monitored = 1 AND e.monitored = 1
+  AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.title_id = e.title_id AND d.season = e.season AND d.number = e.number AND d.state NOT IN ('done', 'failed'))
+  AND NOT EXISTS (SELECT 1 FROM downloads d, json_each(CASE WHEN d.covered_episodes = '' THEN '[]' ELSE d.covered_episodes END) c
+    WHERE d.title_id = e.title_id AND d.season = e.season AND d.state NOT IN ('done', 'failed') AND c.value = e.number)
+ORDER BY e.number`, titleID, season, now.UTC().Format(time.DateOnly))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []int
+	for rows.Next() {
+		var n int
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}
+
 // OwnedEpisodes lists, in order, the numbers of the season's episodes that
 // have a file. A title or season that is not there owns none.
 func (s *Store) OwnedEpisodes(ctx context.Context, titleID string, season int) ([]int, error) {

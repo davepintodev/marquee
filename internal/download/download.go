@@ -5,6 +5,7 @@ package download
 import (
 	"context"
 	"errors"
+	"github.com/davepintodev/marquee/internal/torbox"
 	"time"
 
 	"github.com/davepintodev/marquee/internal/config"
@@ -76,6 +77,10 @@ type Request struct {
 	// and, once it is chosen, file that is. It returns ErrRemoved when the
 	// download is gone.
 	OnCaching func(percent, torrentID, fileID int) error
+	// OnPresent is shown the torrent's files once TorBox holds them all,
+	// before one is picked. An error it returns ends the download; a
+	// *Failure also deletes the torrent unless Keep says otherwise.
+	OnPresent func(torrentID int, files []torbox.File) error
 	// Progress is called every second or so with the bytes written so far
 	// and the total the server reported.
 	Progress func(done, total int64)

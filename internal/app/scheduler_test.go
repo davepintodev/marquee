@@ -194,6 +194,8 @@ type listed struct {
 	uncached bool
 	// hash overrides the info hash, which is otherwise made from the position.
 	hash string
+	// pack lists a season pack: the season and no episode.
+	pack bool
 }
 
 // results is an AIOStreams answer holding the given releases, all cached.
@@ -205,6 +207,9 @@ func results(rs ...listed) []byte {
 			parsed["seasons"], parsed["episodes"] = []int{l.season}, []int{l.ep}
 			if l.eps != nil {
 				parsed["episodes"] = l.eps
+			}
+			if l.pack {
+				parsed["episodes"], parsed["seasonPack"] = []int{}, true
 			}
 		}
 		hash := l.hash

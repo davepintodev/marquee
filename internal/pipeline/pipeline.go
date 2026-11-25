@@ -53,6 +53,13 @@ type Tuning struct {
 	Download download.Options
 }
 
+// PackExpander queues the other wanted episodes of a season pack whose
+// torrent TorBox has just finished caching. It answers how many it queued
+// and whether the pack holds the episode of the download that fetched it.
+type PackExpander interface {
+	ExpandPack(ctx context.Context, d catalog.Download, torrentID int, files []torbox.File) (queued int, holdsOwn bool, err error)
+}
+
 type TorrentDeleter interface {
 	DeleteTorrent(ctx context.Context, torrentID int) error
 }
@@ -99,6 +106,12 @@ type Job struct {
 	// Uncached marks a release the debrid service has not cached, which
 	// TorBox must fetch first; URL may then be empty.
 	Uncached bool
+	// TorBoxTorrentID and TorBoxFileID are the season pack torrent the
+	// scheduler already created on TorBox and the file of it to take. A
+	// download of a pack whose files are not known yet has no Release
+	// FileName and no file id; once TorBox holds the pack it queues the
+	// pack's other wanted episodes.
+	TorBoxTorrentID, TorBoxFileID int
 }
 
 // Manager runs the downloads.
@@ -133,6 +146,55 @@ type Manager struct {
 
 	claimMu sync.Mutex
 	claims  map[string]claim
+
+	packMu sync.RWMutex
+	packs  PackExpander
+}
+
+// SetPacks gives the manager what queues a season pack's episodes; the
+// scheduler, which judges releases, is made after the manager.
+func (m *Manager) SetPacks(p PackExpander) {
+	m.packMu.Lock()
+	m.packs = p
+	m.packMu.Unlock()
+}
+
+// packLead reports whether the download fetches a season pack whose files
+// were not known when it was queued, and so must queue the pack's other episodes.
+func packLead(d catalog.Download) bool {
+	return d.Release.FileName == "" && d.TorBoxTorrentID != 0 && d.Number > 0
+}
+
+// onPresent queues the pack's other wanted episodes for a pack lead. A pack
+// that holds no wanted episode at all fails the lead, which blocklists the
+// pack and has its torrent deleted.
+func (m *Manager) onPresent(ctx context.Context, d catalog.Download) func(int, []torbox.File) error {
+	if !packLead(d) {
+		return nil
+	}
+	return func(torrentID int, files []torbox.File) error {
+		m.packMu.RLock()
+		p := m.packs
+		m.packMu.RUnlock()
+		if p == nil {
+			return nil
+		}
+		n, own, err := p.ExpandPack(ctx, d, torrentID, files)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			m.log.Warn("cannot queue a season pack's episodes", "download", d.ID, "err", err)
+			return nil
+		}
+		if n > 0 {
+			m.log.Info("queued a season pack's episodes", "download", d.ID, "episodes", n)
+		}
+		if n == 0 && !own {
+			return &download.Failure{Reason: download.ReasonNotVideo, Detail: "the season pack holds none of the missing episodes"}
+		}
+		return nil
+	}
 }
 
 // claim is a verified download's place in its series until it has been
@@ -212,7 +274,7 @@ func (m *Manager) Enqueue(ctx context.Context, j Job) (catalog.Download, error) 
 	d, err := m.cat.AddDownload(ctx, catalog.NewDownload{
 		ID: m.idSource(), TitleID: j.TitleID, Season: j.Season, Number: j.Number, Release: j.Release,
 		ReleaseName: j.ReleaseName, Resolution: j.Resolution, Quality: j.Quality, URL: j.URL, ReplaceExisting: j.Replace,
-		Covered: covered, Uncached: j.Uncached,
+		Covered: covered, Uncached: j.Uncached, PackTorrentID: j.TorBoxTorrentID, PackFileID: j.TorBoxFileID,
 	})
 	if errors.Is(err, catalog.ErrActiveDownload) {
 		// The busy episode may be one the file covers rather than the one asked for.
@@ -429,6 +491,7 @@ func (m *Manager) fetch(ctx context.Context, d *catalog.Download) bool {
 		URL: d.URL, Dest: m.partPath(d.ID), ReleaseSize: d.Release.Size,
 		Cached: !d.Uncached, InfoHash: d.Release.InfoHash, FileName: d.Release.FileName,
 		Season: d.Season, Number: d.Number, TorBoxTorrentID: d.TorBoxTorrentID, StartedAt: d.CachingStartedAt, Keep: m.keepTorrent(d.ID),
+		OnPresent: m.onPresent(fctx, *d),
 		OnCaching: func(percent, torrentID, fileID int) error {
 			err := m.cat.SetDownloadCaching(fctx, d.ID, percent, torrentID, fileID)
 			if errors.Is(err, catalog.ErrNotFound) {
