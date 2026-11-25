@@ -168,6 +168,31 @@ paths:
               schema: { $ref: "#/components/schemas/Title" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/rescan:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    post:
+      tags: [titles]
+      operationId: rescanTitle
+      summary: Rescan one title's folder on disk.
+      description: >
+        Reads only this title's folder and never asks TMDB. A tracked file that
+        is gone from disk makes its movie or episode missing and unmonitored,
+        with a note in its history; a file that is there but not tracked is
+        recorded. Library problems under the folder are refreshed. Read-only on
+        disk, so it also works in dry-run. When the library folder cannot be
+        read, is empty although the library has files, or the title's folder
+        cannot be checked, nothing is changed and the answer is 503.
+      responses:
+        "200":
+          description: The title after the rescan.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Title" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/titles/{id}/episodes/{episodeId}:
     parameters:
       - { $ref: "#/components/parameters/TitleId" }
@@ -523,6 +548,27 @@ paths:
               schema: { type: string, contentEncoding: base64 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/library/rescan:
+    post:
+      tags: [system]
+      operationId: rescanLibrary
+      summary: Rescan the movie and series folders on disk.
+      description: >
+        The same scan that runs on a timer. Files deleted outside marquee make
+        their movie or episode missing and unmonitored, files found on disk are
+        recorded, new folders are matched against TMDB and adopted, and the
+        library problems are replaced by the ones this scan found. Read-only on
+        disk, so it also works in dry-run. A scan already running is waited for.
+      responses:
+        "200":
+          description: What the scan found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LibraryRescan" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -943,9 +989,18 @@ components:
         bytesDone: { type: integer, minimum: 0 }
         bytesTotal: { type: integer, minimum: 0 }
         stalled: { type: boolean, description: No bytes have arrived recently. }
+    LibraryRescan:
+      type: object
+      required: [titlesScanned, adopted, foundOnDisk, missingOnDisk, problems]
+      properties:
+        titlesScanned: { type: integer, minimum: 0, description: Titles of the library the scan reconciled with disk. }
+        adopted: { type: integer, minimum: 0, description: New titles adopted from folders not yet in the library. }
+        foundOnDisk: { type: integer, minimum: 0, description: Movies and episodes that were missing and have a file on disk now. }
+        missingOnDisk: { type: integer, minimum: 0, description: "Movies and episodes whose file is gone from disk, now missing and unmonitored." }
+        problems: { type: integer, minimum: 0, description: Library problems after the scan. }
     HistoryKind:
       type: string
-      enum: [added, searched, would_grab, imported, failed]
+      enum: [added, searched, would_grab, imported, failed, removed]
     FailureReason:
       type: string
       enum: [stalled, not_video, wrong_episode, too_small, size_mismatch, source_down, local_error, duplicate_episode]

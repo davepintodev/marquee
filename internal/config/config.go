@@ -12,9 +12,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
-const redacted = "[redacted]"
+const (
+	redacted              = "[redacted]"
+	defaultRescanInterval = 30 * time.Minute
+)
 
 // Secret holds a credential. Every formatting path prints a placeholder;
 // the value is only reachable through Reveal.
@@ -51,6 +55,8 @@ type Config struct {
 	Listen      string
 	APIToken    Secret
 	DryRun      bool
+	// RescanInterval is how often the library is read again; zero turns the timer off.
+	RescanInterval time.Duration
 
 	// Profiles is never empty after Load: without any in the file it holds
 	// the built-in "default". Both defaults name one of them.
@@ -73,6 +79,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("listen", c.Listen),
 		slog.Any("api_token", c.APIToken),
 		slog.Bool("dry_run", c.DryRun),
+		slog.Duration("rescan_interval", c.RescanInterval),
 		slog.Int("profiles", len(c.Profiles)),
 		slog.String("default_movie_profile", c.DefaultMovieProfile),
 		slog.String("default_series_profile", c.DefaultSeriesProfile),
@@ -92,6 +99,7 @@ type fileConfig struct {
 	Listen                string `json:"listen"`
 	APIToken              string `json:"api_token"`
 	DryRun                *bool  `json:"dry_run"`
+	RescanInterval        string `json:"rescan_interval"`
 
 	Profiles             map[string]Profile `json:"profiles"`
 	DefaultMovieProfile  string             `json:"default_movie_profile"`
@@ -153,6 +161,15 @@ func Load(getenv func(string) string) (Config, error) {
 			return Config{}, errors.New("MARQUEE_DRY_RUN must be true or false")
 		}
 		c.DryRun = b
+	}
+
+	c.RescanInterval = defaultRescanInterval
+	if v := pick("MARQUEE_RESCAN_INTERVAL", f.RescanInterval); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			return Config{}, errors.New("MARQUEE_RESCAN_INTERVAL (rescan_interval in the config file) must be a duration such as 30m, or 0 to turn the timer off")
+		}
+		c.RescanInterval = d
 	}
 
 	var missing []string
