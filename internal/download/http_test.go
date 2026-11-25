@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -290,16 +293,50 @@ func TestRateLimitedServerGetsFewerConnectionsAndTheFileStillArrives(t *testing.
 	}
 }
 
+// openCounter counts on the client side because the fake's handler outlives
+// a closed body (a stolen range, a closed connection the server has not yet
+// noticed), so its own count can show an 11th stream the client never held.
+type openCounter struct {
+	rt        http.RoundTripper
+	cur, peak atomic.Int64
+}
+
+func (c *openCounter) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.peak.Store(max(c.peak.Load(), c.cur.Add(1)))
+	resp, err := c.rt.RoundTrip(r)
+	if err != nil {
+		c.cur.Add(-1)
+		return nil, err
+	}
+	resp.Body = &closeCounter{ReadCloser: resp.Body, c: c}
+	return resp, nil
+}
+
+type closeCounter struct {
+	io.ReadCloser
+	c    *openCounter
+	once sync.Once
+}
+
+func (b *closeCounter) Close() error {
+	b.once.Do(func() { b.c.cur.Add(-1) })
+	return b.ReadCloser.Close()
+}
+
 func TestNeverMoreThanTenConnectionsPerFile(t *testing.T) {
 	cdn := debridfake.New()
 	defer cdn.Close()
 	data := debridfake.MKV(4 << 20)
 	url := cdn.Add("a.mkv", debridfake.File{Data: data, Pace: 3 * time.Millisecond})
 	dest := filepath.Join(t.TempDir(), "a.part")
-	if _, err := download.NewHTTP(fast(download.Options{Connections: 25})).Download(context.Background(), req(url, dest)); err != nil {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.MaxIdleConnsPerHost = 2 * download.MaxConnections
+	counter := &openCounter{rt: tr}
+	opt := fast(download.Options{Connections: 25, Transport: counter})
+	if _, err := download.NewHTTP(opt).Download(context.Background(), req(url, dest)); err != nil {
 		t.Fatal(err)
 	}
-	if n := cdn.MaxConcurrent("a.mkv"); n > download.MaxConnections || n < 2 {
-		t.Errorf("%d concurrent streams for one file, want between 2 and %d", n, download.MaxConnections)
+	if n := counter.peak.Load(); n > download.MaxConnections || n < 2 {
+		t.Errorf("%d concurrent requests for one file, want between 2 and %d", n, download.MaxConnections)
 	}
 }
