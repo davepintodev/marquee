@@ -466,7 +466,6 @@ function EpisodeRow({
   );
 }
 
-// The other episodes in this episode's file, as the owner reads them.
 function sharedWith(e: Episode, s: Season): string[] {
   return (e.sharedEpisodes ?? [])
     .filter((id) => id !== e.id)

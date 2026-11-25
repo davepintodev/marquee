@@ -27,7 +27,6 @@ interface Props {
   titleName: string;
   episodeId?: string;
   what: string;
-  // The movie or episode already has a file, so picking a release replaces it.
   hasFile?: boolean;
   // Waits for a click before asking AIOStreams, which rate-limits.
   manual?: boolean;

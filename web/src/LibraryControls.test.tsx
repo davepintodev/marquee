@@ -29,7 +29,6 @@ const scan = (over: Partial<LibraryRescan> = {}): LibraryRescan => ({ titlesScan
 
 const downloadedMovie = () => dune({ badge: { state: "downloaded", label: "Downloaded" } });
 
-// S04E01 and S04E02 live in one file.
 const sharing = (): Title => {
   const t = house();
   return {
@@ -54,8 +53,6 @@ const open = async (title: Title, extra?: Parameters<typeof titleApi>[1]) => {
 };
 
 const releasesAnswer: Handler = (url) => (url.pathname.endsWith("/releases") ? json(rels) : undefined) as never;
-
-// --- Rescan library (Health) ---
 
 function health(rescan: () => Response | Promise<Response>) {
   let checks = 0;
@@ -98,6 +95,43 @@ test("a rescan that changed nothing says so, and a double click scans once", asy
   expect(writes).toHaveLength(1);
 });
 
+test("a title removed with its files kept comes back on the wall when the rescan adopts it again", async () => {
+  const summary = (inLibrary: boolean) => {
+    const { id, tmdbId, kind, title, year, overview, posterPath, backdropPath } = dune();
+    return { id, tmdbId, kind, title, year, overview, posterPath, backdropPath, inLibrary, ...(inLibrary ? { monitored: true, badge: { state: "missing" as const, label: "Missing" } } : {}) };
+  };
+  let adopted = true;
+  const { calls } = setupApp(async (url, init) => {
+    if (url.pathname === "/api/wall") return json({ items: [{ source: adopted ? "library" : "trending", title: summary(adopted) }] });
+    if (url.pathname === "/api/titles/movie-1" && init.method === "DELETE") {
+      adopted = false;
+      return new Response(null, { status: 204 });
+    }
+    if (url.pathname === "/api/titles/movie-1") return json(dune());
+    if (url.pathname === "/api/titles/movie-1/about") return json({ error: "nope" }, 404);
+    if (url.pathname === "/api/health") return json(ok());
+    if (url.pathname === "/api/library/rescan" && init.method === "POST") {
+      adopted = true;
+      return json(scan({ adopted: 1 }));
+    }
+    return json({ error: "nope" }, 404);
+  }, "#/grid");
+
+  fireEvent.click((await screen.findAllByRole("button", { name: /^Dune \(2021\), Missing/ }))[0]);
+  await screen.findByRole("heading", { name: "Dune", level: 1 });
+  fireEvent.click(within(screen.getByRole("group", { name: "Remove from marquee" })).getByRole("button", { name: "Remove…" }));
+  fireEvent.click(within(screen.getByRole("group", { name: "Remove from marquee" })).getByRole("button", { name: "Yes, remove “Dune”" }));
+  await waitFor(() => expect(window.location.hash).toBe("#/grid"));
+
+  window.location.hash = "#/health";
+  fireEvent.click(await screen.findByRole("button", { name: "Rescan library" }));
+  await screen.findByText("Rescanned 22 titles: 1 adopted.");
+  await waitFor(() => expect(calls.filter((u) => u.pathname === "/api/wall").length).toBe(2));
+  window.location.hash = "#/grid";
+
+  expect((await screen.findAllByRole("button", { name: /^Dune \(2021\), Missing/ })).length).toBeGreaterThan(0);
+});
+
 test("a failed library rescan says why in an error toast and the button comes back", async () => {
   health(() => json({ error: "the movies folder cannot be read" }, 503));
   fireEvent.click(await screen.findByRole("button", { name: "Rescan library" }));
@@ -105,8 +139,6 @@ test("a failed library rescan says why in an error toast and the button comes ba
   expect((await screen.findByRole("alert")).textContent).toContain("the movies folder cannot be read");
   expect(screen.getByRole("button", { name: "Rescan library" }).getAttribute("aria-disabled")).not.toBe("true");
 });
-
-// --- Rescan (TitleScreen) ---
 
 test("Rescan on a title runs its own rescan, refreshes the screen and names what changed", async () => {
   const after = sharing();
@@ -119,13 +151,24 @@ test("Rescan on a title runs its own rescan, refreshes the screen and names what
   expect(within(screen.getAllByRole("listitem").find((li) => li.textContent?.includes("Big Baby"))!).getByText("Downloaded")).toBeTruthy();
 });
 
-test("a movie rescan that finds its file gone says so; one with no change says nothing changed", async () => {
+test("a movie rescan that finds its file gone says so", async () => {
   const gone = dune();
   await open(downloadedMovie(), (url, init) => (url.pathname === "/api/titles/movie-1/rescan" && init.method === "POST" ? json(gone) : undefined));
 
   fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
 
   expect((await screen.findByRole("status")).textContent).toBe("Rescanned “Dune”: its file is gone from disk.");
+});
+
+test("a rescan that changes nothing says nothing changed, for a movie with its file and for one without", async () => {
+  await open(downloadedMovie(), (url, init) => (url.pathname === "/api/titles/movie-1/rescan" && init.method === "POST" ? json(downloadedMovie()) : undefined));
+  fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
+  expect((await screen.findByRole("status")).textContent).toBe("Rescanned “Dune”. Nothing changed.");
+  cleanup();
+
+  await open(dune(), (url, init) => (url.pathname === "/api/titles/movie-1/rescan" && init.method === "POST" ? json(dune()) : undefined));
+  fireEvent.click(screen.getByRole("button", { name: "Rescan" }));
+  expect((await screen.findByRole("status")).textContent).toBe("Rescanned “Dune”. Nothing changed.");
 });
 
 test("a failed title rescan is said in words", async () => {
@@ -138,8 +181,6 @@ test("a title that is not in the library has no Rescan", async () => {
   await open(house({ inLibrary: false, monitored: undefined, seasons: [] }));
   expect(screen.queryByRole("button", { name: "Rescan" })).toBeNull();
 });
-
-// --- Also delete files (RemoveBlock) ---
 
 const del = (url: URL, init: Request) => (init.method === "DELETE" && url.pathname === "/api/titles/series-2" ? new Response(null, { status: 204 }) : undefined);
 const group = () => screen.getByRole("group", { name: "Remove from marquee" });
@@ -201,8 +242,6 @@ test("a refused file deletion (dry-run) keeps the title and says why", async () 
   expect((await screen.findByRole("alert")).textContent).toContain("dry-run is on");
   expect(window.location.hash).toBe("#/title/series-2");
 });
-
-// --- Wrong file ---
 
 const wrong = (title: Title, path: string) => (url: URL, init: Request) => {
   if (init.method === "POST" && url.pathname === path) {
@@ -314,8 +353,6 @@ test("'Pick another release' on an episode keeps its releases open for choosing"
   await waitFor(() => expect(calls.filter((u) => u.pathname.endsWith("/releases")).length).toBe(2));
   expect(await screen.findByRole("list", { name: /Releases for/ })).toBeTruthy();
 });
-
-// --- Replace file ---
 
 test("a downloaded movie's releases say Replace file and a grab sends replace: true", async () => {
   const { writes } = await open(downloadedMovie(), (url, init) => (init.method === "POST" && url.pathname === "/api/titles/movie-1/releases/rel-1/grab" ? json(queued(), 202) : releasesAnswer(url, init)));

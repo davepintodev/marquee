@@ -1,9 +1,7 @@
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 interface Props {
-  // What the question calls the file's owner: a movie's title, or an episode's code and name.
   what: string;
-  // The other episodes whose video is the same file, named for the owner.
   shared: string[];
   busy: boolean;
   onChoose: (reSearch: boolean) => void;

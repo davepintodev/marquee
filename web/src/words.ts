@@ -100,7 +100,6 @@ export function rescanSummary(r: LibraryRescan) {
   return parts.length > 0 ? `${head}: ${parts.join(", ")}.` : `${head}. Nothing changed.`;
 }
 
-// Which files a title has, by what the screen can tell: an episode's id, or the movie itself.
 const haveOf = (t: Pick<Title, "kind" | "badge" | "seasons">) =>
   new Set(t.kind === "movie" ? (t.badge?.state === "downloaded" ? ["movie"] : []) : t.seasons.flatMap((s) => s.episodes.filter((e) => e.state === "downloaded").map((e) => e.id)));
 
