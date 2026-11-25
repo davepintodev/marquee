@@ -35,6 +35,7 @@ MARQUEE_LISTEN=:8080 bin/marquee --fake
 - Preview against the fake (`--fake`) unless the ticket needs real mode; real mode needs the essential settings, which never go in a command line you print, a log or a PR.
 - `make smoke` also runs `web/e2e/real.spec.ts` against the real service with its outside world faked (`cmd/smokeserve`: TMDB, AIOStreams, the debrid file server, TorBox and Jellyfin in one dev-only process, with a `tv-safe` profile in a generated config file); `bin/smokeserve --fakes-only --dir <dir>` instead seeds a small library and prints the settings that point the real binary at the fakes, for the idle-memory measurement.
 - Check the preview yourself before handing it over: drive each acceptance flow in the real page (clicks, toasts, state changes, Esc and close, laptop and phone width) with the preview tools. `make smoke` (not part of the gate) takes the Playwright screenshots and recordings.
+- A PR that changes grid layout, copy or fixtures runs `make smoke` and says so in the PR brief.
 - The hand-off says in one line what passed and asks the person only for what needs taste (spacing, colour, wording, feel) or what you could not check. Never give them a checklist of steps you can run.
 - Stop the server when the look is signed off.
 
