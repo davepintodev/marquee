@@ -90,5 +90,4 @@ const TAG_WORDS: Record<string, string> = {
   avc: "AVC",
 };
 
-// A tag the table does not know yet still shows, as itself.
 export const tagWord = (tag: string) => TAG_WORDS[tag] ?? tag.toUpperCase();
