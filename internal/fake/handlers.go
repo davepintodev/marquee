@@ -82,6 +82,8 @@ func (f *Fake) routes() http.Handler {
 	h("PATCH /api/titles/{id}", f.update)
 	h("DELETE /api/titles/{id}", f.remove)
 	h("POST /api/titles/{id}/search", f.searchNow)
+	h("POST /api/titles/{id}/rescan", f.rescanTitle)
+	h("POST /api/library/rescan", f.rescanLibrary)
 	h("PUT /api/titles/{id}/seasons/{number}", f.updateSeason)
 	h("PATCH /api/titles/{id}/episodes/{episodeId}", f.updateEpisode)
 	h("POST /api/titles/{id}/episodes/{episodeId}/search", f.searchNow)
@@ -537,6 +539,29 @@ func (f *Fake) searchNow(w http.ResponseWriter, r *http.Request) {
 	t.nextSearch = time.Now().Add(defaultNextSearch)
 	f.addHistory("searched", t, epID, "Search now: skipping the backoff.", "", false)
 	write(w, http.StatusOK, f.title(t))
+}
+
+func (f *Fake) rescanTitle(w http.ResponseWriter, r *http.Request) {
+	t := f.libraryTitle(w, r)
+	if t == nil {
+		return
+	}
+	write(w, http.StatusOK, f.title(t))
+}
+
+// rescanLibrary reports a scan that found the library as it is.
+func (f *Fake) rescanLibrary(w http.ResponseWriter, _ *http.Request) {
+	var health struct {
+		LibraryProblems []json.RawMessage `json:"libraryProblems"`
+	}
+	_ = json.Unmarshal(f.health, &health)
+	scanned := 0
+	for _, t := range f.titles {
+		if t.InLibrary {
+			scanned++
+		}
+	}
+	write(w, http.StatusOK, map[string]int{"titlesScanned": scanned, "adopted": 0, "foundOnDisk": 0, "missingOnDisk": 0, "problems": len(health.LibraryProblems)})
 }
 
 func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {

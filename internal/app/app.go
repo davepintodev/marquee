@@ -54,6 +54,9 @@ type Options struct {
 	// OnAdopted is called once the first-run adoption has finished, with
 	// its error, or with nil when an earlier run had already completed it.
 	OnAdopted func(error)
+	// RescanTick makes the timer of the library rescan from its configured
+	// interval, and returns what stops it; nil is a time.Ticker.
+	RescanTick func(interval time.Duration) (ticks <-chan time.Time, stop func())
 	// HealthTimeout bounds each probe of a Health read; zero is eight seconds.
 	HealthTimeout time.Duration
 	// Scheduler tunes the scheduler; the zero value is production.
@@ -145,20 +148,24 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		if err != nil {
 			return fmt.Errorf("MARQUEE_AIOSTREAMS_MANIFEST_URL %w", err)
 		}
-		// Adoption reads the library and records it; it runs whatever the dry-run
-		// setting says, since it never writes to the library.
+		// Scans read the library and record it; they run whatever the dry-run
+		// setting says, since they never write to the library.
+		scanner := adopter.New(adopter.Options{
+			Catalog: store, TMDB: tmdb, MoviesPath: cfg.MoviesPath, SeriesPath: cfg.SeriesPath, Log: log,
+		})
 		adoptCtx, stopAdopt := context.WithCancel(context.Background())
 		adoptDone := make(chan struct{})
 		go func() {
 			defer close(adoptDone)
-			err := adopter.New(adopter.Options{
-				Catalog: store, TMDB: tmdb, MoviesPath: cfg.MoviesPath, SeriesPath: cfg.SeriesPath, Log: log,
-			}).Run(adoptCtx)
+			err := scanner.Run(adoptCtx)
 			if err != nil && adoptCtx.Err() == nil {
 				log.Error("library adoption stopped; it will run again at the next start", "err", err)
 			}
 			if opts.OnAdopted != nil {
 				opts.OnAdopted(err)
+			}
+			if cfg.RescanInterval > 0 {
+				rescanEvery(adoptCtx, scanner, cfg.RescanInterval, opts.RescanTick, log)
 			}
 		}()
 		// The database closes after this: a run in flight must stop first.
@@ -196,7 +203,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			scores = omdb.New(omdb.Options{Base: opts.OMDbBase, Key: cfg.OMDbKey, Timeout: opts.OMDbTimeout})
 		}
 		api = httpapi.New(httpapi.Deps{
-			Catalog: store, Transfers: transfers, TMDB: tmdb, OMDb: scores, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
+			Catalog: store, Transfers: transfers, TMDB: tmdb, OMDb: scores, Source: source, Scanner: scanner, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
 			Paths: cfg.Paths(), Profiles: cfg.ProfileSet(), Jellyfin: jellyfin, HealthTimeout: opts.HealthTimeout,
 			Images:      metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 			EventsEvery: opts.EventsEvery, Stop: streamsStop,
@@ -233,4 +240,29 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		return err
 	}
 	return nil
+}
+
+// rescanEvery scans the library on every tick until ctx ends. A scan that
+// fails is logged and tried again at the next tick.
+func rescanEvery(ctx context.Context, scanner *adopter.Adopter, every time.Duration, tick func(time.Duration) (<-chan time.Time, func()), log *slog.Logger) {
+	var ticks <-chan time.Time
+	if tick != nil {
+		var stop func()
+		ticks, stop = tick(every)
+		defer stop()
+	} else {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		ticks = t.C
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+			if _, err := scanner.ScanAll(ctx); err != nil && ctx.Err() == nil {
+				log.Error("library rescan stopped; it will run again at the next tick", "err", err)
+			}
+		}
+	}
 }

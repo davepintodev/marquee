@@ -52,6 +52,8 @@ var calls = map[string]call{
 	"updateTitle":       {"PATCH", "/api/titles/movie-693134", `{"monitored":false}`, 200},
 	"removeTitle":       {"DELETE", "/api/titles/movie-13187", "", 204},
 	"searchTitleNow":    {"POST", "/api/titles/movie-329865/search", "", 200},
+	"rescanTitle":       {"POST", "/api/titles/movie-329865/rescan", "", 200},
+	"rescanLibrary":     {"POST", "/api/library/rescan", "", 200},
 	"updateEpisode":     {"PATCH", "/api/titles/series-1408/episodes/s04e02", `{"monitored":false}`, 200},
 	"updateSeason":      {"PUT", "/api/titles/series-1408/seasons/4", `{"monitored":false}`, 200},
 	"searchEpisodeNow":  {"POST", "/api/titles/series-1408/episodes/s04e02/search", "", 200},

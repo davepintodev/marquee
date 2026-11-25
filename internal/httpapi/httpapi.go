@@ -42,9 +42,11 @@ type Deps struct {
 	// OMDb is nil when no OMDb key is set, which leaves the scores to TMDB's own.
 	OMDb   Scorer
 	Source Source
-	Images *metadata.Images
-	Log    *slog.Logger
-	DryRun bool
+	// Scanner reads the library folders again; nil leaves the rescan routes unanswered.
+	Scanner Scanner
+	Images  *metadata.Images
+	Log     *slog.Logger
+	DryRun  bool
 	// Now is the clock the blocklist's expiry is judged by; nil is the system clock.
 	Now func() time.Time
 	// Wake tells the scheduler a Search now was asked for; nil does nothing.
@@ -103,6 +105,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/titles/{id}/episodes/{episodeId}", a.updateEpisode)
 	mux.HandleFunc("PUT /api/titles/{id}/seasons/{number}", a.updateSeason)
 	mux.HandleFunc("POST /api/titles/{id}/search", a.searchNow)
+	mux.HandleFunc("POST /api/titles/{id}/rescan", a.rescanTitle)
+	mux.HandleFunc("POST /api/library/rescan", a.rescanLibrary)
 	mux.HandleFunc("POST /api/titles/{id}/episodes/{episodeId}/search", a.searchNow)
 	mux.HandleFunc("GET /api/titles/{id}/releases", a.listReleases)
 	mux.HandleFunc("POST /api/titles/{id}/releases/{releaseId}/grab", a.grabRelease)

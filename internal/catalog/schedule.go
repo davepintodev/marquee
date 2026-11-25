@@ -292,6 +292,8 @@ const (
 	ActivitySearched  = "searched"
 	ActivityWouldGrab = "would_grab"
 	ActivityFailed    = "failed"
+	// ActivityRemoved notes a file that was deleted outside marquee.
+	ActivityRemoved = "removed"
 )
 
 // Activity is something the scheduler did or decided, for the Activity page.
@@ -329,6 +331,13 @@ func (s *Store) AddActivity(ctx context.Context, a Activity) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := s.addActivity(ctx, tx, a); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) addActivity(ctx context.Context, tx *sql.Tx, a Activity) error {
 	now := s.now()
 	res, err := tx.ExecContext(ctx, `INSERT INTO activity (id, title_id, season, number, kind, reason, message, release_id, at, at_ms)
 		SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ? FROM titles WHERE id = ?`,
@@ -336,14 +345,12 @@ func (s *Store) AddActivity(ctx context.Context, a Activity) error {
 	if err := affected(res, err); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM activity
+	_, err = tx.ExecContext(ctx, `DELETE FROM activity
 		WHERE rowid <= (SELECT rowid FROM activity ORDER BY rowid DESC LIMIT 1 OFFSET ?)
 		AND NOT (kind = ? AND rowid = (SELECT MAX(b.rowid) FROM activity b
 			WHERE b.title_id = activity.title_id AND b.season = activity.season AND b.number = activity.number AND b.kind = ?))`,
-		s.activityKeep, ActivityWouldGrab, ActivityWouldGrab); err != nil {
-		return err
-	}
-	return tx.Commit()
+		s.activityKeep, ActivityWouldGrab, ActivityWouldGrab)
+	return err
 }
 
 // Activities lists the entries, newest first; a non-empty titleID narrows them to one title.

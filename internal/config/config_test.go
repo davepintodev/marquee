@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/davepintodev/marquee/internal/config"
 )
@@ -268,5 +269,46 @@ func TestCheckPathsRefusesMissingLibrary(t *testing.T) {
 	err := cfg.CheckPaths()
 	if err == nil || !strings.Contains(err.Error(), "MARQUEE_MOVIES_PATH") {
 		t.Fatalf("want an error naming MARQUEE_MOVIES_PATH, got %v", err)
+	}
+}
+
+func TestTheRescanIntervalDefaultsToThirtyMinutesAndComesFromEnvironmentOrFile(t *testing.T) {
+	cfg, err := config.Load(envOf(fullEnv()))
+	if err != nil || cfg.RescanInterval != 30*time.Minute {
+		t.Fatalf("default: %v, %v", cfg.RescanInterval, err)
+	}
+
+	env := fullEnv()
+	env["MARQUEE_RESCAN_INTERVAL"] = "90s"
+	if cfg, err = config.Load(envOf(env)); err != nil || cfg.RescanInterval != 90*time.Second {
+		t.Errorf("env: %v, %v", cfg.RescanInterval, err)
+	}
+
+	file := filepath.Join(t.TempDir(), "marquee.json")
+	body := `{"aiostreams_manifest_url":"` + manifestVal + `","tmdb_key":"` + tmdbVal + `",
+	"movies_path":"/a","series_path":"/b","temp_path":"/c","data_dir":"/d","rescan_interval":"2h"}`
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file})); err != nil || cfg.RescanInterval != 2*time.Hour {
+		t.Errorf("file: %v, %v", cfg.RescanInterval, err)
+	}
+	if cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file, "MARQUEE_RESCAN_INTERVAL": "10m"})); err != nil || cfg.RescanInterval != 10*time.Minute {
+		t.Errorf("env overrides the file: %v, %v", cfg.RescanInterval, err)
+	}
+}
+
+func TestARescanIntervalOfZeroDisablesTheTimerAndABadOneStopsStartup(t *testing.T) {
+	env := fullEnv()
+	env["MARQUEE_RESCAN_INTERVAL"] = "0"
+	if cfg, err := config.Load(envOf(env)); err != nil || cfg.RescanInterval != 0 {
+		t.Errorf("zero disables the timer: %v, %v", cfg.RescanInterval, err)
+	}
+	for _, bad := range []string{"soon", "30", "-5m"} {
+		env["MARQUEE_RESCAN_INTERVAL"] = bad
+		_, err := config.Load(envOf(env))
+		if err == nil || !strings.Contains(err.Error(), "MARQUEE_RESCAN_INTERVAL") {
+			t.Errorf("%q: error %v must name the setting", bad, err)
+		}
 	}
 }
