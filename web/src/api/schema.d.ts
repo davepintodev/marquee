@@ -427,6 +427,8 @@ export interface components {
             monitored?: boolean;
             /** @description Present when inLibrary. */
             badge?: components["schemas"]["Badge"];
+            /** @description Ids of the series' monitored episodes still waiting for a release, whatever the title's badge says. Omitted when there are none. */
+            searchingEpisodes?: string[];
         };
         /** @description One score for a title, in the scale its source uses. */
         Rating: {

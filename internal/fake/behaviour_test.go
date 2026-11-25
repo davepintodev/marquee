@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -477,5 +478,31 @@ func TestUpdateSeasonRefusesWhatIsNotThere(t *testing.T) {
 	}
 	for _, body := range []string{``, `{}`, `{"monitored":"yes"}`} {
 		refuse(t, srv, "PUT", "/api/titles/series-1408/seasons/4", body, 400)
+	}
+}
+
+func TestTheLibraryListsTheSearchingEpisodesOfEachSeries(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	searching := func() map[string]any {
+		out := map[string]any{}
+		for _, it := range exchange(t, srv, router, "GET", "/api/titles", "", 200)["titles"].([]any) {
+			m := it.(map[string]any)
+			out[m["id"].(string)] = m["searchingEpisodes"]
+		}
+		return out
+	}
+
+	got := searching()
+	if want := []any{"s01e01", "s01e02"}; !reflect.DeepEqual(got["series-226745"], want) {
+		t.Errorf("a series waiting on every episode: %v, want %v", got["series-226745"], want)
+	}
+	if got["series-1408"] != nil || got["movie-693134"] != nil {
+		t.Errorf("a title with nothing to search for omits the field: %v %v", got["series-1408"], got["movie-693134"])
+	}
+
+	exchange(t, srv, router, "PATCH", "/api/titles/series-226745/episodes/s01e01", `{"monitored":false}`, 200)
+	if want := []any{"s01e02"}; !reflect.DeepEqual(searching()["series-226745"], want) {
+		t.Errorf("an unmonitored episode is not searched for: %v, want %v", searching()["series-226745"], want)
 	}
 }

@@ -263,23 +263,19 @@ test("a page that failed to load says why with one way to try again", async () =
   await screen.findByRole("region", { name: "Downloading" });
 });
 
+const houseSeries = (over: Partial<TitleSummary> = {}) =>
+  lib({ id: "series-4", title: "House", kind: "series", tmdbId: 4, badge: { state: "partial_season", label: "Season 4 · 1 missing", season: 4, missingCount: 1 }, ...over });
+
 test("retrying a series episode puts that episode in the queue, though the title badge says nothing about it", async () => {
   const stalledEp: HistoryEntry = { ...failed, id: "h-ep", titleId: "series-4", titleName: "House", episode: "s04e02" };
-  const house = (state: "missing" | "searching") => ({
-    ...lib({ id: "series-4", title: "House", kind: "series", tmdbId: 4, badge: { state: "partial_season", label: "Season 4 · 1 missing", season: 4, missingCount: 1 } }),
-    seasons: [{ number: 4, episodes: [{ id: "s04e02", number: 2, name: "Big Baby", airDate: "2007-10-02", monitored: true, state }] }],
-    historySummary: "",
-  });
-  let state: "missing" | "searching" = "missing";
-  const world: World = { downloads: [], history: [stalledEp], titles: [house("missing")] };
+  const world: World = { downloads: [], history: [stalledEp], titles: [houseSeries()] };
   setupApp(
     serve(world, (url, init) => {
       if (init.method === "POST" && url.pathname === "/api/history/h-ep/retry") {
-        state = "searching";
         world.history = [{ ...stalledEp, retryable: false }];
-        return json(house("searching"));
+        world.titles = [houseSeries({ searchingEpisodes: ["s04e02"] })];
+        return json(houseSeries({ searchingEpisodes: ["s04e02"] }));
       }
-      if (url.pathname === "/api/titles/series-4") return json(house(state));
     }),
     "#/activity",
   );
@@ -290,6 +286,28 @@ test("retrying a series episode puts that episode in the queue, though the title
   const queue = await screen.findByRole("region", { name: "Waiting" });
   const link = within(queue).getByRole("link", { name: /^House/ });
   expect(link.getAttribute("title")).toContain("S04E02");
+});
+
+test("a series waiting on episodes shows under Waiting on a fresh load, whatever its badge says", async () => {
+  const world: World = { downloads: [], history: [], titles: [houseSeries({ searchingEpisodes: ["s04e02", "s04e03"] }), lib({ id: "series-5", title: "Fargo", kind: "series" })] };
+  setupApp(serve(world), "#/activity");
+
+  const queue = await screen.findByRole("region", { name: "Waiting" });
+  const items = within(queue).getAllByRole("link");
+  expect(items).toHaveLength(1);
+  expect(items[0].getAttribute("title")).toContain("S04E02, S04E03");
+  expect(items[0].closest("[data-state]")?.getAttribute("data-state")).toBe("searching");
+  expect(screen.getByText("1 waiting")).toBeTruthy();
+});
+
+test("a series whose badge is searching names its episodes when the list has them, and says so generally when it has none", async () => {
+  const searching = { state: "searching", label: "Searching" } as const;
+  const world: World = { downloads: [], history: [], titles: [houseSeries({ badge: searching, searchingEpisodes: ["s04e01"] }), lib({ id: "series-5", title: "Fargo", kind: "series", badge: searching })] };
+  setupApp(serve(world), "#/activity");
+
+  const queue = await screen.findByRole("region", { name: "Waiting" });
+  expect(within(queue).getByRole("link", { name: /^House/ }).getAttribute("title")).toContain("S04E01");
+  expect(within(queue).getByRole("link", { name: /^Fargo/ }).getAttribute("title")).toContain("Waiting for a release to appear.");
 });
 
 test("Close and Esc both return from Activity to the grid", async () => {
@@ -469,4 +487,44 @@ test("a live refetch that does not reach the older pages starts over instead of 
   fireEvent.click(screen.getByRole("button", { name: /older/i }));
   expect(await screen.findByText(/Searched c\./)).toBeTruthy();
   expect(asked.at(-1)).toBe("?limit=100&cursor=h-b");
+});
+
+function counted() {
+  const asked = { downloads: 0 };
+  const world: World = { downloads: [], history: [], titles: [] };
+  const handler = serve(world, (url) => {
+    if (url.pathname === "/api/downloads") asked.downloads++;
+    return undefined;
+  });
+  return { asked, handler };
+}
+
+const later = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test("a burst of title events makes one refetch", async () => {
+  const { asked, handler } = counted();
+  setupApp(handler, "#/activity");
+  await screen.findByText(/Nothing is happening yet/);
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  const before = asked.downloads;
+
+  for (let i = 0; i < 5; i++) FakeEventSource.open()[0].emit("title", { titleId: `movie-${i}`, badge: { state: "searching", label: "Searching" } });
+  await waitFor(() => expect(asked.downloads).toBe(before + 1));
+  await later(500);
+
+  expect(asked.downloads).toBe(before + 1);
+});
+
+test("leaving Activity cancels a refetch still waiting for its burst to end", async () => {
+  const { asked, handler } = counted();
+  setupApp(handler, "#/activity");
+  await screen.findByText(/Nothing is happening yet/);
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  const before = asked.downloads;
+
+  FakeEventSource.open()[0].emit("title", { titleId: "movie-2", badge: { state: "searching", label: "Searching" } });
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  await later(500);
+
+  expect(asked.downloads).toBe(before);
 });
