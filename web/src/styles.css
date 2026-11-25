@@ -1151,7 +1151,8 @@ a.btn-secondary {
 }
 
 [data-screen="front"] .top,
-[data-screen="front"] .chips {
+[data-screen="front"] .chips,
+[data-screen="front"] .kinds {
   opacity: 0;
   transition-delay: 0s;
 }

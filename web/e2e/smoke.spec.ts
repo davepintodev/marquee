@@ -230,7 +230,7 @@ test("every control on the front and in the app is reachable by keyboard", async
     await page.keyboard.press("Tab");
     inApp.add(await page.evaluate(() => document.activeElement?.textContent?.trim().split(/\d/)[0] || document.activeElement?.getAttribute("aria-label") || ""));
   }
-  for (const want of ["Activity", "Health", "Library", "Movies", "Series", "Downloading", "Missing", "Trending"]) expect([...inApp].some((n) => n.startsWith(want)), want).toBe(true);
+  for (const want of ["Activity", "Health", "Library", "Trending", "Downloading", "Missing", "All", "Movies", "Series"]) expect([...inApp].some((n) => n.startsWith(want)), want).toBe(true);
 });
 
 for (const s of screens.slice(0, 2)) {
@@ -246,7 +246,7 @@ for (const s of screens.slice(0, 2)) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 
     const chips = page.getByRole("group", { name: "Filter the library" }).getByRole("button");
-    await expect(chips).toHaveText([/^Library\d+$/, /^Movies\d+$/, /^Series\d+$/, /^Downloading\d+$/, /^Missing\d+$/, /^Trending\d+$/]);
+    await expect(chips).toHaveText([/^Library\d+$/, /^Trending\d+$/, /^Downloading\d+$/, /^Missing\d+$/]);
     await expect(chips.first()).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".meter").first()).toBeVisible();
     await expect(page.locator(".nav-link", { hasText: "Activity" })).toBeVisible();
@@ -255,13 +255,21 @@ for (const s of screens.slice(0, 2)) {
     await page.waitForTimeout(900);
     await page.screenshot({ path: join(shots, `grid-${s.name}.png`) });
 
-    await chips.nth(1).click();
-    await expect(chips.nth(1)).toHaveAttribute("aria-pressed", "true");
+    const kinds = page.getByRole("group", { name: "Movies and series" }).getByRole("button");
+    await expect(kinds).toHaveText([/^All\d+$/, /^Movies\d+$/, /^Series\d+$/]);
+    await expect(kinds.first()).toHaveAttribute("aria-pressed", "true");
+    await kinds.nth(1).click();
+    await expect(kinds.nth(1)).toHaveAttribute("aria-pressed", "true");
     for (const label of await page.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""))) expect(label).toMatch(/\(\d{4}\)/);
 
-    const trending = chips.last();
-    const box = await trending.boundingBox();
-    expect(box!.x + box!.width, "the Trending chip stays on screen").toBeLessThanOrEqual(s.width);
+    for (const edge of [chips.last(), kinds.last()]) {
+      const box = await edge.boundingBox();
+      expect(box!.x + box!.width, "the last control stays on screen").toBeLessThanOrEqual(s.width);
+    }
+    const strip = await page.getByRole("group", { name: "Filter the library" }).evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(strip, "the four chips fit without scrolling").toBeLessThanOrEqual(0);
+    await chips.nth(2).click();
+    await expect(page.getByRole("group", { name: "Movies and series" })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   });
 }
@@ -269,7 +277,7 @@ for (const s of screens.slice(0, 2)) {
 const inLibrary = /Downloaded|missing|Searching|Downloading|Stalled|Caching/i;
 
 for (const s of screens.slice(0, 2)) {
-  test(`Library and Trending are separate sections that share the Movies and Series choice on ${s.name}`, async ({ page }) => {
+  test(`Library and Trending are separate sections that each keep their own Movies and Series choice on ${s.name}`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
     await openApp(page);
     const strip = page.getByRole("group", { name: "Filter the library" });
@@ -278,13 +286,14 @@ for (const s of screens.slice(0, 2)) {
     for (const label of await library.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""))) expect(label).toMatch(inLibrary);
     await expect(trending).toHaveCount(0);
 
-    await strip.getByRole("button", { name: /^Series/ }).click();
-    await page.getByRole("button", { name: /^Trending/ }).click();
+    const kinds = page.getByRole("group", { name: "Movies and series" });
+    await kinds.getByRole("button", { name: /^Series/ }).click();
+    await strip.getByRole("button", { name: /^Trending/ }).click();
 
     await expect(library).toHaveCount(0);
-    await expect(strip.getByRole("button", { name: /^Series/ })).toHaveAttribute("aria-pressed", "true");
     await expect(strip.getByRole("button", { name: /^Trending/ })).toHaveAttribute("aria-pressed", "true");
-    await expect(strip.getByRole("button", { name: /^Downloading/ })).toBeDisabled();
+    await expect(kinds.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
+    await kinds.getByRole("button", { name: /^Movies/ }).click();
     const names = await trending.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
     expect(names.length).toBeGreaterThan(0);
     for (const label of names) expect(label).not.toMatch(inLibrary);
@@ -296,6 +305,7 @@ for (const s of screens.slice(0, 2)) {
     await strip.getByRole("button", { name: /^Library/ }).click();
     await expect(library).toBeVisible();
     await expect(trending).toHaveCount(0);
+    await expect(kinds.getByRole("button", { name: /^Series/ })).toHaveAttribute("aria-pressed", "true");
   });
 }
 

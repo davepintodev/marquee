@@ -161,46 +161,6 @@
   color: var(--fg);
 }
 
-.chip:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.chip:disabled:hover {
-  color: var(--mute);
-}
-
-/* The section after the kind chips: ruled off, and pinned to the strip's right edge so a narrow screen never scrolls it away. */
-.chip-section {
-  --pad: var(--space-5);
-  position: sticky;
-  z-index: 1;
-  right: 0;
-  margin-right: calc(var(--edge) * -1);
-  padding: 0 var(--edge) 0 var(--pad);
-  background: var(--bg);
-  box-shadow:
-    inset 1px 0 0 var(--line-subtle),
-    inset 0 -1px 0 var(--line-subtle);
-}
-
-.chip-section::after {
-  content: "";
-  position: absolute;
-  left: var(--pad);
-  right: var(--edge);
-  bottom: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--fg);
-  opacity: 0;
-  transition: opacity var(--dur-med) var(--ease-out);
-}
-
-.chip-section[aria-pressed="true"]::after {
-  opacity: 1;
-}
-
 .chip:active {
   transform: scale(0.97);
 }
@@ -227,6 +187,54 @@
     width var(--dur-med) var(--ease-out);
 }
 
+/* A narrowing of Library or Trending, not a section: a quiet segmented control under the strip. */
+.kinds {
+  display: inline-flex;
+  justify-self: start;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--line-subtle);
+  transition: opacity 0.4s var(--ease-out) 0.5s;
+}
+
+.kinds button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mute);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.kinds button span {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.kinds button:hover {
+  color: var(--fg);
+}
+
+.kinds button[aria-pressed="true"] {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.kinds button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 @media (max-width: 640px) {
   .search input {
     height: 44px;
@@ -236,7 +244,4 @@
     gap: 0 var(--space-4);
   }
 
-  .chip-section {
-    --pad: var(--space-4);
-  }
 }
