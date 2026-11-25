@@ -357,8 +357,6 @@ func TestClientTimeoutIsUnavailable(t *testing.T) {
 	}
 }
 
-// secretKey and secretToken stand in for a real key and a real link token;
-// the sentinel errors and the logs must never repeat either.
 const (
 	secretKey   = "key-that-must-not-leak"
 	secretToken = "link-token-that-must-not-leak"
@@ -366,10 +364,12 @@ const (
 
 func TestNoErrorOrLogLineRepeatsTheKeyOrALinkToken(t *testing.T) {
 	echo := func(status int, body string) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(status)
 			_, _ = fmt.Fprintf(w, "%s %s %s", body, r.Header.Get("Authorization"), r.URL)
 		}))
+		t.Cleanup(srv.Close)
+		return srv
 	}
 	closed := echo(200, "")
 	closedURL := closed.URL
