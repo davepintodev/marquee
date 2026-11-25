@@ -187,7 +187,6 @@
     width var(--dur-med) var(--ease-out);
 }
 
-/* A narrowing of Library or Trending, not a section: a quiet segmented control under the strip. */
 .kinds {
   display: inline-flex;
   justify-self: start;
