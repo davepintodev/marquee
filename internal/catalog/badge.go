@@ -7,8 +7,9 @@ import (
 
 // Badge is a title's or season's state for a tile. Without a download in
 // flight, a monitored title with no file on disk is "wanted" while it waits
-// for its next scheduled search, "searching" while one runs or a Search now
-// request can start, and "not_found" once a search found nothing usable; one
+// for its next scheduled search or a Search now request waits its turn,
+// "searching" only while its search runs, and "not_found" once a search
+// found nothing usable; one
 // nobody monitors is "missing". A download in flight shows as
 // "downloading" with its percent, "caching" with TorBox's percent while it
 // fetches an uncached release, or "stalled" when its bytes stand still.

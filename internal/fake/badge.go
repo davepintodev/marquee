@@ -1,6 +1,9 @@
 package fake
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type badge struct {
 	State        string `json:"state"`
@@ -29,7 +32,10 @@ func (f *Fake) epState(t *entry, s *season, e *episode) (state string, percent i
 		}
 		return "downloading", d.Percent
 	}
-	if running(e.searchUntil) {
+	if queued(e) {
+		return "wanted", 0
+	}
+	if running(e.searchAt, e.searchUntil) {
 		return "searching", 0
 	}
 	return e.State, 0
@@ -39,7 +45,7 @@ func movieState(t *entry) string {
 	switch {
 	case t.State == "downloaded":
 		return "downloaded"
-	case running(t.searchUntil):
+	case running(time.Time{}, t.searchUntil):
 		return "searching"
 	case !t.monitored:
 		return "missing"

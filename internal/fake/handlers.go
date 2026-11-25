@@ -200,7 +200,36 @@ func inWords(d time.Duration) string {
 
 func searchable(state string) bool { return waiting(state) }
 
+func firstQueued(t *entry) *time.Time {
+	var soonest *time.Time
+	for _, s := range t.Seasons {
+		for _, e := range s.Episodes {
+			if queued(e) && (soonest == nil || e.searchAt.Before(*soonest)) {
+				soonest = &e.searchAt
+			}
+		}
+	}
+	return soonest
+}
+
+// queueEnd is when the last running or queued search of t's episodes ends,
+// so a second Search now queues after it.
+func queueEnd(t *entry) time.Time {
+	end := time.Now()
+	for _, s := range t.Seasons {
+		for _, e := range s.Episodes {
+			if e.searchUntil.After(end) {
+				end = e.searchUntil
+			}
+		}
+	}
+	return end
+}
+
 func (f *Fake) nextSearch(t *entry) *time.Time {
+	if soonest := firstQueued(t); soonest != nil {
+		return soonest
+	}
 	if !t.InLibrary || !t.monitored {
 		return nil
 	}
@@ -238,7 +267,10 @@ func (f *Fake) title(t *entry) titleOut {
 			if sharers := sharedFile(s, e); len(sharers) > 1 {
 				eo.SharedEpisodes = sharers
 			}
-			if t.InLibrary && e.monitored && t.monitored && searchable(st) {
+			switch {
+			case queued(e):
+				eo.NextSearchAt = &e.searchAt
+			case t.InLibrary && e.monitored && t.monitored && searchable(st):
 				eo.NextSearchAt = &t.nextSearch
 			}
 			so.Episodes = append(so.Episodes, eo)
@@ -472,7 +504,7 @@ func (f *Fake) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, s := range t.Seasons {
 		for _, e := range s.Episodes {
-			e.monitored, e.searchUntil = true, time.Time{}
+			e.monitored, e.searchAt, e.searchUntil = true, time.Time{}, time.Time{}
 			if e.State != "unaired" {
 				e.State = "missing"
 			}
@@ -539,7 +571,7 @@ func (f *Fake) wrongFile(w http.ResponseWriter, r *http.Request) {
 		if which != "" {
 			asked = f.findEpisode(t, which)
 		}
-		f.startSearch(t, asked)
+		f.startSearch(t, asked, time.Now())
 	}
 	f.addHistory("wrong_file", t, which, msg, "", false)
 	write(w, http.StatusOK, f.title(t))
@@ -612,14 +644,14 @@ func (f *Fake) searchNow(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if e.State != "downloaded" && e.State != "unaired" {
-			f.startSearch(t, e)
+			f.startSearch(t, e, time.Now())
 		}
 	} else if t.Kind == "movie" {
 		if t.State != "downloaded" {
-			f.startSearch(t, nil)
+			f.startSearch(t, nil, time.Now())
 		}
 	} else {
-		anyMonitored := false
+		anyMonitored, at := false, queueEnd(t)
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
 				anyMonitored = anyMonitored || (s.Number > 0 && e.monitored)
@@ -627,8 +659,9 @@ func (f *Fake) searchNow(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
-				if s.Number > 0 && e.State != "downloaded" && e.State != "unaired" && (e.monitored || !anyMonitored) {
-					f.startSearch(t, e)
+				if s.Number > 0 && e.State != "downloaded" && e.State != "unaired" && (e.monitored || !anyMonitored) && !queued(e) && !running(e.searchAt, e.searchUntil) {
+					f.startSearch(t, e, at)
+					at = e.searchUntil
 				}
 			}
 		}
@@ -840,10 +873,10 @@ func (f *Fake) retry(w http.ResponseWriter, r *http.Request) {
 	h.Retryable = false
 	if h.Episode != "" {
 		if e := f.findEpisode(t, h.Episode); e != nil && e.State != "downloaded" {
-			f.startSearch(t, e)
+			f.startSearch(t, e, time.Now())
 		}
 	} else if t.State != "downloaded" {
-		f.startSearch(t, nil)
+		f.startSearch(t, nil, time.Now())
 	}
 	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return d.TitleID == t.id() && d.Episode == h.Episode && d.Stalled })
 	f.addHistory("searched", t, h.Episode, "Retrying after a failure.", "", false)

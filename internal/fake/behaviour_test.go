@@ -821,9 +821,47 @@ func TestSearchNowOnASeriesWithNothingMonitoredSearchesEveryAiredEpisode(t *test
 
 	exchange(t, srv, router, "PATCH", "/api/titles/series-226745", `{"monitored":false}`, 200)
 	camp := exchange(t, srv, router, "POST", "/api/titles/series-226745/search", "", 200)
-	for _, e := range episodes(camp) {
-		if e["state"] != "searching" {
-			t.Errorf("as the real service does, an aired episode is searched when none is monitored: %v", e)
+	if got := states(camp); !reflect.DeepEqual(got, []any{"searching", "wanted"}) {
+		t.Errorf("as the real service does, every aired episode is queued when none is monitored, one searched at a time: %v", got)
+	}
+}
+
+func states(title map[string]any) []any {
+	var out []any
+	for _, e := range episodes(title) {
+		out = append(out, e["state"])
+	}
+	return out
+}
+
+func TestSearchNowOnASeriesSearchesOneEpisodeAtATimeAndTheRestReadWanted(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, SearchFor: 150 * time.Millisecond})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+	state := func(v map[string]any) any { return v["badge"].(map[string]any)["state"] }
+
+	camp := exchange(t, srv, router, "POST", "/api/titles/series-226745/search", "", 200)
+	if got := states(camp); !reflect.DeepEqual(got, []any{"searching", "wanted"}) || state(camp) != "searching" {
+		t.Errorf("Search now on a series: episodes %v, title %v", got, camp["badge"])
+	}
+	queued := episodes(camp)[1]
+	next, _ := queued["nextSearchAt"].(string)
+	if at, err := time.Parse(time.RFC3339Nano, next); err != nil || time.Until(at) > time.Minute {
+		t.Errorf("a queued episode is due shortly: %v", queued["nextSearchAt"])
+	}
+
+	seen := map[string]bool{}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		got := states(exchange(t, srv, router, "GET", "/api/titles/series-226745", "", 200))
+		seen[fmt.Sprint(got)] = true
+		if reflect.DeepEqual(got, []any{"not_found", "not_found"}) {
+			break
 		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !seen["[not_found searching]"] || !seen["[not_found not_found]"] || seen["[searching searching]"] {
+		t.Errorf("the second episode searches after the first, never both at once: %v", seen)
 	}
 }

@@ -495,7 +495,7 @@ export interface components {
         /** @enum {string} */
         Kind: "movie" | "series";
         /**
-         * @description The closed set of states a tile can show. `wanted` is monitored with no file, waiting for its next scheduled search; `searching` only while a search is running or was asked for with Search now; `not_found` is wanted after a search that found nothing usable; `missing` is not monitored and has no file.
+         * @description The closed set of states a tile can show. `wanted` is monitored with no file, waiting for its next scheduled search or for its turn after Search now (then due now); `searching` only while its search is in flight, and a series only while one of its episodes' is; `not_found` is wanted after a search that found nothing usable; `missing` is not monitored and has no file.
          * @enum {string}
          */
         BadgeState: "downloaded" | "wanted" | "searching" | "not_found" | "caching" | "downloading" | "stalled" | "missing" | "partial_season";
@@ -1149,7 +1149,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The title, its movie or wanted episodes now searching. */
+            /** @description The title, its movie or wanted episodes queued to be searched now, one at a time; each reads `wanted`, due now, until its search starts. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1305,7 +1305,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The title, with the episode now searching. */
+            /** @description The title, with the episode queued to be searched now; it reads `wanted`, due now, until its search starts. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1464,7 +1464,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The title, now searching again. */
+            /** @description The title, queued to be searched again. */
             200: {
                 headers: {
                     [name: string]: unknown;

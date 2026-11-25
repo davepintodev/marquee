@@ -58,13 +58,13 @@ func (s *Store) isHeld(k target) bool {
 
 type pending struct {
 	searchNow bool
-	searching bool
 	nothing   bool
 	nextAt    time.Time
 }
 
-// A Search now request reads as searching only while nothing keeps it from
-// starting, or a source outage would leave it pulsing for hours.
+// A Search now request waits its turn as wanted and due now; only the search
+// in flight reads as searching, or a series of hundreds of queued episodes
+// would pulse for the half hour the rate limit spreads them over.
 func (s *Store) schedules(ctx context.Context, q queryer, where string, args []any, now time.Time) (map[target]pending, error) {
 	backoffEnds, err := sourceBackoffEnds(ctx, q)
 	if err != nil {
@@ -93,7 +93,7 @@ func (s *Store) schedules(ctx context.Context, q queryer, where string, args []a
 		case now.Before(backoffEnds):
 			p.nextAt = backoffEnds
 		case !s.isHeld(k):
-			p.searching = true
+			p.nextAt, p.nothing = now, false
 		}
 		out[k] = p
 	}
@@ -116,7 +116,7 @@ func sourceBackoffEnds(ctx context.Context, q queryer) (time.Time, error) {
 }
 
 func waitState(p pending, running bool, now time.Time) (string, time.Time) {
-	if running || p.searching {
+	if running {
 		return "searching", time.Time{}
 	}
 	next := p.nextAt

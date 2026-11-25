@@ -301,8 +301,8 @@ func TestWrongFileResetsEveryTargetOfTheSharedFileAndBlocklistsTheRelease(t *tes
 	}
 	title, _ := s.Get(ctx, "series-2")
 	for _, e := range title.Seasons[1].Episodes {
-		if e.State != "searching" && e.State != "missing" {
-			t.Errorf("S02E%02d is %q, want missing or searching", e.Number, e.State)
+		if e.State != "wanted" && e.State != "missing" {
+			t.Errorf("S02E%02d is %q, want missing or wanted", e.Number, e.State)
 		}
 		if !e.Monitored {
 			t.Errorf("S02E%02d must be monitored again", e.Number)

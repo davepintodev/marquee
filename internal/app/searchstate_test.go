@@ -60,7 +60,7 @@ func TestATitleSaysSearchingOnlyWhileItsSearchRuns(t *testing.T) {
 	wantBadge(t, "when it ends with nothing", r.mustCall("GET", "/api/titles/movie-438631", "", 200), "not_found", "Not found")
 }
 
-func TestSearchNowSaysSearchingAtOnceAndTheStateFollows(t *testing.T) {
+func TestSearchNowIsWantedUntilItsSearchStartsAndTheStateFollows(t *testing.T) {
 	r := newSchedRig(t, false)
 	r.addMovie()
 	r.step()
@@ -68,8 +68,13 @@ func TestSearchNowSaysSearchingAtOnceAndTheStateFollows(t *testing.T) {
 	r.advance(time.Minute)
 
 	v := r.mustCall("POST", "/api/titles/movie-438631/search", "", 200)
-	wantBadge(t, "Search now answers", v, "searching", "Searching")
+	wantBadge(t, "Search now answers before the search starts", v, "wanted", "Wanted")
+	wantNext(t, "the asked-for search is due now", v, r.clock())
+	var during map[string]any
+	r.aio.Before(func(aiostreamsfake.Search) { during = r.mustCall("GET", "/api/titles/movie-438631", "", 200) })
 	r.step()
+	r.aio.Before(nil)
+	wantBadge(t, "while the asked-for search runs", during, "searching", "Searching")
 	v = r.mustCall("GET", "/api/titles/movie-438631", "", 200)
 	wantBadge(t, "after the asked-for search", v, "not_found", "Not found")
 	wantNext(t, "Search now leaves the schedule", v, first.Add(15*time.Minute))
@@ -112,10 +117,12 @@ func TestEpisodesSayWantedSearchingOrNotFoundAndTheTitleTheSoonestNextSearch(t *
 	}
 
 	v = r.mustCall("POST", "/api/titles/series-1408/episodes/s01e02/search", "", 200)
-	if e := episodes(t, v)["s01e02"]; e["state"] != "searching" || e["nextSearchAt"] != nil {
-		t.Errorf("Search now on an episode: %v", e)
+	if e := episodes(t, v)["s01e02"]; e["state"] != "wanted" {
+		t.Errorf("Search now on an episode waits its turn as wanted: %v", e)
+	} else {
+		wantNext(t, "the asked-for episode is due now", e, r.clock())
 	}
-	wantBadge(t, "an episode searching", v, "searching", "Searching")
+	wantBadge(t, "an episode asked for", v, "wanted", "Wanted")
 	if e := episodes(t, v)["s01e01"]; e["state"] != "not_found" {
 		t.Errorf("the other episode is left alone: %v", e)
 	}
@@ -185,4 +192,50 @@ func TestAnUnmonitoredSeriesWhoseSearchNowWaitsOnTheSourceSaysWanted(t *testing.
 	v := r.mustCall("GET", "/api/titles/series-1408", "", 200)
 	wantBadge(t, "the asked-for episodes wait for the source", v, "wanted", "Wanted")
 	wantNext(t, "they run when the backoff ends", v, r.clock().Add(time.Minute))
+}
+
+func TestSearchNowOnASeriesSaysSearchingOnlyForTheEpisodeInFlight(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	r.step()
+	r.advance(time.Minute)
+
+	v := r.mustCall("POST", "/api/titles/series-1408/search", "", 200)
+	wantBadge(t, "Search now answers before any episode starts", v, "wanted", "Wanted")
+	for _, id := range []string{"s01e01", "s01e02"} {
+		if e := episodes(t, v)[id]; e["state"] != "wanted" {
+			t.Errorf("%s is queued, not searching: %v", id, e)
+		} else {
+			wantNext(t, id+" is due now", e, r.clock())
+		}
+	}
+
+	var during []map[string]any
+	r.aio.Before(func(aiostreamsfake.Search) {
+		during = append(during, r.mustCall("GET", "/api/titles/series-1408", "", 200))
+	})
+	r.step()
+	r.advance(10 * time.Second)
+	r.step()
+	r.aio.Before(nil)
+	if len(during) != 2 {
+		t.Fatalf("both queued episodes are searched, one at a time: %d searches", len(during))
+	}
+	for i, v := range during {
+		wantBadge(t, "while an episode searches", v, "searching", "Searching")
+		searching := 0
+		for _, e := range episodes(t, v) {
+			if e["state"] == "searching" {
+				searching++
+			}
+		}
+		if searching != 1 {
+			t.Errorf("search %d: %d episodes read searching, want only the one in flight", i+1, searching)
+		}
+	}
+	if e := episodes(t, during[0]); e["s01e01"]["state"] == "wanted" == (e["s01e02"]["state"] == "wanted") {
+		t.Errorf("the first search: one episode searching, the other wanted: %v %v", e["s01e01"], e["s01e02"])
+	}
+	wantBadge(t, "after both", r.mustCall("GET", "/api/titles/series-1408", "", 200), "not_found", "Not found")
 }

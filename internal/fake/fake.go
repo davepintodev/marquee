@@ -32,7 +32,8 @@ type Options struct {
 	// grabbed, and such a grab shows as caching before it downloads.
 	TorBox bool
 	// SearchFor is how long a search started by Search now or a retry shows
-	// as searching before it ends having found nothing.
+	// as searching before it ends having found nothing. Search now on a
+	// series searches its episodes one after another, each for SearchFor.
 	SearchFor time.Duration
 }
 
@@ -45,6 +46,7 @@ type episode struct {
 	// season that name the same file share it.
 	File        string `json:"file"`
 	monitored   bool
+	searchAt    time.Time
 	searchUntil time.Time
 }
 
@@ -370,7 +372,9 @@ func (f *Fake) endSearches() {
 		ended := endSearch(&t.searchUntil, now)
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
-				ended = endSearch(&e.searchUntil, now) || ended
+				if endSearch(&e.searchUntil, now) {
+					e.searchAt, ended = time.Time{}, true
+				}
 			}
 		}
 		if ended {
@@ -387,10 +391,17 @@ func endSearch(until *time.Time, now time.Time) bool {
 	return true
 }
 
-func running(until time.Time) bool { return !until.IsZero() && time.Now().Before(until) }
+func running(at, until time.Time) bool {
+	now := time.Now()
+	return !until.IsZero() && !now.Before(at) && now.Before(until)
+}
 
-func (f *Fake) startSearch(t *entry, e *episode) {
-	until := time.Now().Add(f.opts.SearchFor)
+func queued(e *episode) bool { return time.Now().Before(e.searchAt) }
+
+// startSearch searches a movie now, or an episode from at, as the scheduler
+// takes one search at a time.
+func (f *Fake) startSearch(t *entry, e *episode, at time.Time) {
+	until := at.Add(f.opts.SearchFor)
 	t.nextSearch = time.Now().Add(defaultNextSearch)
 	if e == nil {
 		t.searchUntil = until
@@ -399,7 +410,7 @@ func (f *Fake) startSearch(t *entry, e *episode) {
 		}
 		return
 	}
-	e.searchUntil = until
+	e.searchAt, e.searchUntil = at, until
 	if e.monitored && waiting(e.State) {
 		e.State = "not_found"
 	}
