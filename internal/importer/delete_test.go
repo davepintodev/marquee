@@ -327,3 +327,22 @@ func TestPruneEmptyDirsStopsAtALinkedFolderInsteadOfRemovingItsTarget(t *testing
 		t.Errorf("the link was left dangling: %v", err)
 	}
 }
+
+func TestPruneEmptyDirsStopsBelowALinkedAncestorInsteadOfRemovingThroughIt(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "RealShow", "Season 01"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "RealShow"), filepath.Join(root, "Show")); err != nil {
+		t.Fatal(err)
+	}
+	if err := importer.PruneEmptyDirs(root, "Show/Season 01/a.mkv"); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Join(root, "RealShow", "Season 01")); err != nil || !fi.IsDir() {
+		t.Errorf("a folder behind a linked ancestor was removed: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "Show")); err != nil {
+		t.Errorf("the link was left dangling: %v", err)
+	}
+}
