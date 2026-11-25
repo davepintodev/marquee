@@ -11,7 +11,7 @@ import { IconBookmark, IconButton, IconChevron, IconSearch } from "./icons";
 import { Say, Sk, TitleSkeleton } from "./Skeleton";
 import { ErrorState } from "./State";
 import { MonitorMark } from "./MonitorMark";
-import { ProgressLine } from "./Progress";
+import { ProgressLine, Wait } from "./Progress";
 import { ProfilePicker, defaultProfile } from "./ProfilePicker";
 import { ReleaseList } from "./ReleaseList";
 import { BackBar, Collapse, RemoveBlock } from "./TitleParts";
@@ -19,7 +19,7 @@ import { useEscape } from "./useEscape";
 import { useProfiles } from "./useProfiles";
 import { useTitleScreen } from "./useTitleScreen";
 import { WrongFile } from "./WrongFile";
-import { stateLabel, titleRescanSummary, waitLine } from "./words";
+import { stateLabel, titleRescanSummary, waitLine, waitOf } from "./words";
 import "./icons.css";
 import "./title-screen.css";
 import "./title-details.css";
@@ -164,6 +164,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
   const monitored = t.monitored !== false;
   const movieHasFile = !isSeries && t.badge?.state === "downloaded";
   const searchNow = () => run("search", () => api.searchNow(t.id), `Searching for “${t.title}” now.`);
+  const searching = waitOf(t) === "searching";
 
   const wrongFile = async (episode: Episode | undefined, reSearch: boolean) => {
     const what = episode ? `${codeOf(chosen?.number ?? 0, episode.number)} ${episode.name}` : `“${t.title}”`;
@@ -196,6 +197,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
             <p className="ts-facts">
               {factsOf(t)}
               {inLib && !monitored && <span className="tag">Not monitored</span>}
+              {inLib && <Wait title={t} />}
             </p>
             <Ratings about={about} />
             {t.overview && <p className="ts-overview">{t.overview}</p>}
@@ -203,9 +205,15 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
             <div className="ts-actions">
               {inLib ? (
                 <>
-                  <button type="button" className="btn-primary with-icon" aria-disabled={busy === "search"} onClick={searchNow}>
+                  <button
+                    type="button"
+                    className="btn-primary with-icon"
+                    aria-disabled={busy === "search" || searching}
+                    aria-busy={busy === "search"}
+                    onClick={() => busy !== "search" && !searching && searchNow()}
+                  >
                     {busy === "search" ? <Sk shape="dot" /> : <IconSearch />}
-                    Search automatically
+                    Search now
                   </button>
                   <IconButton
                     label={monitored ? "Monitored. Stop monitoring this title" : "Not monitored. Start monitoring this title"}
@@ -350,7 +358,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
 
         {inLib && (
           <section className="ts-sec">
-            <Collapse label="History" aside={<ProgressLine title={t} busy={busy === "search"} onSearch={monitored ? searchNow : undefined} />}>
+            <Collapse label="History" aside={<ProgressLine title={t} />}>
               <HistoryList entries={t.history ?? []} retrying={busy} onRetry={retry} empty="Nothing has happened yet." />
             </Collapse>
           </section>

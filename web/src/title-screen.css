@@ -1301,10 +1301,6 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 28px;
-  color: var(--mute);
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
 }
 
 .ts-wait > i {
@@ -1317,32 +1313,6 @@
 
 .ts-wait[data-state="searching"] > i {
   animation: pulse 1.6s ease-in-out infinite;
-}
-
-.ts-wait-now {
-  margin-left: var(--space-1);
-  padding: 2px var(--space-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--fg);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.ts-wait-now:hover {
-  background: var(--line);
-}
-
-.ts-wait-now[aria-disabled="true"] {
-  color: var(--mute);
-  cursor: default;
-}
-
-.ts-wait-now:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

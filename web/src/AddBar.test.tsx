@@ -77,7 +77,7 @@ test("the main button of a series adds it with every episode monitored, and the 
 
   expect((await screen.findByRole("status")).textContent).toMatch(/added.*severance.*all episodes/i);
   expect(writes).toEqual([{ method: "POST", path: "/api/titles", body: { kind: "series", tmdbId: 2, monitor: "all" } }]);
-  expect(await page().findByRole("button", { name: "Search automatically" })).toBeTruthy();
+  expect(await page().findByRole("button", { name: "Search now" })).toBeTruthy();
   expect(page().queryByRole("button", { name: "Choose what to monitor" })).toBeNull();
 });
 
@@ -92,7 +92,7 @@ test.each(options)("choosing %s adds the series with monitor %s and the toast sa
   expect(toast.textContent).toMatch(words);
   expect(writes).toEqual([{ method: "POST", path: "/api/titles", body: { kind: "series", tmdbId: 2, monitor } }]);
   expect(screen.queryByRole("menu")).toBeNull();
-  expect(await page().findByRole("button", { name: "Search automatically" })).toBeTruthy();
+  expect(await page().findByRole("button", { name: "Search now" })).toBeTruthy();
 });
 
 test("Select seasons and episodes adds the series with nothing monitored and stays on its page, ready to tick episodes", async () => {
@@ -197,7 +197,7 @@ test("a failed add shows the message, closes the menu and can be tried again", a
   up = true;
   fireEvent.click(toggle());
   fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "First season" }));
-  await page().findByRole("button", { name: "Search automatically" });
+  await page().findByRole("button", { name: "Search now" });
   expect(page().queryByRole("alert")).toBeNull();
   expect(writes.map((w) => (w.body as { monitor: string }).monitor)).toEqual(["none", "first_season"]);
 });
@@ -219,7 +219,7 @@ test("while an add is in flight the menu cannot start a second one", async () =>
   expect(screen.queryByRole("menu")).toBeNull();
   release();
 
-  await page().findByRole("button", { name: "Search automatically" });
+  await page().findByRole("button", { name: "Search now" });
   expect(writes).toHaveLength(1);
 });
 
@@ -236,7 +236,7 @@ test.each([
   up = true;
   fireEvent.click(page().getByRole("button", { name: "Try again" }));
 
-  await page().findByRole("button", { name: "Search automatically" });
+  await page().findByRole("button", { name: "Search now" });
   expect(writes.map((w) => (w.body as { monitor: string }).monitor)).toEqual([monitor, monitor]);
 });
 

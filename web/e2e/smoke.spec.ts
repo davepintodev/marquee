@@ -385,7 +385,7 @@ async function noSideScroll(page: Page, width: number) {
 }
 
 for (const s of pageTitles) {
-  test(`a result opens the title page on ${s.name}, adds on Add & monitor and then reads Search automatically`, async ({ page }) => {
+  test(`a result opens the title page on ${s.name}, adds on Add & monitor and then reads Search now`, async ({ page }) => {
     await page.setViewportSize({ width: s.width, height: s.height });
     await openApp(page);
     const bar = page.getByRole("searchbox");
@@ -405,7 +405,7 @@ for (const s of pageTitles) {
     await title.getByRole("button", { name: "Add & monitor" }).click();
 
     await expect(page.getByRole("status")).toContainText(s.title);
-    await expect(title.getByRole("button", { name: "Search automatically", exact: true })).toBeVisible();
+    await expect(title.getByRole("button", { name: "Search now", exact: true })).toBeVisible();
     await page.waitForTimeout(500);
     await page.screenshot({ path: join(shots, `title-added-${s.name}.png`) });
 
@@ -426,14 +426,14 @@ async function tileOnScreen(page: Page, name: RegExp) {
   throw new Error(`no poster named ${name} is fully on screen`);
 }
 
-test("a wall poster opens the title page and a title already in the library reads Search automatically", async ({ page }) => {
+test("a wall poster opens the title page and a title already in the library reads Search now", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await page.goto("/");
 
   await (await tileOnScreen(page, inLibrary)).click();
 
   const title = page.getByRole("main");
-  await expect(title.getByRole("button", { name: "Search automatically", exact: true })).toBeVisible();
+  await expect(title.getByRole("button", { name: "Search now", exact: true })).toBeVisible();
   await expect(title.getByRole("button", { name: "Add & monitor" })).toHaveCount(0);
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(shots, "title-library-laptop.png") });
@@ -489,23 +489,32 @@ const waits = [
 ];
 
 for (const w of waits) {
-  test(`a title waiting for its search says so with the time, and Search now shows Searching then Nothing found on ${w.name}`, async ({ page }) => {
+  test(`a title waiting for its search says so beside its facts, and Search now shows Searching then Nothing found on ${w.name}`, async ({ page }) => {
     await page.setViewportSize({ width: w.width, height: w.height });
     await openApp(page);
     await expect(page.getByRole("list", { name: "Library titles" }).getByRole("button", { name: w.tile })).toBeVisible();
 
     await page.goto(`/#/title/${w.id}`);
     await expect(page.getByRole("heading", { name: w.name, level: 1 })).toBeVisible();
-    const line = page.locator(".ts-wait");
+    const line = page.locator(".ts-facts .ts-wait");
     await expect(line).toHaveAttribute("data-state", w.state);
     await expect(line).toContainText(w.line);
-    await line.scrollIntoViewIfNeeded();
+    await expect(page.locator(".ts-hist-head")).not.toContainText(/next|Search now/i);
     await page.screenshot({ path: join(shots, `title-${w.state}-${w.name}.png`) });
     await noSideScroll(page, w.width);
 
-    await line.getByRole("button", { name: "Search now" }).click();
+    const searchNow = page.getByRole("main").getByRole("button", { name: "Search now", exact: true });
+    await expect(searchNow).toHaveCount(1);
+    await searchNow.click();
+    await expect(page.getByRole("status")).toContainText(`Searching for “${w.name}” now.`);
     await expect(line).toHaveAttribute("data-state", "searching");
     await expect(line).toContainText("Searching now");
+    await expect(searchNow).toHaveAttribute("aria-disabled", "true");
+    if (w.id.startsWith("series-")) {
+      const eps = page.getByRole("list", { name: /episodes$/ });
+      await expect(eps.getByText("Searching", { exact: true })).toHaveCount(1);
+      await expect(eps.getByText("Wanted", { exact: true })).toHaveCount(1);
+    }
     await page.screenshot({ path: join(shots, `title-searching-${w.name}.png`) });
     await expect(line).toHaveAttribute("data-state", "not_found", { timeout: 15_000 });
     await expect(line).toContainText(/Nothing found · next try in 6h/);

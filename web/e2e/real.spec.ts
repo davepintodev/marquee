@@ -13,7 +13,7 @@ test("a title added from its page downloads, imports and reads Downloaded in the
   const title = page.getByRole("main");
   await title.getByRole("button", { name: "Add & monitor" }).click();
   await expect(page.getByRole("status")).toContainText("Dune");
-  await expect(title.getByRole("button", { name: "Search automatically" })).toBeVisible();
+  await expect(title.getByRole("button", { name: "Search now", exact: true })).toBeVisible();
 
   await title.getByRole("button", { name: "Back" }).click();
   await expect(page.getByRole("main")).toHaveCount(0);
