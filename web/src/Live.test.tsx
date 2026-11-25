@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { TitleSummary } from "./api/types";
 import { FakeEventSource, json, setupApp } from "./testkit";
@@ -114,4 +114,19 @@ test("a title removed from the wall and added again brings the wall back for it 
   act(() => live().emit("title", added));
   await waitFor(() => expect(walls).toBe(4));
   await tile(/^Heat \(2021\)/);
+});
+
+test("a title another client removed never turns up in Trending, which holds only what the wall called trending", async () => {
+  setupApp((url) => {
+    if (url.pathname !== "/api/wall") return json({ error: "nope" }, 404);
+    return json({ items: [{ source: "library", title: dune }, { source: "library", title: arrival }, { source: "trending", title: movie(3, "Heat", { inLibrary: false, monitored: undefined }) }] });
+  }, "#/grid");
+  const grid = within(document.querySelector<HTMLElement>(".grid-screen")!);
+  await grid.findByRole("list", { name: "Library titles" });
+
+  act(() => live().emit("title", { titleId: "movie-2", badge: null }));
+  await waitFor(() => expect(grid.queryByRole("button", { name: /^Arrival \(2021\), Downloaded$/ })).toBeNull());
+  fireEvent.click(grid.getByRole("button", { name: /^trending/i }));
+
+  expect(grid.getAllByRole("button", { name: /\(20\d\d\)/ }).map((b) => b.getAttribute("aria-label"))).toEqual(["Heat (2021)"]);
 });
