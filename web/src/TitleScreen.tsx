@@ -17,7 +17,8 @@ import { BackBar, Collapse, RemoveBlock } from "./TitleParts";
 import { useEscape } from "./useEscape";
 import { useProfiles } from "./useProfiles";
 import { useTitleScreen } from "./useTitleScreen";
-import { inHours, stateLabel } from "./words";
+import { WrongFile } from "./WrongFile";
+import { inHours, stateLabel, titleRescanSummary } from "./words";
 import "./icons.css";
 import "./title-screen.css";
 import "./title-details.css";
@@ -29,7 +30,7 @@ interface Props {
   seed?: TitleSummary;
   onClose: () => void;
   onChanged: (title: TitleSummary) => void;
-  onRemoved: (title: Title) => void;
+  onRemoved: (title: Title, deletedFiles: boolean) => void;
   onToast: (text: string) => void;
   onOpenTitle?: (title: TitleSummary) => void;
 }
@@ -50,6 +51,8 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
   const [closing, setClosing] = useState(false);
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  // A new key remounts the release lists, so none keeps offering a release that was just blocklisted; `pick` starts a movie's list at once.
+  const [lists, setLists] = useState({ key: 0, pick: false });
   const root = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const back = useRef<HTMLButtonElement>(null);
@@ -158,6 +161,21 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
   const inLib = t.inLibrary;
   const retry = (h: HistoryEntry) => run(h.id, () => api.retry(h.id), `Searching for “${t.title}” again.`);
   const monitored = t.monitored !== false;
+  const movieHasFile = !isSeries && t.badge?.state === "downloaded";
+
+  const wrongFile = async (episode: Episode | undefined, reSearch: boolean) => {
+    const what = episode ? `${codeOf(chosen?.number ?? 0, episode.number)} ${episode.name}` : `“${t.title}”`;
+    const went = await run(
+      `wrong-${episode?.id ?? "movie"}`,
+      () => api.markWrongFile(t.id, episode?.id, reSearch),
+      `Deleted the file for ${what}. ${reSearch ? "Searching for another release." : "Pick another release."}`,
+    );
+    if (!went) return;
+    setLists((l) => ({ key: l.key + 1, pick: !reSearch }));
+    if (!episode) return;
+    if (reSearch) closeRow();
+    else openRow(episode.id);
+  };
 
   return (
     <div className="ts" data-enter={enter || undefined} ref={root} role="main" aria-labelledby="ts-h1">
@@ -195,6 +213,15 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
                   >
                     <IconBookmark on={monitored} />
                   </IconButton>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    aria-disabled={busy === "rescan"}
+                    aria-busy={busy === "rescan"}
+                    onClick={() => run("rescan", () => api.rescanTitle(t.id), (after) => titleRescanSummary(t, after))}
+                  >
+                    {busy === "rescan" ? <Sk shape="dot" /> : "Rescan"}
+                  </button>
                   {profiles && (
                     <ProfilePicker
                       profiles={profiles}
@@ -264,13 +291,25 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
                         onToggle={() => (expanded && !closing ? closeRow() : openRow(e.id))}
                         onAuto={() => run(`now-${e.id}`, () => api.searchEpisodeNow(t.id, e.id), `Searching for ${e.name} now.`)}
                         onMonitor={() => run(e.id, () => api.setEpisodeMonitored(t.id, e.id, !e.monitored))}
+                        wrong={
+                          e.state === "downloaded" && (
+                            <WrongFile
+                              what={`${codeOf(chosen.number, e.number)} ${e.name}`}
+                              shared={sharedWith(e, chosen)}
+                              busy={busy === `wrong-${e.id}`}
+                              onChoose={(reSearch) => wrongFile(e, reSearch)}
+                            />
+                          )
+                        }
                       >
                         <ReleaseList
+                          key={lists.key}
                           api={api}
                           titleId={t.id}
                           titleName={t.title}
                           episodeId={e.id}
                           what={`${seasonName(chosen.number)} · ${e.name}`}
+                          hasFile={e.state === "downloaded"}
                           onChanged={onChanged}
                           onToast={onToast}
                         />
@@ -299,8 +338,9 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
           <section className="ts-sec" aria-labelledby="ts-rel">
             <div className="ts-sec-head">
               <h2 id="ts-rel">Releases</h2>
+              {movieHasFile && <WrongFile what={`“${t.title}”`} shared={[]} busy={busy === "wrong-movie"} onChoose={(reSearch) => wrongFile(undefined, reSearch)} />}
             </div>
-            <ReleaseList api={api} titleId={t.id} titleName={t.title} what={t.title} manual onChanged={onChanged} onToast={onToast} />
+            <ReleaseList key={lists.key} api={api} titleId={t.id} titleName={t.title} what={t.title} hasFile={movieHasFile} manual={!lists.pick} onChanged={onChanged} onToast={onToast} />
           </section>
         )}
 
@@ -316,7 +356,7 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
 
         {inLib && (
           <section className="ts-sec ts-remove">
-            <RemoveBlock title={t} busy={busy === "remove"} onRemove={() => remove(t)} />
+            <RemoveBlock title={t} busy={busy === "remove"} onRemove={(deleteFiles) => remove(t, deleteFiles)} />
           </section>
         )}
       </div>
@@ -335,6 +375,7 @@ function EpisodeRow({
   onToggle,
   onAuto,
   onMonitor,
+  wrong,
   children,
 }: {
   episode: Episode;
@@ -347,6 +388,7 @@ function EpisodeRow({
   onToggle: () => void;
   onAuto: () => void;
   onMonitor: () => void;
+  wrong: React.ReactNode;
   children: React.ReactNode;
 }) {
   const aired = e.state !== "unaired";
@@ -413,12 +455,24 @@ function EpisodeRow({
       {expanded && (
         <div className="ts-ep-wrap" data-closing={closing} id={panel}>
           <div className="ts-ep-panel">
-            <div className="ts-ep-panel-in">{children}</div>
+            <div className="ts-ep-panel-in">
+              {wrong && <div className="ts-ep-wrong">{wrong}</div>}
+              {children}
+            </div>
           </div>
         </div>
       )}
     </li>
   );
+}
+
+// The other episodes in this episode's file, as the owner reads them.
+function sharedWith(e: Episode, s: Season): string[] {
+  return (e.sharedEpisodes ?? [])
+    .filter((id) => id !== e.id)
+    .map((id) => s.episodes.find((x) => x.id === id))
+    .filter((x): x is Episode => x !== undefined)
+    .map((x) => `${codeOf(s.number, x.number)} ${x.name}`);
 }
 
 function exceptionOf(s: Season, monitored: boolean): "on" | "off" | null {

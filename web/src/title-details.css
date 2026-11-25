@@ -316,6 +316,68 @@
   cursor: progress;
 }
 
+.rm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.rm-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--bad);
+  cursor: pointer;
+}
+
+.rm-check input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ts-ep-wrong {
+  margin-bottom: var(--space-3);
+}
+
+.wf-open {
+  display: inline-block;
+}
+
+.wf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+
+.wf-text {
+  flex: 1 1 24rem;
+  max-width: 60ch;
+  color: var(--mute);
+  font-size: var(--text-sm);
+  text-wrap: pretty;
+}
+
+.wf-text strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.wf-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .ts-rates li[data-source="imdb"] svg {
   width: 32px;
   height: 18px;

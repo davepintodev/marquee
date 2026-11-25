@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Download, Health, HistoryEntry, LiveEvent, MonitorChoice, ProgressEvent, Profiles, Releases, Title, TitleAbout, TitleEvent, TitleSummary, Wall } from "./types";
+import type { Download, Health, HistoryEntry, LibraryRescan, LiveEvent, MonitorChoice, ProgressEvent, Profiles, Releases, Title, TitleAbout, TitleEvent, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -26,14 +26,20 @@ export interface Api {
   about(id: string, signal?: AbortSignal): Promise<TitleAbout>;
   library(signal?: AbortSignal): Promise<TitleSummary[]>;
   setMonitored(id: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
-  removeTitle(id: string, signal?: AbortSignal): Promise<void>;
+  // Without deleteFiles the files on disk stay; with it they go too, and the call fails when they cannot be deleted.
+  removeTitle(id: string, deleteFiles?: boolean, signal?: AbortSignal): Promise<void>;
+  rescanLibrary(signal?: AbortSignal): Promise<LibraryRescan>;
+  rescanTitle(id: string, signal?: AbortSignal): Promise<Title>;
+  // Deletes the movie's file, or the episode's (and every episode sharing it). reSearch false leaves the choice to Interactive Search.
+  markWrongFile(id: string, episodeId: string | undefined, reSearch: boolean, signal?: AbortSignal): Promise<Title>;
   setEpisodeMonitored(id: string, episodeId: string, monitored: boolean, signal?: AbortSignal): Promise<Title>;
   setSeasonMonitored(id: string, season: number, monitored: boolean, signal?: AbortSignal): Promise<Title>;
   searchEpisodeNow(id: string, episodeId: string, signal?: AbortSignal): Promise<Title>;
   // A series needs the episode; a movie takes none.
   releases(id: string, episode?: string, signal?: AbortSignal): Promise<Releases>;
   // Picking by hand overrides the blocklist. A title that is not in the library is added first.
-  grab(id: string, releaseId: string, episode?: string, signal?: AbortSignal): Promise<Download>;
+  // A movie or episode that already has a file is only grabbed with replace.
+  grab(id: string, releaseId: string, episode?: string, replace?: boolean, signal?: AbortSignal): Promise<Download>;
   downloads(signal?: AbortSignal): Promise<Download[]>;
   // One page of the feed, newest first. `next` is the cursor to pass for the page after it, absent on the last.
   history(page: { limit?: number; cursor?: string }, signal?: AbortSignal): Promise<{ entries: HistoryEntry[]; next?: string }>;
@@ -192,8 +198,23 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
     setMonitored(id, monitored, signal) {
       return call(() => client.PATCH("/api/titles/{id}", { params: { path: { id } }, body: { monitored }, signal }), isTitle);
     },
-    removeTitle(id, signal) {
-      return callVoid(() => client.DELETE("/api/titles/{id}", { params: { path: { id } }, signal }));
+    removeTitle(id, deleteFiles, signal) {
+      return callVoid(() => client.DELETE("/api/titles/{id}", { params: { path: { id }, ...(deleteFiles ? { query: { deleteFiles } } : {}) }, signal }));
+    },
+    rescanLibrary(signal) {
+      return call(() => client.POST("/api/library/rescan", { signal }), (d) => typeof d.titlesScanned === "number");
+    },
+    rescanTitle(id, signal) {
+      return call(() => client.POST("/api/titles/{id}/rescan", { params: { path: { id } }, signal }), isTitle);
+    },
+    markWrongFile(id, episodeId, reSearch, signal) {
+      return call(
+        () =>
+          episodeId
+            ? client.POST("/api/titles/{id}/episodes/{episodeId}/wrong-file", { params: { path: { id, episodeId } }, body: { reSearch }, signal })
+            : client.POST("/api/titles/{id}/wrong-file", { params: { path: { id } }, body: { reSearch }, signal }),
+        isTitle,
+      );
     },
     setEpisodeMonitored(id, episodeId, monitored, signal) {
       return call(() => client.PATCH("/api/titles/{id}/episodes/{episodeId}", { params: { path: { id, episodeId } }, body: { monitored }, signal }), isTitle);
@@ -210,9 +231,14 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
         (d) => Array.isArray(d.candidates) && Array.isArray(d.dropped),
       );
     },
-    grab(id, releaseId, episode, signal) {
+    grab(id, releaseId, episode, replace, signal) {
       return call(
-        () => client.POST("/api/titles/{id}/releases/{releaseId}/grab", { params: { path: { id, releaseId } }, ...(episode ? { body: { episode } } : {}), signal }),
+        () =>
+          client.POST("/api/titles/{id}/releases/{releaseId}/grab", {
+            params: { path: { id, releaseId } },
+            ...(episode || replace ? { body: { ...(episode ? { episode } : {}), ...(replace ? { replace } : {}) } } : {}),
+            signal,
+          }),
         (d) => typeof d.id === "string",
       );
     },

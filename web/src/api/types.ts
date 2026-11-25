@@ -18,6 +18,7 @@ export type Download = Schemas["Download"];
 export type HistoryEntry = Schemas["HistoryEntry"];
 export type ProgressEvent = Schemas["ProgressEvent"];
 export type Health = Schemas["Health"];
+export type LibraryRescan = Schemas["LibraryRescan"];
 export type Episode = Schemas["Episode"];
 export type Season = Schemas["Season"];
 export type FailureReason = Schemas["FailureReason"];

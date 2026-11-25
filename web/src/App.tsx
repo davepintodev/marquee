@@ -59,6 +59,8 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     pushTo({ name: "grid" }, "grid");
   }, []);
   const leave = useCallback(() => leaveTo({ name: "wall" }, "grid"), []);
+  // A rescan can adopt titles the wall has not seen; refetching in place keeps the posters on screen meanwhile.
+  const refreshWall = useCallback(() => setWallTry((n) => n + 1), []);
   const retryWall = useCallback(() => {
     setWall({ status: "loading" });
     setWallTry((n) => n + 1);
@@ -321,16 +323,16 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
           seed={selected?.id === route.id ? current(selected) : undefined}
           onClose={closePage}
           onChanged={keep}
-          onRemoved={(t: Title) => {
+          onRemoved={(t: Title, deletedFiles: boolean) => {
             keep({ ...t, inLibrary: false, monitored: undefined, badge: undefined });
             closePage();
-            notify(`Removed “${t.title}” from marquee. Its files are still on disk.`);
+            notify(deletedFiles ? `Removed “${t.title}” from marquee and deleted its files from disk.` : `Removed “${t.title}” from marquee. Its files are still on disk.`);
           }}
           onToast={notify}
           onOpenTitle={openTitle}
         />
       )}
-      {route.name === "health" && <Health api={api} onClose={closePage} onForget={onForget} />}
+      {route.name === "health" && <Health api={api} onClose={closePage} onForget={onForget} onToast={notify} onRescanned={refreshWall} />}
       {route.name === "activity" && <Activity api={api} onClose={closePage} onChanged={keep} onToast={notify} />}
       <Toaster toast={toast} onDismiss={dismissToast} />
     </div>
