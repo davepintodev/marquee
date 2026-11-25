@@ -308,3 +308,22 @@ func TestPruneEmptyDirsNeverLeavesTheRootOrFollowsALinkOut(t *testing.T) {
 		t.Errorf("the root was removed: %v", err)
 	}
 }
+
+func TestPruneEmptyDirsStopsAtALinkedFolderInsteadOfRemovingItsTarget(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "OtherEmpty"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "OtherEmpty"), filepath.Join(root, "Movie (2020)")); err != nil {
+		t.Fatal(err)
+	}
+	if err := importer.PruneEmptyDirs(root, "Movie (2020)/Movie (2020).mkv"); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Join(root, "OtherEmpty")); err != nil || !fi.IsDir() {
+		t.Errorf("the link's target was removed: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "Movie (2020)")); err != nil {
+		t.Errorf("the link was left dangling: %v", err)
+	}
+}

@@ -92,7 +92,8 @@ func removeSidecars(dir, video string) error {
 
 // PruneEmptyDirs removes the folders that held the file at relPath, from
 // the innermost up, for as long as each is empty. It stops at the first
-// folder that holds anything and never removes the root or leaves it.
+// folder that holds anything or is a link, and never removes the root or
+// leaves it.
 func PruneEmptyDirs(root, relPath string) error {
 	resolvedRoot, rel, err := checkRel(root, relPath)
 	if err != nil {
@@ -108,6 +109,13 @@ func PruneEmptyDirs(root, relPath string) error {
 		}
 		if !strictlyInside(resolvedRoot, resolved) {
 			return ErrUnsafePath
+		}
+		link, err := os.Lstat(filepath.Join(resolvedRoot, filepath.FromSlash(dir)))
+		if err != nil {
+			return fmt.Errorf("cannot look at %s: %w", dir, err)
+		}
+		if link.Mode()&fs.ModeSymlink != 0 {
+			return nil
 		}
 		entries, err := os.ReadDir(resolved)
 		if err != nil {
