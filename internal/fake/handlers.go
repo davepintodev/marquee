@@ -549,7 +549,6 @@ func (f *Fake) rescanTitle(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, f.title(t))
 }
 
-// rescanLibrary reports a scan that found the library as it is.
 func (f *Fake) rescanLibrary(w http.ResponseWriter, _ *http.Request) {
 	var health struct {
 		LibraryProblems []json.RawMessage `json:"libraryProblems"`

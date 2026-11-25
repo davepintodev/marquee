@@ -184,7 +184,6 @@ func (a *Adopter) ScanTitle(ctx context.Context, id string) (catalog.Title, erro
 	return a.Catalog.Get(ctx, id)
 }
 
-// folderRef names a folder of the library that belongs to a title.
 type folderRef struct {
 	label, kind, root, name string
 }
@@ -193,7 +192,6 @@ func (f folderRef) dir() string { return filepath.Join(f.root, f.name) }
 
 type scan struct {
 	*Adopter
-	// matches are the folders found on disk for each title.
 	matches map[string][]folderRef
 	// states are folders already read for a title adopted in this scan.
 	states   map[string]*disk
@@ -336,7 +334,6 @@ func hasFiles(titles []catalog.ScanTitle, kind string) bool {
 	return false
 }
 
-// tracked is the top-level folders the catalog's files of a title are in.
 func tracked(t catalog.ScanTitle) []string {
 	var out []string
 	seen := map[string]bool{}
