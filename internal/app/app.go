@@ -205,10 +205,17 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			stopAdopt()
 			<-adoptDone
 		}()
-		sched := scheduler.New(scheduler.Options{
+		sopts := scheduler.Options{
 			Catalog: store, Source: source, TMDB: tmdb, Transfers: transfers, DryRun: cfg.DryRun, Profiles: cfg.ProfileSet(),
 			TorBoxMaxActive: popts.TorBoxMaxActive, Log: log, Tuning: opts.Scheduler,
-		})
+		}
+		if tbClient != nil {
+			sopts.TorBox = tbClient
+		}
+		sched := scheduler.New(sopts)
+		if tbClient != nil {
+			transfers.SetPacks(sched)
+		}
 		if opts.OnScheduler != nil {
 			opts.OnScheduler(sched)
 		}

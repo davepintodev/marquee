@@ -23,6 +23,7 @@ import (
 	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/metadata"
 	"github.com/davepintodev/marquee/internal/pipeline"
+	"github.com/davepintodev/marquee/internal/torbox"
 )
 
 const (
@@ -55,6 +56,14 @@ type TMDB interface {
 	Details(ctx context.Context, kind string, id int) (metadata.Details, error)
 }
 
+// TorBox is the part of the TorBox client the scheduler resolves season
+// packs with.
+type TorBox interface {
+	CreateTorrent(ctx context.Context, infoHash string) (torbox.Torrent, error)
+	GetTorrent(ctx context.Context, torrentID int) (torbox.Torrent, error)
+	DeleteTorrent(ctx context.Context, torrentID int) error
+}
+
 type Transfers interface {
 	Enqueue(ctx context.Context, j pipeline.Job) (catalog.Download, error)
 }
@@ -80,8 +89,10 @@ type Options struct {
 	// TorBoxMaxActive is how many uncached downloads TorBox may be caching
 	// at once. Zero means TorBox is not set up, and only cached releases count.
 	TorBoxMaxActive int
-	Log             *slog.Logger
-	Tuning          Tuning
+	// TorBox resolves season packs into their episodes; nil leaves packs out.
+	TorBox TorBox
+	Log    *slog.Logger
+	Tuning Tuning
 }
 
 // Scheduler searches for what is missing. Every time it reads is the
@@ -97,6 +108,7 @@ type Scheduler struct {
 	tick     time.Duration
 	wake     chan struct{}
 	torbox   int
+	tb       TorBox
 
 	mu         sync.Mutex
 	lastSearch time.Time
@@ -121,7 +133,7 @@ func New(o Options) *Scheduler {
 	}
 	return &Scheduler{
 		cat: o.Catalog, src: o.Source, tmdb: o.TMDB, tr: o.Transfers, dry: o.DryRun, profiles: o.Profiles, log: log,
-		tick: tick, wake: make(chan struct{}, 1), torbox: o.TorBoxMaxActive, deferred: map[slot]bool{},
+		tick: tick, wake: make(chan struct{}, 1), torbox: o.TorBoxMaxActive, tb: o.TorBox, deferred: map[slot]bool{},
 	}
 }
 
@@ -314,10 +326,11 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 			return
 		}
 	}
-	res := chooser.Choose(streams, chooser.Context{
+	cc := chooser.Context{
 		Kind: t.Kind, Season: t.Season, Episode: t.Number, OwnedEpisodes: owned, Profile: profile,
 		AllowUncached: s.torbox > 0, Blocklist: blocked, Now: now,
-	})
+	}
+	res := chooser.Choose(streams, cc)
 	if !s.stillWanted(ctx, now, t) {
 		return
 	}
@@ -328,6 +341,9 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 			pick = &res.Candidates[i]
 			break
 		}
+	}
+	if s.tryPack(ctx, now, t, streams, cc, pick) {
+		return
 	}
 	switch {
 	case pick == nil:
@@ -378,13 +394,17 @@ func (s *Scheduler) stillWanted(ctx context.Context, now time.Time, t catalog.Ta
 }
 
 func (s *Scheduler) wouldGrab(ctx context.Context, now time.Time, t catalog.Target, c chooser.Candidate) {
+	s.wouldGrabAs(ctx, now, t, c.ID, "Would grab "+releaseName(c.Stream))
+}
+
+func (s *Scheduler) wouldGrabAs(ctx context.Context, now time.Time, t catalog.Target, id, message string) {
 	last, had, err := s.cat.LastWouldGrab(ctx, t.TitleID, t.Season, t.Number)
 	if err != nil {
 		s.logErr(ctx, "cannot read the last decision", err)
 		return
 	}
-	if !had || last != c.ID {
-		s.note(ctx, t, catalog.Activity{Kind: catalog.ActivityWouldGrab, Message: "Would grab " + releaseName(c.Stream), ReleaseID: c.ID})
+	if !had || last != id {
+		s.note(ctx, t, catalog.Activity{Kind: catalog.ActivityWouldGrab, Message: message, ReleaseID: id})
 	}
 	// Nothing is downloaded, so the title stays missing: look again daily
 	// rather than on the steps of a title that finds nothing.

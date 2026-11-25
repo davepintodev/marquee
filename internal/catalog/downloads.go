@@ -81,6 +81,10 @@ type NewDownload struct {
 	// Uncached marks a release the debrid service does not hold, which TorBox
 	// must fetch before the file can be downloaded; it has no playback link.
 	Uncached bool
+	// PackTorrentID and PackFileID name the TorBox torrent of a season pack
+	// and the file of it the download takes, when the scheduler resolved the
+	// pack before queueing; zero otherwise.
+	PackTorrentID, PackFileID int
 }
 
 type Download struct {
@@ -149,7 +153,7 @@ func (s *Store) AddDownload(ctx context.Context, n NewDownload) (Download, error
 	}
 	covered := normalizeCovered(n.Number, n.Covered)
 	if n.Season != 0 || n.Number != 0 {
-		busy, err := coveredBusy(ctx, tx, n.TitleID, n.Season, append([]int{n.Number}, covered...))
+		busy, err := coveredBusy(ctx, tx, n.TitleID, n.Season, append([]int{n.Number}, covered...), n.ID)
 		if err != nil {
 			return Download{}, err
 		}
@@ -164,9 +168,11 @@ func (s *Store) AddDownload(ctx context.Context, n NewDownload) (Download, error
 	}
 	now := s.stamp()
 	_, err = tx.ExecContext(ctx, `INSERT INTO downloads (id, title_id, season, number, state, info_hash, file_name, size,
-		release_name, resolution, quality, url, replace_existing, covered_episodes, cached, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		release_name, resolution, quality, url, replace_existing, covered_episodes, cached, torbox_torrent_id, torbox_file_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		n.ID, n.TitleID, n.Season, n.Number, n.Release.InfoHash, n.Release.FileName, n.Release.Size,
-		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), stored, b2i(!n.Uncached), now, now)
+		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), stored, b2i(!n.Uncached),
+		n.PackTorrentID, n.PackFileID, now, now)
 	if err != nil {
 		if isUnique(err) {
 			return Download{}, ErrActiveDownload
@@ -177,6 +183,51 @@ func (s *Store) AddDownload(ctx context.Context, n NewDownload) (Download, error
 		return Download{}, err
 	}
 	return s.GetDownload(ctx, n.ID)
+}
+
+// SetDownloadFile records which file of its release an unfinished download
+// takes once that is known, as for the first episode of a season pack whose
+// file list TorBox only shows after caching it. It answers
+// ErrActiveDownload when another download already holds an episode the file
+// covers, and ErrNotFound when the download is gone or finished.
+func (s *Store) SetDownloadFile(ctx context.Context, id string, release ReleaseID, covered []int, fileID int) (Download, error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return Download{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var titleID string
+	var season, number int
+	err = tx.QueryRowContext(ctx, `SELECT title_id, season, number FROM downloads WHERE id = ? AND state NOT IN ('done', 'failed')`, id).
+		Scan(&titleID, &season, &number)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Download{}, ErrNotFound
+	}
+	if err != nil {
+		return Download{}, err
+	}
+	all := normalizeCovered(number, covered)
+	busy, err := coveredBusy(ctx, tx, titleID, season, all, id)
+	if err != nil {
+		return Download{}, err
+	}
+	if busy {
+		return Download{}, ErrActiveDownload
+	}
+	stored := ""
+	if len(all) > 1 {
+		b, _ := json.Marshal(all)
+		stored = string(b)
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE downloads SET file_name = ?, size = ?, covered_episodes = ?, torbox_file_id = ?, updated_at = ? WHERE id = ?`,
+		release.FileName, release.Size, stored, fileID, s.stamp(), id)
+	if err != nil {
+		return Download{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Download{}, err
+	}
+	return s.GetDownload(ctx, id)
 }
 
 // normalizeCovered is the episodes a file holds, sorted and without
@@ -199,11 +250,12 @@ func decodeCovered(stored string) []int {
 	return out
 }
 
-// coveredBusy reports whether an unfinished download of the season already
-// targets or covers any of the episodes, so that two files never claim the same one.
-func coveredBusy(ctx context.Context, tx *sql.Tx, titleID string, season int, numbers []int) (bool, error) {
+// coveredBusy reports whether an unfinished download of the season other
+// than exceptID already targets or covers any of the episodes, so that two
+// files never claim the same one.
+func coveredBusy(ctx context.Context, tx *sql.Tx, titleID string, season int, numbers []int, exceptID string) (bool, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT number, covered_episodes FROM downloads
-		WHERE title_id = ? AND season = ? AND state NOT IN ('done', 'failed')`, titleID, season)
+		WHERE title_id = ? AND season = ? AND id != ? AND state NOT IN ('done', 'failed')`, titleID, season, exceptID)
 	if err != nil {
 		return false, err
 	}

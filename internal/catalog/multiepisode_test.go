@@ -337,3 +337,25 @@ func TestTheSearchBudgetMigrationKeepsEveryTitlesCountAndGivesEpisodesTheirOwn(t
 		t.Errorf("removing a title still cascades to its budget: %d, %v", n, err)
 	}
 }
+
+func TestAPackLeadsFileIsRecordedUnlessAnotherDownloadHoldsAnEpisodeOfIt(t *testing.T) {
+	ctx := context.Background()
+	s := openAt(t, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	addHouse(t, s)
+	queue(t, s, "lead", 1, 1)
+	queue(t, s, "other", 1, 3)
+	rel := catalog.ReleaseID{InfoHash: "hlead", FileName: "House.S01E01E02.mkv", Size: 9}
+	d, err := s.SetDownloadFile(ctx, "lead", rel, []int{1, 2}, 4)
+	if err != nil || d.Release != rel || !slices.Equal(d.Covered, []int{1, 2}) || d.TorBoxFileID != 4 {
+		t.Fatalf("lead = %+v, %v", d, err)
+	}
+	if _, err := s.SetDownloadFile(ctx, "lead", rel, []int{1, 3}, 4); !errors.Is(err, catalog.ErrActiveDownload) {
+		t.Errorf("a file covering an episode another download fetches: %v, want ErrActiveDownload", err)
+	}
+	if err := s.FailDownload(ctx, "lead", "stalled", "Stalled", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetDownloadFile(ctx, "lead", rel, nil, 4); !errors.Is(err, catalog.ErrNotFound) {
+		t.Errorf("a finished download: %v, want ErrNotFound", err)
+	}
+}
