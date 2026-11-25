@@ -1,5 +1,5 @@
 // Command smokeserve runs the real service with the outside world faked
-// (TMDB, AIOStreams, the debrid file server, Jellyfin), for the Playwright
+// (TMDB, AIOStreams, the debrid file server, TorBox, Jellyfin), for the Playwright
 // smoke test and the idle-memory measurement. It is a development tool and
 // is never part of an image.
 //
@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ import (
 	"github.com/davepintodev/marquee/internal/jellyfinfake"
 	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/tmdbfake"
+	"github.com/davepintodev/marquee/internal/torboxfake"
 	"github.com/davepintodev/marquee/web"
 )
 
@@ -38,6 +40,10 @@ const (
 	arrivalIMDb = "tt2543164"
 	// The chooser drops movies under 200 MB, so the fake release is a little over.
 	duneBytes = 210 << 20
+	// Heat has no cached release: only TorBox can fetch it.
+	heatTMDB = 949
+	heatIMDb = "tt0113277"
+	heatHash = "2222222222222222222222222222222222222222"
 )
 
 func main() {
@@ -111,26 +117,93 @@ func serveService(ctx context.Context, root, listen string, stdout, stderr io.Wr
 	defer aio.Close()
 	aio.Answer("movie", duneIMDb, release(url, duneBytes, "Dune.2021.1080p.WEB-DL.mkv"))
 	aio.Answer("movie", arrivalIMDb, release(url, duneBytes, "Arrival.2016.1080p.WEB-DL.mkv"))
+	tb := torboxfake.New()
+	defer tb.Close()
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: heatTMDB, Name: "Heat", Date: "1995-12-15", Overview: "A crew and a detective.", Poster: "/heat-p.jpg", Backdrop: "/heat-b.jpg", IMDb: heatIMDb})
+	tb.SetFiles(heatHash, torboxfake.File{ID: 0, Name: "Heat.1995.1080p.WEB-DL.mkv", Size: duneBytes, Body: debridfake.MKV(duneBytes)})
+	aio.Answer("movie", heatIMDb, uncachedRelease(heatHash, duneBytes, "Heat.1995.1080p.WEB-DL.mkv"))
 	jf := jellyfinfake.New()
 	defer jf.Close()
 
+	cfgPath, err := writeConfig(root)
+	if err != nil {
+		return err
+	}
+	env["MARQUEE_CONFIG"] = cfgPath
 	env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] = aio.ManifestURL()
 	env["MARQUEE_TMDB_KEY"] = tmdbfake.Key
+	env["MARQUEE_TORBOX_API_KEY"] = torboxfake.Key
 	env["MARQUEE_JELLYFIN_URL"], env["MARQUEE_JELLYFIN_KEY"] = jf.URL, jellyfinfake.Key
 	env["MARQUEE_LISTEN"] = listen
 
+	go cacheOnTorBox(ctx, tb)
+
 	opts := app.Options{
 		TMDBAPIBase: tm.APIBase(), TMDBImageBase: tm.ImageBase(),
+		TorBoxAPIBase: tb.APIBase(), TorBoxPoll: 200 * time.Millisecond,
 		Transfers: pipeline.Tuning{Poll: 100 * time.Millisecond},
 	}
 	ready := func(a net.Addr) { _, _ = fmt.Fprintln(stdout, "listening on", a) }
 	return app.RunWith(ctx, opts, func(k string) string { return env[k] }, stderr, web.Dist(), ready)
 }
 
+// writeConfig stores the config file the service reads its profiles from,
+// so the smoke test goes through the same JSON as a real install.
+func writeConfig(root string) (string, error) {
+	cfg := map[string]any{
+		"profiles": map[string]any{
+			"tv-safe": map[string]any{
+				"qualities":   []string{"WEBDL-1080p", "WEBRip-1080p", "Bluray-1080p", "WEBDL-720p", "WEBRip-720p"},
+				"reject":      []string{"truehd", "dts-hd", "dts-x", "dv-p7"},
+				"prefer":      []string{"dd+-atmos", "dd+", "hdr10+"},
+				"size_limits": map[string]any{"min_mb": 100, "max_mb": 30000},
+			},
+			"any-1080p": map[string]any{
+				"qualities": []string{"Remux-1080p", "Bluray-1080p", "WEBDL-1080p"},
+			},
+		},
+		"default_movie_profile":  "tv-safe",
+		"default_series_profile": "tv-safe",
+	}
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(root, "marquee.json")
+	return path, os.WriteFile(path, b, 0o600)
+}
+
+// cacheOnTorBox plays TorBox fetching the first torrent it is asked for, in
+// visible steps, so the Caching state is seen before the file is ready.
+func cacheOnTorBox(ctx context.Context, tb *torboxfake.Fake) {
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for len(tb.Magnets()) == 0 {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+	for _, p := range []float64{0.2, 0.55, 0.9} {
+		tb.Step(1, p, 5<<20)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(1500 * time.Millisecond):
+		}
+	}
+	tb.Present(1)
+}
+
 // release is the one AIOStreams result for a title: a cached release whose
 // playback link is the debrid fake's.
 func release(url string, size int, name string) []byte {
 	return fmt.Appendf(nil, `{"success":true,"data":{"results":[{"url":%q,"filename":%q,"folderName":%q,"size":%d,"type":"debrid","service":"torbox","cached":true,"addon":"Fake","infoHash":"1111111111111111111111111111111111111111","parsedFile":{"resolution":"1080p","quality":"WEB-DL","seasons":[],"episodes":[]}}]}}`, url, name, strings.TrimSuffix(name, ".mkv"), size)
+}
+
+func uncachedRelease(hash string, size int, name string) []byte {
+	return fmt.Appendf(nil, `{"success":true,"data":{"results":[{"filename":%q,"folderName":%q,"size":%d,"type":"debrid","service":"torbox","cached":false,"addon":"Fake","infoHash":%q,"parsedFile":{"resolution":"1080p","quality":"WEB-DL","seasons":[],"episodes":[]}}]}}`, name, strings.TrimSuffix(name, ".mkv"), size, hash)
 }
 
 // serveFakes seeds a small library in root and prints the settings that

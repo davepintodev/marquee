@@ -108,9 +108,9 @@ func ExtractTags(s aiostreams.Stream) []string {
 
 // dolbyP7 guesses Dolby Vision Profile 7 without reading the file: discs
 // carry it and web releases do not, and Profile 7 is what an Android TV
-// cannot play. A Remux or a disc encode with no web marker is assumed to
-// be Profile 7 unless it says Profile 8; an explicit Profile 7 or FEL
-// marker decides on its own.
+// cannot play. A Remux is always assumed to be Profile 7, and a disc encode
+// with no web marker is too unless it says Profile 8; an explicit Profile 7
+// or FEL marker decides on its own.
 func dolbyP7(text, tier string) bool {
 	if reP7.MatchString(text) || reFEL.MatchString(text) {
 		return true

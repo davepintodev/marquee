@@ -301,7 +301,7 @@ for (const s of screens.slice(0, 2)) {
 test("a search that finds nothing says so", async ({ page }) => {
   await openApp(page);
   await page.getByRole("searchbox").fill("qqqzzz");
-  await expect(page.getByText("Nothing found.")).toBeVisible();
+  await expect(page.getByText("Nothing found for “qqqzzz”.")).toBeVisible();
 });
 
 test("dark for a dark system, light when the system asks for it", async ({ browser }) => {
@@ -606,8 +606,8 @@ for (const s of screens.slice(0, 2)) {
     await expect(rows.first()).toContainText("Cached");
     await expect(rows.first()).toContainText("marquee’s pick");
     await expect(rows.nth(1)).not.toContainText("marquee’s pick");
-    await title.getByRole("button", { name: "Show 6 more releases" }).click();
-    await expect(rows).toHaveCount(9);
+    await title.getByRole("button", { name: "Show 4 more releases" }).click();
+    await expect(rows).toHaveCount(7);
     await expect(title.getByRole("group", { name: "Filter by resolution" }).getByRole("button", { name: "2160p" })).toHaveText("2160p");
     await noSideScroll(page, s.width);
     await page.waitForTimeout(500);
@@ -617,12 +617,12 @@ for (const s of screens.slice(0, 2)) {
     const dropped = title.getByRole("list", { name: "Dropped releases" });
     await expect(dropped.getByText("a .exe file, not a video")).toBeVisible();
     await expect(dropped.getByRole("listitem").filter({ hasText: "a .exe file" }).getByRole("button")).toHaveCount(0);
-    await expect(dropped.getByRole("button", { name: /^Pick anyway/ })).toHaveCount(2);
+    await expect(dropped.getByRole("button", { name: /^Pick anyway/ })).toHaveCount(4);
     await noSideScroll(page, s.width);
     await page.screenshot({ path: join(shots, `releases-movie-dropped-${s.name}.png`) });
 
     await title.getByRole("button", { name: "2160p", exact: true }).click();
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(2);
   });
 }
 
