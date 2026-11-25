@@ -561,3 +561,70 @@ func TestATitleRescanLeavesATitleWhoseFolderItCannotTellAlone(t *testing.T) {
 		t.Errorf("a renamed folder is followed: %+v", m)
 	}
 }
+
+func TestATitleRescanOfAnEmptyLibraryFolderIsNotTakenForDeletedFiles(t *testing.T) {
+	s := startRescan(t)
+	if err := os.RemoveAll(filepath.Join(s.env["MARQUEE_MOVIES_PATH"], "Dune (2021)")); err != nil {
+		t.Fatal(err)
+	}
+	if r := s.bad("POST", "/api/titles/movie-438631/rescan", ""); r.status != 503 || !strings.Contains(string(r.body), "movies") {
+		t.Errorf("status %d: %s", r.status, r.body)
+	}
+	if m := s.row("movie-438631", 0, 0); !m.have || !m.monitored || m.path != duneFile {
+		t.Errorf("an unmounted share must not unmonitor the title: %+v", m)
+	}
+	if n := len(s.removedNotes("movie-438631")); n != 0 {
+		t.Errorf("%d removed notes", n)
+	}
+}
+
+func TestATitleRescanOfALibraryFolderTheServiceCannotReadIsUnavailable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not stop root")
+	}
+	s := startRescan(t)
+	root := s.env["MARQUEE_MOVIES_PATH"]
+	if err := os.Chmod(root, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(root, 0o750) })
+	if r := s.bad("POST", "/api/titles/movie-438631/rescan", ""); r.status != 503 {
+		t.Errorf("status %d: %s", r.status, r.body)
+	}
+	if m := s.row("movie-438631", 0, 0); !m.have || !m.monitored {
+		t.Errorf("an unreadable library keeps the title: %+v", m)
+	}
+}
+
+func TestATitleRescanWhoseFolderCannotBeCheckedIsUnavailableNotDeleted(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permissions do not stop root")
+	}
+	s := startRescan(t)
+	root := s.env["MARQUEE_MOVIES_PATH"]
+	if err := os.Chmod(root, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(root, 0o750) })
+	if r := s.bad("POST", "/api/titles/movie-438631/rescan", ""); r.status != 503 {
+		t.Errorf("status %d: %s", r.status, r.body)
+	}
+	if m := s.row("movie-438631", 0, 0); !m.have || !m.monitored || m.path != duneFile {
+		t.Errorf("a folder that cannot be checked is not a deleted file: %+v", m)
+	}
+}
+
+func TestATitleRescanOfADeletedFolderUnderAHealthyLibraryUnmonitorsIt(t *testing.T) {
+	s := startRescan(t)
+	lay(t, s.env["MARQUEE_MOVIES_PATH"], arrivalFile)
+	if err := os.RemoveAll(filepath.Join(s.env["MARQUEE_MOVIES_PATH"], "Dune (2021)")); err != nil {
+		t.Fatal(err)
+	}
+	title := s.rescan("/api/titles/movie-438631/rescan")
+	if title["monitored"] != false {
+		t.Errorf("title: %v", title)
+	}
+	if m := s.row("movie-438631", 0, 0); m != (fileRow{}) {
+		t.Errorf("a deleted folder is a deleted file: %+v", m)
+	}
+}

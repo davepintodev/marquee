@@ -150,9 +150,16 @@ func (a *Adopter) ScanTitle(ctx context.Context, id string) (catalog.Title, erro
 	}
 	s := newScan(a)
 	label, root := labelOf(t.Kind), a.root(t.Kind)
+	if _, err := readLibrary(library{label, t.Kind, root}, all); err != nil {
+		return catalog.Title{}, err
+	}
 	var scopes []string
 	for _, folder := range titleFolders(t, all) {
-		if info, err := os.Stat(filepath.Join(root, folder)); err == nil && info.IsDir() {
+		info, err := os.Stat(filepath.Join(root, folder))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return catalog.Title{}, &UnavailableError{fmt.Sprintf("cannot read the %s folder %q (%s)", strings.ToLower(label), folder, why(err))}
+		}
+		if err == nil && info.IsDir() {
 			s.matches[t.ID] = append(s.matches[t.ID], folderRef{label: label, kind: t.Kind, root: root, name: folder})
 		}
 	}
@@ -227,12 +234,9 @@ func (a *Adopter) scanAll(ctx context.Context, first bool) (ScanResult, error) {
 	// Folders nobody claims wait until the claimed ones are placed, so that a second folder for a title is the one reported.
 	var unclaimed []folderRef
 	for _, lib := range a.libraries() {
-		entries, err := os.ReadDir(lib.root)
+		entries, err := readLibrary(lib, titles)
 		if err != nil {
-			return res, &UnavailableError{fmt.Sprintf("cannot read the %s folder (%s)", strings.ToLower(lib.label), why(err))}
-		}
-		if len(entries) == 0 && hasFiles(titles, lib.kind) {
-			return res, &UnavailableError{fmt.Sprintf("the %s folder is empty although the library has files in it; not scanning in case a drive is not mounted", strings.ToLower(lib.label))}
+			return res, err
 		}
 		for _, e := range entries {
 			if !isFolder(lib.root, e) || skipped(e.Name()) {
@@ -296,6 +300,17 @@ func (a *Adopter) scanAll(ctx context.Context, first bool) (ScanResult, error) {
 		return res, a.Catalog.FinishAdoption(ctx, s.problems)
 	}
 	return res, a.Catalog.ReplaceLibraryProblems(ctx, s.problems)
+}
+
+func readLibrary(lib library, titles []catalog.ScanTitle) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(lib.root)
+	if err != nil {
+		return nil, &UnavailableError{fmt.Sprintf("cannot read the %s folder (%s)", strings.ToLower(lib.label), why(err))}
+	}
+	if len(entries) == 0 && hasFiles(titles, lib.kind) {
+		return nil, &UnavailableError{fmt.Sprintf("the %s folder is empty although the library has files in it; not scanning in case a drive is not mounted", strings.ToLower(lib.label))}
+	}
+	return entries, nil
 }
 
 func trackedRow(t catalog.ScanTitle, season, number int) catalog.TrackedFile {

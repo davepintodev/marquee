@@ -129,7 +129,7 @@ export interface paths {
         put?: never;
         /**
          * Rescan one title's folder on disk.
-         * @description Reads only this title's folder and never asks TMDB. A tracked file that is gone from disk makes its movie or episode missing and unmonitored, with a note in its history; a file that is there but not tracked is recorded. Library problems under the folder are refreshed. Read-only on disk, so it also works in dry-run.
+         * @description Reads only this title's folder and never asks TMDB. A tracked file that is gone from disk makes its movie or episode missing and unmonitored, with a note in its history; a file that is there but not tracked is recorded. Library problems under the folder are refreshed. Read-only on disk, so it also works in dry-run. When the library folder cannot be read, is empty although the library has files, or the title's folder cannot be checked, nothing is changed and the answer is 503.
          */
         post: operations["rescanTitle"];
         delete?: never;
@@ -1068,6 +1068,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateEpisode: {

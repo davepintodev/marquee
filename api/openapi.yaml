@@ -180,7 +180,9 @@ paths:
         is gone from disk makes its movie or episode missing and unmonitored,
         with a note in its history; a file that is there but not tracked is
         recorded. Library problems under the folder are refreshed. Read-only on
-        disk, so it also works in dry-run.
+        disk, so it also works in dry-run. When the library folder cannot be
+        read, is empty although the library has files, or the title's folder
+        cannot be checked, nothing is changed and the answer is 503.
       responses:
         "200":
           description: The title after the rescan.
@@ -190,6 +192,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/titles/{id}/episodes/{episodeId}:
     parameters:
       - { $ref: "#/components/parameters/TitleId" }
