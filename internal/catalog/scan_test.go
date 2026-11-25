@@ -90,6 +90,26 @@ func TestAScanDropsASearchNowRequestSoADeletedFileIsNotDownloadedAgain(t *testin
 				t.Errorf("targets %+v: a file the owner deleted must not be searched for again", targets)
 			}
 		})
+		t.Run(tc.name+" asked to search while the file is tracked", func(t *testing.T) {
+			s := openAt(t, now)
+			if _, _, err := s.Adopt(ctx, tc.n, catalog.Found{}); err != nil {
+				t.Fatal(err)
+			}
+			found := []catalog.FileFound{{Season: tc.season, Number: tc.number, File: file}}
+			if _, err := s.ApplyScan(ctx, tc.id, found, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.RequestSearch(ctx, tc.id, tc.ep); err != nil {
+				t.Fatal(err)
+			}
+			gone := []catalog.FileGone{{Season: tc.season, Number: tc.number, Path: file.Path}}
+			if n, err := s.ApplyScan(ctx, tc.id, nil, gone); err != nil || n != 1 {
+				t.Fatalf("removed %d, %v", n, err)
+			}
+			if got := forcedTargets(t, s, now); len(got) != 0 {
+				t.Errorf("forced %v: a file the owner deleted must not be searched for again", got)
+			}
+		})
 	}
 }
 
