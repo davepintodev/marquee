@@ -185,7 +185,11 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     const id = e.data.titleId;
     if (e.type === "title" && e.data.badge) joinWall(id);
     const badge: Badge | null =
-      e.type === "title" ? e.data.badge : { state: "downloading", label: `Downloading ${e.data.percent}%`, percent: e.data.percent };
+      e.type === "title"
+        ? e.data.badge
+        : e.data.state === "caching"
+          ? { state: "caching", label: `Caching ${e.data.percent}%`, percent: e.data.percent }
+          : { state: "downloading", label: `Downloading ${e.data.percent}%`, percent: e.data.percent };
     setLive((l) => (l[id] === null && e.type === "progress" ? l : { ...l, [id]: badge }));
   });
 

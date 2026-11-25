@@ -352,7 +352,7 @@ function EpisodeRow({
   const aired = e.state !== "unaired";
   const done = e.state === "downloaded";
   const spinning = autoBusy || e.state === "searching";
-  const downloading = e.state === "downloading";
+  const downloading = e.state === "downloading" || e.state === "caching";
   const panel = `ts-panel-${e.id}`;
   const word = stateLabel(e);
   return (

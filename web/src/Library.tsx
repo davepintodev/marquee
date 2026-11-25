@@ -9,7 +9,7 @@ import "./skeleton.css";
 
 type Filter = "all" | "movies" | "series" | "downloading" | "missing";
 
-const isOn = (t: TitleSummary) => t.badge?.state === "downloading" || t.badge?.state === "searching" || t.badge?.state === "stalled";
+const isOn = (t: TitleSummary) => t.badge?.state === "downloading" || t.badge?.state === "caching" || t.badge?.state === "searching" || t.badge?.state === "stalled";
 const isMissing = (t: TitleSummary) => t.badge?.state === "missing" || t.badge?.state === "partial_season";
 
 const FILTERS: { key: Filter; label: string; none: string; test: (t: TitleSummary) => boolean }[] = [

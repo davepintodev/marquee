@@ -6,13 +6,18 @@ import "fmt"
 // flight it follows from the catalog alone: a monitored title with no file
 // on disk is "searching" (it is wanted and the scheduler will look for it);
 // one nobody monitors is "missing". A download in flight shows as
-// "downloading" with its percent, or "stalled" when its bytes stand still.
+// "downloading" with its percent, "caching" with TorBox's percent while it
+// fetches an uncached release, or "stalled" when its bytes stand still.
 type Badge struct {
 	State        string
 	Label        string
 	Percent      *int
 	Season       *int
 	MissingCount *int
+}
+
+func cachingBadge(percent int) *Badge {
+	return &Badge{State: "caching", Label: fmt.Sprintf("Caching %d%%", percent), Percent: &percent}
 }
 
 func downloadingBadge(percent int) *Badge {
@@ -25,6 +30,8 @@ func simpleBadge(state string) *Badge { return &Badge{State: state, Label: badge
 
 func movieBadge(monitored, haveFile bool, dl *inFlight) *Badge {
 	switch {
+	case dl != nil && dl.caching:
+		return cachingBadge(dl.percent)
 	case dl != nil && dl.stalled:
 		return simpleBadge("stalled")
 	case dl != nil:
@@ -46,28 +53,36 @@ type epView struct {
 
 // inFlight is what a title's badge needs to know of its unfinished download.
 type inFlight struct {
-	stalled bool
-	percent int
+	stalled, caching bool
+	percent          int
 }
 
-func transferring(state string) bool { return state == "downloading" || state == "stalled" }
+func transferring(state string) bool {
+	return state == "downloading" || state == "stalled" || state == "caching"
+}
 
 // groupBadge summarises the monitored, aired episodes and any episode being
 // downloaded, whatever its monitoring. It is nil when there are none, so
-// callers fall back to what is on disk. A download in flight outranks a
-// stalled one, which outranks a gap.
+// callers fall back to what is on disk. A download in flight outranks one
+// TorBox is still caching, which outranks a stalled one, which outranks a gap.
 func groupBadge(eps []epView) *Badge {
 	var have, gaps, total int
-	var downloading, stalled bool
-	percent := 0
+	var downloading, stalled, caching bool
+	percent, cachePercent := 0, 0
 	gapSeason := 0
 	gapsIn := map[int]int{}
 	for _, e := range eps {
 		if transferring(e.state) {
 			total++
-			if e.state == "stalled" {
+			switch e.state {
+			case "stalled":
 				stalled = true
-			} else {
+			case "caching":
+				if !caching {
+					cachePercent = e.percent
+				}
+				caching = true
+			default:
 				if !downloading {
 					percent = e.percent
 				}
@@ -92,6 +107,8 @@ func groupBadge(eps []epView) *Badge {
 		return nil
 	case downloading:
 		return downloadingBadge(percent)
+	case caching:
+		return cachingBadge(cachePercent)
 	case stalled:
 		return simpleBadge("stalled")
 	case have > 0 && gaps > 0:

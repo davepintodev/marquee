@@ -226,6 +226,27 @@ func TestRequestDownloadLinkNeedsAPresentTorrentAndHidesTheToken(t *testing.T) {
 	}
 }
 
+func TestRequestDownloadLinkSendsTheKeyAsTheTokenParameterTorBoxDocuments(t *testing.T) {
+	var query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.RawQuery
+		_, _ = fmt.Fprint(w, `{"success":true,"data":"https://dl.example.test/x"}`)
+	}))
+	defer srv.Close()
+	c, err := torbox.New(torbox.Options{APIKey: secretKey, Base: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.RequestDownloadLink(context.Background(), 5, 6); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"token=" + secretKey, "torrent_id=5", "file_id=6"} {
+		if !strings.Contains(query, want) {
+			t.Errorf("query %q lacks %q", query, want)
+		}
+	}
+}
+
 func TestDeleteTorrentIsRecordedAndForgetsTheTorrent(t *testing.T) {
 	fake := torboxfake.New()
 	defer fake.Close()

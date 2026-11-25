@@ -201,7 +201,7 @@ func (a *api) searchReleases(w http.ResponseWriter, r *http.Request, id, episode
 	}
 	out.result = chooser.Choose(streams, chooser.Context{
 		Kind: kind, Season: out.season, Episode: out.episode, OwnedEpisodes: owned, Profile: t.profile,
-		Blocklist: blocked, Now: a.Now(),
+		AllowUncached: a.TorBox != nil, Blocklist: blocked, Now: a.Now(),
 	})
 	return out, true
 }
@@ -292,7 +292,7 @@ func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 	job := pipeline.Job{
 		TitleID: id, Season: found.season, Number: found.episode,
 		Release:     catalog.ReleaseID{InfoHash: st.InfoHash, FileName: st.Filename, Size: st.Size},
-		ReleaseName: releaseOf(*pick).Name, URL: st.URL, Replace: owned,
+		ReleaseName: releaseOf(*pick).Name, URL: st.URL, Replace: owned, Uncached: !st.Cached,
 	}
 	if p := st.ParsedFile; p != nil {
 		job.Resolution, job.Quality = p.Resolution, p.Quality

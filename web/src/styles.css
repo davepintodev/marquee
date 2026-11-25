@@ -342,6 +342,7 @@ button {
 }
 
 .meter[data-state="downloading"] i,
+.meter[data-state="caching"] i,
 .meter[data-state="searching"] i {
   background: var(--info);
 }

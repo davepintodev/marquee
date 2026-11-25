@@ -224,6 +224,16 @@ test("download progress moves the episode without a reload", async () => {
   expect(calls.length).toBe(before);
 });
 
+test("TorBox caching progress shows on the episode as Caching, not Downloading", async () => {
+  await open(house());
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+
+  FakeEventSource.open()[0].emit("progress", { downloadId: "d", titleId: "series-2", episode: "s04e03", state: "caching", percent: 42, bytesDone: 0, bytesTotal: 0 });
+
+  expect(await screen.findByText("Caching 42%")).toBeTruthy();
+  expect(screen.queryByText("Downloading 42%")).toBeNull();
+});
+
 test("an open episode survives the title being refreshed from under it", async () => {
   const { calls } = await open(house(), (url) => (url.pathname === "/api/titles/series-2/releases" ? json({ candidates: [], dropped: [] }) : undefined));
   fireEvent.click(screen.getByRole("button", { name: /S04E02 Big Baby/ }));

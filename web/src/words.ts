@@ -9,6 +9,7 @@ const reasons: Record<FailureReason, string> = {
   source_down: "Source down",
   local_error: "Local error",
   duplicate_episode: "Duplicate episode",
+  caching_timeout: "Caching timed out",
 };
 
 export function reasonLabel(reason: FailureReason | undefined) {
@@ -21,6 +22,8 @@ export function stateLabel(e: Pick<Episode, "state"> & { percent?: number }) {
       return "Downloaded";
     case "searching":
       return "Searching";
+    case "caching":
+      return `Caching ${e.percent ?? 0}%`;
     case "downloading":
       return `Downloading ${e.percent ?? 0}%`;
     case "stalled":

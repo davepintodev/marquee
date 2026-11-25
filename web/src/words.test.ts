@@ -47,6 +47,7 @@ test("sizes read in the biggest unit that keeps a number small", () => {
 
 test("an episode's state reads in words, with the percent while it downloads", () => {
   expect(stateLabel({ state: "downloading", percent: 40 })).toBe("Downloading 40%");
+  expect(stateLabel({ state: "caching", percent: 42 })).toBe("Caching 42%");
   expect(stateLabel({ state: "unaired" })).toBe("Not aired yet");
   expect(stateLabel({ state: "missing" })).toBe("Missing");
 });
@@ -57,4 +58,8 @@ test("a season row's badge drops the season name the row already shows", () => {
   expect(seasonBadgeLabel({ state: "downloaded", label: "Downloaded" })).toBe("Downloaded");
   expect(seasonBadgeLabel({ state: "searching", label: "Searching" })).toBe("Searching");
   expect(seasonBadgeLabel({ state: "downloading", label: "Downloading 43%", percent: 43 })).toBe("Downloading 43%");
+});
+
+test("a torrent TorBox could not finish in time reads as a timeout", () => {
+  expect(reasonLabel("caching_timeout")).toBe("Caching timed out");
 });

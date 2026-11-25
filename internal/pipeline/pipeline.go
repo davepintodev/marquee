@@ -26,7 +26,7 @@ import (
 // ReasonLocalError is a failure on marquee's side (a full disk, a file
 // already in the library); the release itself is not at fault, so it is not
 // blocklisted.
-const ReasonLocalError = "local_error"
+const ReasonLocalError = string(download.ReasonLocalError)
 
 // ReasonDuplicateEpisode fails a file that is the same as another episode's
 // in the series: the release is blocklisted, as it is not the episode asked for.
@@ -52,6 +52,10 @@ type Tuning struct {
 	Download download.Options
 }
 
+type TorrentDeleter interface {
+	DeleteTorrent(ctx context.Context, torrentID int) error
+}
+
 // Options are the manager's dependencies.
 type Options struct {
 	Catalog *catalog.Store
@@ -65,6 +69,12 @@ type Options struct {
 	MoviesPath, SeriesPath, TempPath string
 	Log                              *slog.Logger
 	Tuning                           Tuning
+	// TorBoxMaxActive is how many uncached downloads TorBox may be caching
+	// at once; zero means TorBox is not set up and no download is uncached.
+	TorBoxMaxActive int
+	// TorBoxCleanup, when set, deletes a torrent from the TorBox account
+	// once its file has been imported and no other download uses it.
+	TorBoxCleanup TorrentDeleter
 }
 
 // Job is one release to download into the library.
@@ -85,22 +95,31 @@ type Job struct {
 	// file holds, such as 1 and 2 for S01E01E02. Episodes the series does
 	// not list are left out, and Number is always counted in.
 	Covered []int
+	// Uncached marks a release the debrid service has not cached, which
+	// TorBox must fetch first; URL may then be empty.
+	Uncached bool
 }
 
 // Manager runs the downloads.
 type Manager struct {
-	cat      *catalog.Store
-	dl       download.Downloader
-	jf       *importer.Jellyfin
-	movies   string
-	series   string
-	tempDir  string
-	log      *slog.Logger
-	tune     Tuning
-	wake     chan struct{}
-	mu       sync.Mutex
-	running  map[string]bool
+	cat     *catalog.Store
+	dl      download.Downloader
+	jf      *importer.Jellyfin
+	movies  string
+	series  string
+	tempDir string
+	log     *slog.Logger
+	tune    Tuning
+	wake    chan struct{}
+	mu      sync.Mutex
+	running map[string]bool
+	// caching holds the running downloads that are waiting for TorBox rather
+	// than moving bytes; they do not take one of the Concurrency places.
+	caching  map[string]bool
 	idSource func() string
+
+	torboxMax int
+	cleanup   TorrentDeleter
 
 	claimMu sync.Mutex
 	claims  map[string]claim
@@ -146,7 +165,8 @@ func New(o Options) *Manager {
 	m := &Manager{
 		cat: o.Catalog, dl: dl, movies: o.MoviesPath, series: o.SeriesPath,
 		tempDir: filepath.Join(o.TempPath, "marquee"), log: log, tune: t,
-		wake: make(chan struct{}, 1), running: map[string]bool{}, claims: map[string]claim{}, idSource: newID,
+		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{},
+		claims: map[string]claim{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
 	}
 	if o.JellyfinURL != "" {
 		m.jf = importer.NewJellyfin(o.JellyfinURL, o.JellyfinKey, t.JellyfinTimeout)
@@ -182,7 +202,7 @@ func (m *Manager) Enqueue(ctx context.Context, j Job) (catalog.Download, error) 
 	d, err := m.cat.AddDownload(ctx, catalog.NewDownload{
 		ID: m.idSource(), TitleID: j.TitleID, Season: j.Season, Number: j.Number, Release: j.Release,
 		ReleaseName: j.ReleaseName, Resolution: j.Resolution, Quality: j.Quality, URL: j.URL, ReplaceExisting: j.Replace,
-		Covered: covered,
+		Covered: covered, Uncached: j.Uncached,
 	})
 	if errors.Is(err, catalog.ErrActiveDownload) {
 		// The busy episode may be one the file covers rather than the one asked for.
@@ -234,11 +254,26 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 		}
 		return
 	}
+	slots := m.cachingSlotsUsed(active)
 	for _, d := range active {
+		waiting := d.Uncached && (d.State == catalog.StateQueued || d.State == catalog.StateCaching)
 		m.mu.Lock()
-		skip := m.running[d.ID] || len(m.running) >= m.tune.Concurrency
+		skip := m.running[d.ID]
+		switch {
+		case skip:
+		case waiting && d.State == catalog.StateQueued && m.torboxMax > 0 && slots >= m.torboxMax:
+			skip = true
+		case !waiting && len(m.running)-len(m.caching) >= m.tune.Concurrency:
+			skip = true
+		}
 		if !skip {
 			m.running[d.ID] = true
+			if waiting {
+				m.caching[d.ID] = true
+				if d.State == catalog.StateQueued {
+					slots++
+				}
+			}
 		}
 		m.mu.Unlock()
 		if skip {
@@ -250,6 +285,7 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 			defer func() {
 				m.mu.Lock()
 				delete(m.running, d.ID)
+				delete(m.caching, d.ID)
 				m.mu.Unlock()
 				m.claimMu.Lock()
 				delete(m.claims, d.ID)
@@ -259,6 +295,20 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 			m.process(ctx, d)
 		}()
 	}
+}
+
+// cachingSlotsUsed counts the uncached downloads that hold one of TorBox's
+// places: those it is caching, and those started and not yet recorded as such.
+func (m *Manager) cachingSlotsUsed(active []catalog.Download) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, d := range active {
+		if d.Uncached && (d.State == catalog.StateCaching || (d.State == catalog.StateQueued && m.running[d.ID])) {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *Manager) partPath(id string) string { return filepath.Join(m.tempDir, id+".part") }
@@ -295,13 +345,14 @@ func (m *Manager) pruneTemp(ctx context.Context) {
 }
 
 var reasonLabels = map[string]string{
-	string(download.ReasonStalled):      "Stalled",
-	string(download.ReasonNotVideo):     "Not a video",
-	string(download.ReasonSizeMismatch): "Wrong size",
-	string(download.ReasonSourceDown):   "Source down",
-	"too_small":                         "Too small",
-	ReasonLocalError:                    "Could not save",
-	ReasonDuplicateEpisode:              "Duplicate episode",
+	string(download.ReasonStalled):        "Stalled",
+	string(download.ReasonCachingTimeout): "Caching timed out",
+	string(download.ReasonNotVideo):       "Not a video",
+	string(download.ReasonSizeMismatch):   "Wrong size",
+	string(download.ReasonSourceDown):     "Source down",
+	"too_small":                           "Too small",
+	ReasonLocalError:                      "Could not save",
+	ReasonDuplicateEpisode:                "Duplicate episode",
 }
 
 // fail ends the download with a reason. A release that is at fault is
@@ -318,8 +369,12 @@ func (m *Manager) fail(ctx context.Context, d catalog.Download, reason, detail s
 }
 
 func (m *Manager) process(ctx context.Context, d catalog.Download) {
+	if d.Uncached && m.torboxMax == 0 {
+		m.fail(ctx, d, ReasonLocalError, "TorBox is not set up, so a release that is not cached cannot be fetched", false)
+		return
+	}
 	state := d.State
-	if state == catalog.StateQueued || state == catalog.StateDownloading {
+	if state == catalog.StateQueued || state == catalog.StateCaching || state == catalog.StateDownloading {
 		if !m.fetch(ctx, &d) {
 			return
 		}
@@ -338,22 +393,52 @@ func (m *Manager) fetch(ctx context.Context, d *catalog.Download) bool {
 		m.fail(ctx, *d, ReasonLocalError, "cannot create the temp folder", false)
 		return false
 	}
-	if err := m.cat.SetDownloadState(ctx, d.ID, catalog.StateDownloading); err != nil {
-		m.gone(ctx, *d, err)
-		return false
+	// An uncached download is caching until TorBox holds the file; its state
+	// moves to downloading when the first bytes are reported.
+	transferring := !d.Uncached
+	if transferring {
+		if err := m.cat.SetDownloadState(ctx, d.ID, catalog.StateDownloading); err != nil {
+			m.gone(ctx, *d, err)
+			return false
+		}
 	}
 	fctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var removed bool
 	var mu sync.Mutex
+	gone := func() {
+		mu.Lock()
+		removed = true
+		mu.Unlock()
+		cancel()
+	}
 	res, err := m.dl.Download(fctx, download.Request{
 		URL: d.URL, Dest: m.partPath(d.ID), ReleaseSize: d.Release.Size,
+		Cached: !d.Uncached, InfoHash: d.Release.InfoHash, FileName: d.Release.FileName,
+		Season: d.Season, Number: d.Number, TorBoxTorrentID: d.TorBoxTorrentID, StartedAt: d.CreatedAt,
+		OnCaching: func(percent, torrentID, fileID int) error {
+			err := m.cat.SetDownloadCaching(fctx, d.ID, percent, torrentID, fileID)
+			if errors.Is(err, catalog.ErrNotFound) {
+				gone()
+				return download.ErrRemoved
+			}
+			if err == nil {
+				// The import deletes this torrent once it is done.
+				d.TorBoxTorrentID = torrentID
+			}
+			return err
+		},
 		Progress: func(done, total int64) {
+			if !transferring {
+				if err := m.cat.SetDownloadState(fctx, d.ID, catalog.StateDownloading); err == nil {
+					transferring = true
+					m.mu.Lock()
+					delete(m.caching, d.ID)
+					m.mu.Unlock()
+				}
+			}
 			if err := m.cat.SetDownloadProgress(fctx, d.ID, done, total); errors.Is(err, catalog.ErrNotFound) {
-				mu.Lock()
-				removed = true
-				mu.Unlock()
-				cancel()
+				gone()
 			}
 		},
 	})
@@ -368,7 +453,7 @@ func (m *Manager) fetch(ctx context.Context, d *catalog.Download) bool {
 		return false // shutting down: what was fetched stays for the next run
 	case err != nil:
 		if f, ok := download.AsFailure(err); ok {
-			m.fail(ctx, *d, string(f.Reason), f.Detail, true)
+			m.fail(ctx, *d, string(f.Reason), f.Detail, f.Reason != download.ReasonLocalError)
 		} else {
 			m.log.Error("download error", "download", d.ID, "err", err)
 			m.fail(ctx, *d, ReasonLocalError, "the file could not be written to the temp folder", false)
@@ -539,7 +624,30 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 		return
 	}
 	m.log.Info("imported", "download", d.ID, "title", d.TitleID)
+	m.deleteTorrent(ctx, d)
 	m.refreshJellyfin(ctx)
+}
+
+// deleteTorrent removes the torrent TorBox fetched for an imported download
+// from the account, unless another unfinished download still reads from it.
+// The file is in the library already, so a failure is only logged.
+func (m *Manager) deleteTorrent(ctx context.Context, d catalog.Download) {
+	if m.cleanup == nil || d.TorBoxTorrentID == 0 {
+		return
+	}
+	shared, err := m.cat.TorrentInUse(ctx, d.TorBoxTorrentID, d.ID)
+	if err != nil {
+		if ctx.Err() == nil {
+			m.log.Warn("cannot tell whether a TorBox torrent is still in use", "download", d.ID, "err", err)
+		}
+		return
+	}
+	if shared {
+		return
+	}
+	if err := m.cleanup.DeleteTorrent(context.WithoutCancel(ctx), d.TorBoxTorrentID); err != nil && ctx.Err() == nil {
+		m.log.Warn("cannot delete an imported torrent from TorBox", "download", d.ID, "err", err)
+	}
 }
 
 // move puts the verified file at dst. Only a replacement of the very file at

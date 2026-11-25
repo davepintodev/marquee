@@ -5,6 +5,7 @@ package download
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/davepintodev/marquee/internal/config"
 )
@@ -18,7 +19,17 @@ const (
 	ReasonNotVideo     Reason = "not_video"
 	ReasonSizeMismatch Reason = "size_mismatch"
 	ReasonSourceDown   Reason = "source_down"
+	// ReasonCachingTimeout is a torrent TorBox was still caching after the
+	// longest wait marquee allows.
+	ReasonCachingTimeout Reason = "caching_timeout"
+	// ReasonLocalError is a failure that is not the release's fault, such as
+	// TorBox refusing the API key, so the release is not blocklisted.
+	ReasonLocalError Reason = "local_error"
 )
+
+// ErrRemoved is what a Request's OnCaching returns when the download it
+// belongs to has gone, because its title was removed.
+var ErrRemoved = errors.New("download: the download was removed")
 
 // Failure is a download that failed for a reason worth recording. Detail is
 // plain language and never holds a URL.
@@ -44,6 +55,23 @@ type Request struct {
 	Dest string
 	// ReleaseSize is the size the release was listed with; zero when unknown.
 	ReleaseSize int64
+	// Cached is false for a release the debrid service does not hold, which
+	// TorBox has to fetch first; URL is then empty.
+	Cached bool
+	// InfoHash, FileName, Season and Number say which release and which file
+	// of it to take from a TorBox torrent; Season and Number are zero for a movie.
+	InfoHash, FileName string
+	Season, Number     int
+	// TorBoxTorrentID is the torrent an earlier run already created, which
+	// this run keeps watching; zero starts one.
+	TorBoxTorrentID int
+	// StartedAt is when the download was queued, for the longest time a
+	// torrent may take to cache; zero is now.
+	StartedAt time.Time
+	// OnCaching is told how far TorBox has got, as a percent, and which torrent
+	// and, once it is chosen, file that is. It returns ErrRemoved when the
+	// download is gone.
+	OnCaching func(percent, torrentID, fileID int) error
 	// Progress is called every second or so with the bytes written so far
 	// and the total the server reported.
 	Progress func(done, total int64)

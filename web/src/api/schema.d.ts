@@ -289,7 +289,7 @@ export interface paths {
         put?: never;
         /**
          * Pick one release. It goes through the same download, check and import path and overrides the blocklist.
-         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video, too small or the wrong episode answers 409 with the reason; a blocklisted one, or one its profile rejected, can be grabbed. In dry-run nothing is downloaded, so every grab answers 409. A movie or episode that already has a file answers 409 unless the body says replace: true. A replacement downloads and is verified completely first; only then does it take the old file's place, and the old video and its matching subtitle sidecars are deleted. When it fails, the old file stays untouched.
+         * @description A title that is not in the library yet is added and monitored first. A release the chooser would drop as not cached, not a video, too small or the wrong episode answers 409 with the reason; a blocklisted one, or one its profile rejected, can be grabbed. With a TorBox key set, a release that is not cached is listed as a candidate after the cached ones and can be grabbed: TorBox fetches it first. In dry-run nothing is downloaded, so every grab answers 409. A movie or episode that already has a file answers 409 unless the body says replace: true. A replacement downloads and is verified completely first; only then does it take the old file's place, and the old video and its matching subtitle sidecars are deleted. When it fails, the old file stays untouched.
          */
         post: operations["grabRelease"];
         delete?: never;
@@ -498,7 +498,7 @@ export interface components {
          * @description The closed set of states a tile can show.
          * @enum {string}
          */
-        BadgeState: "downloaded" | "searching" | "downloading" | "stalled" | "missing" | "partial_season";
+        BadgeState: "downloaded" | "searching" | "caching" | "downloading" | "stalled" | "missing" | "partial_season";
         /**
          * @example {
          *       "state": "partial_season",
@@ -509,9 +509,9 @@ export interface components {
          */
         Badge: {
             state: components["schemas"]["BadgeState"];
-            /** @description Display text, such as "Downloading 43%" or "Season 4 · 3 missing". */
+            /** @description Display text, such as "Downloading 43%", "Caching 42%" or "Season 4 · 3 missing". */
             label: string;
-            /** @description Present when state is downloading. */
+            /** @description Present when state is downloading or caching. While caching it is how far TorBox has got with an uncached release. */
             percent?: number;
             /** @description Present when state is partial_season. */
             season?: number;
@@ -624,7 +624,7 @@ export interface components {
             defaultSeriesProfile: string;
         };
         /** @enum {string} */
-        EpisodeState: "downloaded" | "searching" | "downloading" | "stalled" | "missing" | "unaired";
+        EpisodeState: "downloaded" | "searching" | "caching" | "downloading" | "stalled" | "missing" | "unaired";
         Episode: {
             id: components["schemas"]["EpisodeId"];
             number: number;
@@ -633,7 +633,7 @@ export interface components {
             airDate: string;
             monitored: boolean;
             state: components["schemas"]["EpisodeState"];
-            /** @description Present when state is downloading. */
+            /** @description Present when state is downloading or caching. */
             percent?: number;
             nextSearchAt?: components["schemas"]["NextSearchAt"];
             /** @description Present when one video file holds this episode and others: every episode that shares the file, this one included, in order. Marking the file as the wrong one, or deleting it, affects all of them. */
@@ -668,6 +668,7 @@ export interface components {
             sizeBytes: number;
             /** @description The AIOStreams addon or tracker that listed it. */
             source: string;
+            /** @description False for a release the debrid service does not hold; it is only listed when TorBox is set up, and TorBox has to fetch it first. */
             cached: boolean;
         };
         /** @enum {string} */
@@ -682,8 +683,11 @@ export interface components {
             candidates: components["schemas"]["Release"][];
             dropped: components["schemas"]["DroppedRelease"][];
         };
-        /** @enum {string} */
-        DownloadState: "queued" | "downloading" | "verifying" | "importing";
+        /**
+         * @description An uncached release is `caching` while TorBox fetches it (its percent is TorBox's), then `downloading` once marquee transfers the file.
+         * @enum {string}
+         */
+        DownloadState: "queued" | "caching" | "downloading" | "verifying" | "importing";
         Download: {
             id: string;
             titleId: components["schemas"]["TitleId"];
@@ -719,7 +723,7 @@ export interface components {
         /** @enum {string} */
         HistoryKind: "added" | "searched" | "would_grab" | "imported" | "failed" | "removed" | "wrong_file";
         /** @enum {string} */
-        FailureReason: "stalled" | "not_video" | "wrong_episode" | "too_small" | "size_mismatch" | "source_down" | "local_error" | "duplicate_episode";
+        FailureReason: "stalled" | "not_video" | "wrong_episode" | "too_small" | "size_mismatch" | "source_down" | "local_error" | "duplicate_episode" | "caching_timeout";
         HistoryEntry: {
             id: string;
             /** Format: date-time */
@@ -754,7 +758,7 @@ export interface components {
         CheckStatus: "ok" | "warning" | "error";
         HealthCheck: {
             /** @enum {string} */
-            id: "fake_data" | "dry_run" | "aiostreams" | "tmdb" | "library_paths" | "temp_path" | "jellyfin";
+            id: "fake_data" | "dry_run" | "aiostreams" | "torbox" | "tmdb" | "library_paths" | "temp_path" | "jellyfin";
             name: string;
             status: components["schemas"]["CheckStatus"];
             message: string;

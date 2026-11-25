@@ -42,6 +42,9 @@ test("a wall tile follows the live badge of its title without a reload", async (
   act(() => live().emit("progress", { downloadId: "d1", titleId: "movie-1", state: "downloading", percent: 43, bytesDone: 43, bytesTotal: 100 }));
   await tile(/^Dune \(2021\), Downloading 43%$/);
 
+  act(() => live().emit("progress", { downloadId: "d1", titleId: "movie-1", state: "caching", percent: 42, bytesDone: 0, bytesTotal: 0 }));
+  await tile(/^Dune \(2021\), Caching 42%$/);
+
   act(() => live().emit("title", { titleId: "movie-1", badge: { state: "downloaded", label: "Downloaded" } }));
   await tile(/^Dune \(2021\), Downloaded$/);
   expect(await tile(/^Arrival \(2021\), Downloaded$/)).toBeTruthy();

@@ -27,6 +27,10 @@ type Options struct {
 	// poster-<titleId>.jpg and backdrop-<titleId>.jpg. A title without a
 	// file keeps its generated gradient.
 	ArtDir string
+	// TorBox plays a marquee with a TorBox key: Health lists TorBox, releases
+	// that are not cached are candidates after the cached ones and can be
+	// grabbed, and such a grab shows as caching before it downloads.
+	TorBox bool
 }
 
 type episode struct {
@@ -156,6 +160,9 @@ func New(opts Options) *Fake {
 	load("releases.json", &f.releases)
 	load("about.json", &f.aboutBy)
 	f.health = mustRaw("health.json")
+	if opts.TorBox {
+		f.health = withTorBoxCheck(f.health)
+	}
 	for _, t := range f.titles {
 		t.monitored = t.InLibrary
 		t.nextSearch = time.Now().Add(parseIn(t.NextSearchIn))
@@ -325,6 +332,11 @@ func (f *Fake) advance() {
 		case "verifying":
 			d.State = "importing"
 			finished = append(finished, d)
+		case "caching":
+			d.Percent = min(100, d.Percent+f.opts.Step)
+			if d.Percent == 100 {
+				d.State, d.Percent = "downloading", 0
+			}
 		default:
 			d.Percent = min(100, d.Percent+f.opts.Step)
 			if d.Percent == 100 {
@@ -355,4 +367,25 @@ func (f *Fake) finish(d *download) {
 	}
 	f.addHistory("imported", t, d.Episode, "Imported "+name+" ("+d.ReleaseName+").", "", false)
 	f.emitTitle(t)
+}
+
+// withTorBoxCheck adds the TorBox check to the health fixture, after AIOStreams.
+func withTorBoxCheck(health json.RawMessage) json.RawMessage {
+	var h map[string]any
+	if err := json.Unmarshal(health, &h); err != nil {
+		panic(err)
+	}
+	var checks []any
+	for _, c := range h["checks"].([]any) {
+		checks = append(checks, c)
+		if c.(map[string]any)["id"] == "aiostreams" {
+			checks = append(checks, map[string]any{"id": "torbox", "name": "TorBox", "status": "ok", "message": "Key accepted."})
+		}
+	}
+	h["checks"] = checks
+	out, err := json.Marshal(h)
+	if err != nil {
+		panic(err)
+	}
+	return out
 }

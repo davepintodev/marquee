@@ -157,7 +157,11 @@ func (c *Client) GetTorrent(ctx context.Context, torrentID int) (Torrent, error)
 // RequestDownloadLink returns a direct link to one file of a present
 // torrent. The link carries a token, so it stays a config.Secret.
 func (c *Client) RequestDownloadLink(ctx context.Context, torrentID, fileID int) (config.Secret, error) {
-	q := url.Values{"torrent_id": {strconv.Itoa(torrentID)}, "file_id": {strconv.Itoa(fileID)}, "redirect": {"false"}}
+	// TorBox documents the key for this endpoint as a "token" query
+	// parameter; do's errors never quote the request URL that carries it.
+	q := url.Values{
+		"token": {c.key.Reveal()}, "torrent_id": {strconv.Itoa(torrentID)}, "file_id": {strconv.Itoa(fileID)}, "redirect": {"false"},
+	}
 	data, err := c.do(ctx, http.MethodGet, "/torrents/requestdl", q, "", nil)
 	if err != nil {
 		return "", err

@@ -61,6 +61,9 @@ type Context struct {
 	// Profile decides which qualities and formats are allowed and ranks
 	// what is left; a profile with no Qualities allows nothing.
 	Profile config.Profile
+	// AllowUncached keeps releases the debrid service has not cached, which
+	// TorBox can fetch; every cached release still ranks before every one of them.
+	AllowUncached bool
 	// Blocklist maps a release identity to when it was blocked. Entries
 	// older than BlockExpiry are ignored, so the caller need not purge.
 	Blocklist map[string]time.Time
@@ -101,7 +104,8 @@ func IdentityOf(infoHash, fileName string, size int64) string {
 
 // Choose filters releases in a fixed order (cached, video, size, episode,
 // profile, blocklist), so each drop names the first rule it broke. The
-// candidates are ranked by the profile's quality order, then by how few
+// candidates are ranked cached before uncached, then by the profile's
+// quality order, then by how few
 // owned episodes they repeat, then by its prefer boosts, and keep
 // AIOStreams' order where those tie. The same file listed twice keeps its first listing.
 func Choose(releases []aiostreams.Stream, c Context) Result {
@@ -110,6 +114,7 @@ func Choose(releases []aiostreams.Stream, c Context) Result {
 	type ranked struct {
 		Candidate
 		tier, boost, overlap int
+		uncached             bool
 	}
 	var kept []ranked
 	for _, s := range releases {
@@ -123,9 +128,12 @@ func Choose(releases []aiostreams.Stream, c Context) Result {
 			out.Dropped = append(out.Dropped, Drop{cand, reason, msg})
 			continue
 		}
-		kept = append(kept, ranked{cand, slices.Index(c.Profile.Qualities, Tier(s)), boost(c.Profile, ExtractTags(s)), overlap(s, c)})
+		kept = append(kept, ranked{cand, slices.Index(c.Profile.Qualities, Tier(s)), boost(c.Profile, ExtractTags(s)), overlap(s, c), !s.Cached})
 	}
 	sort.SliceStable(kept, func(i, j int) bool {
+		if kept[i].uncached != kept[j].uncached {
+			return !kept[i].uncached
+		}
 		if kept[i].tier != kept[j].tier {
 			return kept[i].tier < kept[j].tier
 		}
@@ -185,7 +193,12 @@ func boost(p config.Profile, tags []string) int {
 
 func check(s aiostreams.Stream, id string, c Context) (Reason, string) {
 	if !s.Cached {
-		return NotCached, "not cached on the debrid service, so it would have to be fetched first"
+		switch {
+		case !c.AllowUncached:
+			return NotCached, "not cached on the debrid service, so it would have to be fetched first"
+		case s.InfoHash == "":
+			return NotCached, "not cached, and it lists no info hash for TorBox to fetch it by"
+		}
 	}
 	if msg := notVideo(s.Filename); msg != "" {
 		return NotVideo, msg

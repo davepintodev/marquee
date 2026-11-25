@@ -18,7 +18,7 @@ function flatten(t: Pick<Title, "seasons">): Flat[] {
 
 export function nextWanted(t: Pick<Title, "seasons">): Flat | undefined {
   const aired = flatten(t).filter((f) => f.episode.state !== "unaired");
-  return aired.find((f) => f.episode.state !== "downloaded" && f.episode.state !== "downloading") ?? undefined;
+  return aired.find((f) => f.episode.state !== "downloaded" && f.episode.state !== "downloading" && f.episode.state !== "caching") ?? undefined;
 }
 
 export interface Counts {

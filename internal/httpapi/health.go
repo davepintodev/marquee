@@ -9,6 +9,7 @@ import (
 
 	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/metadata"
+	"github.com/davepintodev/marquee/internal/torbox"
 )
 
 // Pinger asks a service whether it answers, without changing anything.
@@ -41,7 +42,7 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 
-	var aio, tmdb, jf check
+	var aio, tmdb, jf, tb check
 	var wg sync.WaitGroup
 	probe := func(into *check, f func(context.Context) check) {
 		wg.Add(1)
@@ -52,6 +53,9 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 	}
 	probe(&aio, a.checkAIOStreams)
 	probe(&tmdb, a.checkTMDB)
+	if a.TorBox != nil {
+		probe(&tb, a.checkTorBox)
+	}
 	if a.Jellyfin != nil {
 		probe(&jf, a.checkJellyfin)
 	}
@@ -65,7 +69,11 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 	if a.DryRun {
 		checks = append(checks, warn("dry_run", "Dry-run", "Dry-run is on: marquee searches and chooses but never downloads."))
 	}
-	checks = append(checks, aio, tmdb, library, temp)
+	checks = append(checks, aio)
+	if a.TorBox != nil {
+		checks = append(checks, tb)
+	}
+	checks = append(checks, tmdb, library, temp)
 	if a.Jellyfin != nil {
 		checks = append(checks, jf)
 	}
@@ -135,6 +143,22 @@ func (a *api) checkTMDB(ctx context.Context) check {
 		return failing(id, name, "TMDB did not answer in time.")
 	}
 	return failing(id, name, "TMDB is not answering; try again shortly.")
+}
+
+func (a *api) checkTorBox(ctx context.Context) check {
+	const id, name = "torbox", "TorBox"
+	err := a.TorBox.Ping(ctx)
+	switch {
+	case err == nil:
+		return healthy(id, name, "Key accepted.")
+	case errors.Is(err, torbox.ErrRejected):
+		return failing(id, name, "TorBox refused marquee's API key; check the TorBox API key setting. Releases that are not cached cannot be fetched.")
+	case errors.Is(err, torbox.ErrRateLimited):
+		return warn(id, name, "TorBox is rate-limiting marquee; try again in a minute.")
+	case timedOut(err):
+		return failing(id, name, "TorBox did not answer in time. Releases that are not cached cannot be fetched.")
+	}
+	return failing(id, name, "TorBox is not answering. Releases that are not cached cannot be fetched.")
 }
 
 func (a *api) checkLibrary() check {

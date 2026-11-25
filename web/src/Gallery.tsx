@@ -8,6 +8,7 @@ import { bytesOf } from "./words";
 
 const stateWords: Record<Download["state"], string> = {
   queued: "Queued",
+  caching: "Caching",
   downloading: "Downloading",
   verifying: "Verifying",
   importing: "Importing",

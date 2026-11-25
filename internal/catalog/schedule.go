@@ -177,6 +177,14 @@ ON CONFLICT (title_id, season, number) DO UPDATE SET used = CASE WHEN day = excl
 	return affected(res, err)
 }
 
+// RefundSearch gives back a search CountSearch spent for day, for one that
+// was set aside without being tried.
+func (s *Store) RefundSearch(ctx context.Context, titleID string, season, number int, day string) error {
+	_, err := s.w.ExecContext(ctx, `UPDATE search_budget SET used = used - 1
+		WHERE title_id = ? AND season = ? AND number = ? AND day = ? AND used > 0`, titleID, season, number, day)
+	return err
+}
+
 // SourceBackoff is how many searches in a row the source failed, and until
 // when no search is made.
 func (s *Store) SourceBackoff(ctx context.Context) (failures int, until time.Time, err error) {

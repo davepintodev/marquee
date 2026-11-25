@@ -18,6 +18,7 @@ import (
 	"github.com/davepintodev/marquee/internal/aiostreams"
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/config"
+	"github.com/davepintodev/marquee/internal/download"
 	"github.com/davepintodev/marquee/internal/fake"
 	"github.com/davepintodev/marquee/internal/httpapi"
 	"github.com/davepintodev/marquee/internal/importer"
@@ -26,6 +27,7 @@ import (
 	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/scheduler"
 	"github.com/davepintodev/marquee/internal/server"
+	"github.com/davepintodev/marquee/internal/torbox"
 )
 
 // Options are the seams tests use to replace what the outside world
@@ -44,6 +46,13 @@ type Options struct {
 	OMDbTimeout time.Duration
 	// AIOStreamsTimeout bounds one AIOStreams search; zero is ninety seconds.
 	AIOStreamsTimeout time.Duration
+	// TorBoxAPIBase replaces TorBox's API address; empty is TorBox.
+	TorBoxAPIBase string
+	// TorBoxPoll is how often a caching torrent is looked at; zero is fifteen seconds.
+	TorBoxPoll time.Duration
+	// TorBoxNow is the clock the TorBox stall and lifetime limits are judged
+	// by; nil is the system clock.
+	TorBoxNow func() time.Time
 	// Sleep waits out a TMDB rate limit; nil really sleeps.
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Transfers tunes the download pipeline; the zero value is production.
@@ -101,7 +110,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			listen = ":8080"
 		}
 		token = config.Secret(getenv("MARQUEE_API_TOKEN"))
-		f := fake.New(fake.Options{ArtDir: getenv("MARQUEE_FAKE_ART_DIR")})
+		f := fake.New(fake.Options{ArtDir: getenv("MARQUEE_FAKE_ART_DIR"), TorBox: getenv("MARQUEE_FAKE_TORBOX") != ""})
 		defer f.Close()
 		api, closer = f, f.Close
 		msg = "marquee starting in fake mode: the API serves committed fixtures and nothing is downloaded; TMDB key, library paths and the other essential settings are not required"
@@ -118,11 +127,34 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			return err
 		}
 		defer func() { _ = store.Close() }()
-		transfers := pipeline.New(pipeline.Options{
+		var tbClient *torbox.Client
+		popts := pipeline.Options{
 			Catalog: store, JellyfinURL: cfg.JellyfinURL, JellyfinKey: cfg.JellyfinKey,
 			MoviesPath: cfg.MoviesPath, SeriesPath: cfg.SeriesPath, TempPath: cfg.TempPath,
 			Log: log, Tuning: opts.Transfers,
-		})
+		}
+		if cfg.TorBoxAPIKey != "" {
+			if tbClient, err = torbox.New(torbox.Options{APIKey: cfg.TorBoxAPIKey, Base: opts.TorBoxAPIBase}); err != nil {
+				return fmt.Errorf("MARQUEE_TORBOX_API_KEY: %w", err)
+			}
+			tbHTTP := opts.Transfers.Download
+			if tbHTTP.Log == nil {
+				tbHTTP.Log = log
+			}
+			now := opts.TorBoxNow
+			if now == nil {
+				now = opts.Now
+			}
+			popts.Downloader = download.NewTorBox(download.TorBoxOptions{
+				Client: tbClient, HTTP: download.NewHTTP(tbHTTP), Poll: opts.TorBoxPoll,
+				StallTimeout: cfg.TorBoxStallTimeout, MaxLifetime: cfg.TorBoxMaxLifetime, Now: now, Log: log,
+			})
+			popts.TorBoxMaxActive = cfg.TorBoxMaxActive
+			if cfg.TorBoxDeleteOnComplete {
+				popts.TorBoxCleanup = tbClient
+			}
+		}
+		transfers := pipeline.New(popts)
 		if opts.OnPipeline != nil {
 			opts.OnPipeline(transfers)
 		}
@@ -174,7 +206,8 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			<-adoptDone
 		}()
 		sched := scheduler.New(scheduler.Options{
-			Catalog: store, Source: source, TMDB: tmdb, Transfers: transfers, DryRun: cfg.DryRun, Profiles: cfg.ProfileSet(), Log: log, Tuning: opts.Scheduler,
+			Catalog: store, Source: source, TMDB: tmdb, Transfers: transfers, DryRun: cfg.DryRun, Profiles: cfg.ProfileSet(),
+			TorBoxMaxActive: popts.TorBoxMaxActive, Log: log, Tuning: opts.Scheduler,
 		})
 		if opts.OnScheduler != nil {
 			opts.OnScheduler(sched)
@@ -198,13 +231,17 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		if cfg.JellyfinURL != "" {
 			jellyfin = importer.NewJellyfin(cfg.JellyfinURL, cfg.JellyfinKey, opts.HealthTimeout)
 		}
+		var tbPing httpapi.Pinger
+		if tbClient != nil {
+			tbPing = tbClient
+		}
 		var scores httpapi.Scorer
 		if cfg.OMDbKey != "" {
 			scores = omdb.New(omdb.Options{Base: opts.OMDbBase, Key: cfg.OMDbKey, Timeout: opts.OMDbTimeout})
 		}
 		api = httpapi.New(httpapi.Deps{
 			Catalog: store, Transfers: transfers, TMDB: tmdb, OMDb: scores, Source: source, Scanner: scanner, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
-			Paths: cfg.Paths(), Profiles: cfg.ProfileSet(), Jellyfin: jellyfin, HealthTimeout: opts.HealthTimeout,
+			Paths: cfg.Paths(), Profiles: cfg.ProfileSet(), Jellyfin: jellyfin, TorBox: tbPing, HealthTimeout: opts.HealthTimeout,
 			Images:      metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 			EventsEvery: opts.EventsEvery, Stop: streamsStop,
 		})
