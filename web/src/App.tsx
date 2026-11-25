@@ -77,6 +77,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
   };
 
   const home = (e: React.MouseEvent) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     setQuery("");
     goHome();

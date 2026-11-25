@@ -464,11 +464,11 @@ test("posters whose colour cannot be read leave the words in their default colou
 
 const logo = () => screen.getByRole("link", { name: "marquee", hidden: true });
 
-test("the logo is a link by its name, so Enter on it works", async () => {
+test("the logo is a link by its name on the grid, so Enter on it works", async () => {
   await wallUp();
   fireEvent.click(words());
 
-  expect(logo().getAttribute("href")).toBe("#/");
+  expect(screen.getByRole("link", { name: "marquee" }).getAttribute("href")).toBe("#/");
 });
 
 test("the logo from the grid with a search typed returns to the wall with the search cleared", async () => {
@@ -477,12 +477,22 @@ test("the logo from the grid with a search typed returns to the wall with the se
   fireEvent.change(searchbox(), { target: { value: "dune" } });
   expect((searchbox() as HTMLInputElement).value).toBe("dune");
 
+  const entries = window.history.length;
   fireEvent.click(logo());
 
   await waitFor(onWall);
   expect(window.location.hash).toBe("#/");
+  expect(window.history.length).toBe(entries + 1);
+  expect((screen.getByRole("searchbox", { name: /search movies and series/i, hidden: true }) as HTMLInputElement).value).toBe("");
+});
+
+test("a modified click on the logo is left to the browser", async () => {
+  await wallUp();
   fireEvent.click(words());
-  expect((searchbox() as HTMLInputElement).value).toBe("");
+
+  fireEvent.click(screen.getByRole("link", { name: "marquee" }), { ctrlKey: true });
+
+  inApp();
 });
 
 test("the logo from a title's page lands on the wall, with the page closed", async () => {

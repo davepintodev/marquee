@@ -203,6 +203,7 @@ button {
 }
 
 .nav-link:focus-visible,
+.mark:focus-visible,
 .page a:focus-visible,
 .page button:focus-visible,
 .page summary:focus-visible,
