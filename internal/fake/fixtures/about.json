@@ -337,6 +337,52 @@
    "movie-13187"
   ]
  },
+ "movie-27205": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.4,
+    "scale": 10,
+    "votes": 37000
+   },
+   {
+    "source": "imdb",
+    "score": 8.8,
+    "scale": 10,
+    "votes": 2600000
+   }
+  ],
+  "genres": [
+   "Action",
+   "Science Fiction",
+   "Adventure"
+  ],
+  "runtimeMinutes": 148,
+  "status": "Released",
+  "language": "English",
+  "cast": [
+   {
+    "personId": 1078,
+    "name": "Leonardo DiCaprio",
+    "character": "Cobb"
+   },
+   {
+    "personId": 1079,
+    "name": "Joseph Gordon-Levitt",
+    "character": "Arthur"
+   },
+   {
+    "personId": 1080,
+    "name": "Elliot Page",
+    "character": "Ariadne"
+   }
+  ],
+  "similar": [
+   "movie-157336",
+   "movie-335984",
+   "movie-329865"
+  ]
+ },
  "movie-157336": {
   "ratings": [
    {

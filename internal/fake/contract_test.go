@@ -327,7 +327,7 @@ func TestFixturesShowEveryBadgeState(t *testing.T) {
 	}
 	want := map[string]string{
 		"downloaded": "Downloaded", "wanted": "Wanted", "not_found": "Not found", "downloading": "Downloading 43%",
-		"stalled": "Stalled", "partial_season": "Season 8 · 19 missing",
+		"stalled": "Stalled", "missing": "Missing", "partial_season": "Season 8 · 19 missing",
 	}
 	for state, label := range want {
 		if !labels[state][label] {

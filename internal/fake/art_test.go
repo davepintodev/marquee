@@ -103,6 +103,7 @@ func TestFixtureTmdbIdsAreTheRealTMDBEntries(t *testing.T) {
 		{"series", 1408, "House"},
 		{"series", 226745, "Camp Snoopy"},
 		{"series", 213375, "VisionQuest"},
+		{"movie", 27205, "Inception"},
 		{"movie", 157336, "Interstellar"},
 		{"movie", 286217, "The Martian"},
 		{"movie", 438631, "Dune"},

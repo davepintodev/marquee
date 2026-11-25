@@ -64,6 +64,7 @@ type entry struct {
 	Seasons   []*season `json:"seasons"`
 
 	NextSearchIn string `json:"nextSearchIn"`
+	Unmonitored  bool   `json:"unmonitored"`
 
 	monitored   bool
 	profile     string
@@ -172,7 +173,7 @@ func New(opts Options) *Fake {
 		f.health = withTorBoxCheck(f.health)
 	}
 	for _, t := range f.titles {
-		t.monitored = t.InLibrary
+		t.monitored = t.InLibrary && !t.Unmonitored
 		t.nextSearch = time.Now().Add(parseIn(t.NextSearchIn))
 		for _, s := range t.Seasons {
 			for _, e := range s.Episodes {
