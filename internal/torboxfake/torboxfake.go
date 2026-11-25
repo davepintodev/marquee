@@ -255,7 +255,17 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request, p string) {
 			return
 		}
 		f.magnets = append(f.magnets, magnet)
-		t := f.add(strings.ToLower(hash))
+		hash = strings.ToLower(hash)
+		// TorBox answers a hash the account already holds with that torrent.
+		var t *torrent
+		for _, have := range f.byID {
+			if have.hash == hash && (t == nil || have.id < t.id) {
+				t = have
+			}
+		}
+		if t == nil {
+			t = f.add(hash)
+		}
 		ok(w, map[string]any{"torrent_id": t.id, "hash": t.hash, "name": t.hash})
 
 	case r.Method == http.MethodGet && p == "/torrents/mylist":

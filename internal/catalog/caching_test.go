@@ -2,7 +2,10 @@ package catalog_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,5 +135,91 @@ func TestATorrentIsInUseWhileAnotherUnfinishedDownloadReferencesIt(t *testing.T)
 	}
 	if used, err := s.TorrentInUse(ctx, 31, "a"); err != nil || used {
 		t.Fatalf("no sibling is active any more: %v, %v", used, err)
+	}
+}
+
+func TestCachingStartsWhenTheTorrentIsFirstRecordedNotWhenTheDownloadWasQueued(t *testing.T) {
+	ctx := context.Background()
+	start := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	var clock atomic.Int64
+	clock.Store(start.UnixNano())
+	at := func(d time.Duration) { clock.Store(start.Add(d).UnixNano()) }
+	dir := t.TempDir()
+	s, err := catalog.Open(dir, func() time.Time { return time.Unix(0, clock.Load()).UTC() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	addHouse(t, s)
+	queueUncached(t, s, "slow", 2)
+
+	at(3 * time.Hour)
+	if d, _ := s.GetDownload(ctx, "slow"); !d.CachingStartedAt.IsZero() {
+		t.Fatalf("a queued download has not started caching: %v", d.CachingStartedAt)
+	}
+	if err := s.SetDownloadCaching(ctx, "slow", 0, 77, 0); err != nil {
+		t.Fatal(err)
+	}
+	at(5 * time.Hour)
+	if err := s.SetDownloadCaching(ctx, "slow", 60, 77, 3); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := s.GetDownload(ctx, "slow")
+	if want := start.Add(3 * time.Hour); !d.CachingStartedAt.Equal(want) {
+		t.Fatalf("caching started at %v, want %v (when the torrent was recorded; later progress must not move it)", d.CachingStartedAt, want)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err = catalog.Open(dir, func() time.Time { return time.Unix(0, clock.Load()).UTC() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	if d, _ := s.GetDownload(ctx, "slow"); !d.CachingStartedAt.Equal(start.Add(3 * time.Hour)) {
+		t.Fatalf("a restart lost the caching start: %v", d.CachingStartedAt)
+	}
+}
+
+func TestTheCachingStartMigrationDatesAnInFlightTorrentFromItsDownloadAndLeavesQueuedOnesUndated(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	s, err := catalog.Open(dir, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	addHouse(t, s)
+	queueUncached(t, s, "running", 1)
+	queueUncached(t, s, "waiting", 2)
+	if err := s.SetDownloadCaching(ctx, "running", 10, 5, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(dir, catalog.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`ALTER TABLE downloads DROP COLUMN caching_started_at; PRAGMA user_version = 15`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err = catalog.Open(dir, func() time.Time { return now.Add(time.Hour) })
+	if err != nil {
+		t.Fatalf("the migration must run on a database from before it: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	running, _ := s.GetDownload(ctx, "running")
+	waiting, _ := s.GetDownload(ctx, "waiting")
+	if !running.CachingStartedAt.Equal(running.CreatedAt) || running.CachingStartedAt.IsZero() {
+		t.Errorf("running: caching start %v, created %v", running.CachingStartedAt, running.CreatedAt)
+	}
+	if !waiting.CachingStartedAt.IsZero() {
+		t.Errorf("waiting: caching start %v", waiting.CachingStartedAt)
 	}
 }

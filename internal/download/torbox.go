@@ -85,7 +85,7 @@ func (t *TorBox) Download(ctx context.Context, req Request) (Result, error) {
 		id = created.ID
 		if err := t.report(ctx, req, 0, id, 0); err != nil {
 			if errors.Is(err, ErrRemoved) {
-				t.delete(ctx, id)
+				t.delete(ctx, req, id)
 			}
 			return Result{}, err
 		}
@@ -100,6 +100,9 @@ func (t *TorBox) Download(ctx context.Context, req Request) (Result, error) {
 		return Result{}, err
 	}
 	if err := t.report(ctx, req, 100, id, file.ID); err != nil {
+		if errors.Is(err, ErrRemoved) {
+			t.delete(ctx, req, id)
+		}
 		return Result{}, err
 	}
 	link, err := t.o.Client.RequestDownloadLink(ctx, id, file.ID)
@@ -111,8 +114,9 @@ func (t *TorBox) Download(ctx context.Context, req Request) (Result, error) {
 }
 
 // cache waits until TorBox holds the whole torrent. A torrent that makes no
-// progress for the stall timeout, or is still caching after the lifetime, is
-// deleted from TorBox. Shutting down leaves it there to be picked up again.
+// progress for the stall timeout, or is still caching after the lifetime,
+// fails the download and is deleted from TorBox unless another download
+// still needs it. Shutting down leaves it there to be picked up again.
 func (t *TorBox) cache(ctx context.Context, req Request, id int) (torbox.Torrent, error) {
 	started := req.StartedAt
 	progressAt := t.o.Now()
@@ -139,7 +143,7 @@ func (t *TorBox) cache(ctx context.Context, req Request, id int) (torbox.Torrent
 			best = max(best, tor.Progress)
 			if rerr := t.report(ctx, req, int(best*100), id, 0); rerr != nil {
 				if errors.Is(rerr, ErrRemoved) {
-					t.delete(ctx, id)
+					t.delete(ctx, req, id)
 				}
 				return torbox.Torrent{}, rerr
 			}
@@ -148,10 +152,10 @@ func (t *TorBox) cache(ctx context.Context, req Request, id int) (torbox.Torrent
 		now := t.o.Now()
 		switch {
 		case now.Sub(progressAt) >= t.o.StallTimeout:
-			t.delete(ctx, id)
+			t.delete(ctx, req, id)
 			return torbox.Torrent{}, &Failure{ReasonStalled, fmt.Sprintf("TorBox made no progress caching it for %s", t.o.StallTimeout)}
 		case now.Sub(started) >= t.o.MaxLifetime:
-			t.delete(ctx, id)
+			t.delete(ctx, req, id)
 			return torbox.Torrent{}, &Failure{ReasonCachingTimeout, fmt.Sprintf("TorBox was still caching it after %s", t.o.MaxLifetime)}
 		}
 		sleep(ctx, t.o.Poll)
@@ -174,9 +178,13 @@ func (t *TorBox) report(ctx context.Context, req Request, percent, torrentID, fi
 }
 
 // delete removes the torrent from the account, best effort: marquee has
-// already given up on it.
-func (t *TorBox) delete(ctx context.Context, id int) {
-	if err := t.o.Client.DeleteTorrent(context.WithoutCancel(ctx), id); err != nil && !errors.Is(err, torbox.ErrNotFound) {
+// already given up on it. A torrent another download still needs stays.
+func (t *TorBox) delete(ctx context.Context, req Request, id int) {
+	ctx = context.WithoutCancel(ctx)
+	if req.Keep != nil && req.Keep(ctx, id) {
+		return
+	}
+	if err := t.o.Client.DeleteTorrent(ctx, id); err != nil && !errors.Is(err, torbox.ErrNotFound) {
 		t.o.Log.Warn("cannot delete a torrent from TorBox", "err", err)
 	}
 }

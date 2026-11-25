@@ -65,9 +65,13 @@ type Request struct {
 	// TorBoxTorrentID is the torrent an earlier run already created, which
 	// this run keeps watching; zero starts one.
 	TorBoxTorrentID int
-	// StartedAt is when the download was queued, for the longest time a
-	// torrent may take to cache; zero is now.
+	// StartedAt is when TorBox began caching the torrent, for the longest
+	// time it may take; zero is now.
 	StartedAt time.Time
+	// Keep says whether another download still needs the torrent; it is asked
+	// whenever this one is about to delete the torrent from TorBox, which it
+	// then leaves alone. Nil means nobody else does.
+	Keep func(ctx context.Context, torrentID int) bool
 	// OnCaching is told how far TorBox has got, as a percent, and which torrent
 	// and, once it is chosen, file that is. It returns ErrRemoved when the
 	// download is gone.

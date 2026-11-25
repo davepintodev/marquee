@@ -395,3 +395,140 @@ func TestTheUncachedColumnsSurviveInTheDownloadsTable(t *testing.T) {
 		t.Fatalf("row = cached %d torrent %d percent %d state %s (%v)", cached, torrent, pct, state, err)
 	}
 }
+
+func (r *tbRig) grabEpisodes(eps ...string) {
+	r.t.Helper()
+	for _, ep := range eps {
+		cands, _ := r.releases("/api/titles/series-1408/releases?episode=" + ep)
+		r.mustCall("POST", "/api/titles/series-1408/releases/"+cands[0]["id"].(string)+"/grab", `{"episode":"`+ep+`"}`, 202)
+	}
+}
+
+// seasonPack makes both episodes one torrent on TorBox, found by one info hash.
+func (r *tbRig) seasonPack() {
+	body := func(b byte) []byte {
+		data := debridfake.MKV(epSize)
+		for _, off := range []int{1 << 20, epSize / 2, epSize - 1000} {
+			data[off] = b
+		}
+		return data
+	}
+	r.tb.SetFiles(hashA,
+		torboxfake.File{ID: 0, Name: "Dune.Prophecy.S01/" + ep1Name, Size: epSize, Body: body('1')},
+		torboxfake.File{ID: 1, Name: "Dune.Prophecy.S01/" + ep2Name, Size: epSize, Body: body('2')})
+	r.aio.Answer("series", ep1ID, results(listed{name: ep1Name, size: epSize, uncached: true, hash: hashA, season: 1, ep: 1}))
+	r.aio.Answer("series", ep2ID, results(listed{name: ep2Name, size: epSize, uncached: true, hash: hashA, season: 1, ep: 2}))
+}
+
+func (r *tbRig) waitStates(want string, n int) {
+	r.t.Helper()
+	waitFor(r.t, fmt.Sprintf("%d downloads %s", n, want), 10*time.Second, func() bool {
+		got := 0
+		for _, d := range r.downloads() {
+			if d.(map[string]any)["state"] == want {
+				got++
+			}
+		}
+		return got == n
+	})
+}
+
+func TestADownloadThatWaitedQueuedForLongerThanTheMaxLifetimeStillGetsItsFullCachingTime(t *testing.T) {
+	r := newTBRig(t, map[string]string{"MARQUEE_TORBOX_MAX_ACTIVE": "1", "MARQUEE_TORBOX_MAX_LIFETIME": "2h"})
+	r.episodeFile(hashA, ep1Name)
+	r.episodeFile(hashB, ep2Name)
+	r.aio.Answer("series", ep1ID, results(listed{name: ep1Name, size: epSize, uncached: true, hash: hashA, season: 1, ep: 1}))
+	r.aio.Answer("series", ep2ID, results(listed{name: ep2Name, size: epSize, uncached: true, hash: hashB, season: 1, ep: 2}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.grabEpisodes("s01e01", "s01e02")
+	first := r.torrentIDs(1)[0]
+	r.tb.Step(first, 0.5, 100)
+	waitFor(t, "the first at 50%", 10*time.Second, func() bool {
+		for _, d := range r.downloads() {
+			if m := d.(map[string]any); m["state"] == "caching" && m["percent"] == float64(50) {
+				return true
+			}
+		}
+		return false
+	})
+
+	// The second grab has been queued behind the full cap for three hours.
+	queuedAt := r.now.Load() - int64(3*time.Hour)
+	if _, err := r.db().Exec(`UPDATE downloads SET created_at = ? WHERE state = 'queued'`, time.Unix(0, queuedAt).UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	r.tb.Present(first)
+	waitFor(t, "the first import", 30*time.Second, func() bool { return len(r.entries("imported")) == 1 })
+	waitFor(t, "the second torrent", 10*time.Second, func() bool { return len(r.tb.Magnets()) == 2 })
+	time.Sleep(300 * time.Millisecond)
+	if got := r.entries("failed"); len(got) != 0 {
+		t.Fatalf("the queue time was counted as caching time: %v", got)
+	}
+	r.tb.Step(2, 0.4, 100)
+	r.waitStates("caching", 1)
+	r.tb.Present(2)
+	waitFor(t, "both imports", 30*time.Second, func() bool { return len(r.entries("imported")) == 2 })
+}
+
+func TestARestartKeepsMeasuringTheMaxLifetimeFromWhenCachingBegan(t *testing.T) {
+	r := newTBRig(t, map[string]string{"MARQUEE_TORBOX_MAX_LIFETIME": "2h"})
+	r.episodeFile(hashA, ep1Name)
+	r.aio.Answer("series", ep1ID, results(listed{name: ep1Name, size: epSize, uncached: true, hash: hashA, season: 1, ep: 1}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	id := r.torrentIDs(1)[0]
+	r.tb.Step(id, 0.1, 100)
+	r.waitCaching(10)
+	r.stop()
+	r.advance(3 * time.Hour)
+	r.start()
+	waitFor(t, "the failure", 10*time.Second, func() bool { return len(r.entries("failed")) == 1 })
+	if e := r.entries("failed")[0]; e["reason"] != "caching_timeout" {
+		t.Errorf("failure = %v", e)
+	}
+	if got := r.tb.Deleted(); !slices.Equal(got, []int{id}) {
+		t.Fatalf("deleted %v", got)
+	}
+}
+
+func TestEpisodesSharingOnePackTorrentThatStallDeleteItExactlyOnce(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.seasonPack()
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.grabEpisodes("s01e01", "s01e02")
+	id := r.torrentIDs(1)[0]
+	r.tb.Step(id, 0.3, 100)
+	r.waitStates("caching", 2)
+	if n := len(r.tb.Magnets()); n != 2 {
+		t.Fatalf("each episode asks TorBox for the pack: %d requests", n)
+	}
+	r.tb.Stall(id)
+	r.advance(31 * time.Minute)
+	waitFor(t, "both failures", 10*time.Second, func() bool { return len(r.entries("failed")) == 2 })
+	time.Sleep(100 * time.Millisecond)
+	for _, e := range r.entries("failed") {
+		if e["reason"] != "stalled" {
+			t.Errorf("failure = %v: the torrent was deleted from under the second episode", e)
+		}
+	}
+	if got := r.tb.Deleted(); !slices.Equal(got, []int{id}) {
+		t.Fatalf("deleted %v, want the shared torrent once", got)
+	}
+}
+
+func TestTheSharedTorrentSurvivesTheFirstImportAndGoesWithTheLast(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.seasonPack()
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.grabEpisodes("s01e01", "s01e02")
+	id := r.torrentIDs(1)[0]
+	r.tb.Step(id, 0.3, 100)
+	r.waitStates("caching", 2)
+	r.tb.Present(id)
+	waitFor(t, "both imports", 30*time.Second, func() bool { return len(r.entries("imported")) == 2 })
+	waitFor(t, "the torrent to be deleted", 10*time.Second, func() bool { return len(r.tb.Deleted()) >= 1 })
+	time.Sleep(100 * time.Millisecond)
+	if got := r.tb.Deleted(); !slices.Equal(got, []int{id}) {
+		t.Fatalf("deleted %v: the shared torrent goes once, with the last download", got)
+	}
+}

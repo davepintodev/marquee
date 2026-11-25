@@ -1,11 +1,14 @@
 package torboxfake_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"testing"
 
+	"github.com/davepintodev/marquee/internal/config"
+	"github.com/davepintodev/marquee/internal/torbox"
 	"github.com/davepintodev/marquee/internal/torboxfake"
 )
 
@@ -56,5 +59,31 @@ func TestListsEveryTorrentWithoutAnID(t *testing.T) {
 	}
 	if !body.Success || body.Data == nil || len(body.Data) != 0 {
 		t.Fatalf("an empty account lists []: %+v", body)
+	}
+}
+
+func TestCreatingAHashTheAccountHoldsAnswersWithThatTorrent(t *testing.T) {
+	fake := torboxfake.New()
+	defer fake.Close()
+	c, err := torbox.New(torbox.Options{APIKey: config.Secret(torboxfake.Key), Base: fake.APIBase()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	const hash = "0123456789abcdef0123456789abcdef01234567"
+	a, err := c.CreateTorrent(ctx, hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := c.CreateTorrent(ctx, hash)
+	if err != nil || b.ID != a.ID {
+		t.Fatalf("second create = %+v, %v; want torrent %d again", b, err, a.ID)
+	}
+	if err := c.DeleteTorrent(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	again, err := c.CreateTorrent(ctx, hash)
+	if err != nil || again.ID == a.ID {
+		t.Fatalf("a deleted torrent must be created anew: %+v, %v", again, err)
 	}
 }

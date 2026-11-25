@@ -254,15 +254,15 @@ func TestProgressKeepsAStallAtBayButNotTheLifetime(t *testing.T) {
 	}
 }
 
-func TestTheLifetimeCountsFromWhenTheDownloadWasQueuedSoARestartDoesNotResetIt(t *testing.T) {
+func TestTheLifetimeCountsFromWhenCachingStartedSoARestartDoesNotResetIt(t *testing.T) {
 	r := newRig(t, nil)
 	r.fake.Cached("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	created := make(chan struct{})
 	var once sync.Once
 	c := &caching{}
-	queued := r.clock.Now().Add(-5 * time.Hour)
+	began := r.clock.Now().Add(-5 * time.Hour)
 	done := r.start(context.Background(), download.Request{
-		InfoHash: tbHash, StartedAt: queued, OnCaching: func(p, tid, fid int) error {
+		InfoHash: tbHash, StartedAt: began, OnCaching: func(p, tid, fid int) error {
 			once.Do(func() { close(created) })
 			return c.on(p, tid, fid)
 		},
@@ -282,6 +282,77 @@ func TestARemovedTitleDeletesTheTorrentAndStopsCleanly(t *testing.T) {
 	}
 	if got := r.fake.Deleted(); len(got) != 1 {
 		t.Fatalf("deleted %v", got)
+	}
+}
+
+func TestARemovedDownloadLeavesATorrentASiblingStillNeeds(t *testing.T) {
+	r := newRig(t, nil)
+	var asked []int
+	keep := func(_ context.Context, id int) bool { asked = append(asked, id); return true }
+	c := &caching{err: download.ErrRemoved}
+	out := finish(t, r.start(context.Background(), download.Request{InfoHash: tbHash, OnCaching: c.on, Keep: keep}))
+	if !errors.Is(out.err, download.ErrRemoved) {
+		t.Fatalf("got %v", out.err)
+	}
+	id, _ := c.ids()
+	if got := r.fake.Deleted(); len(got) != 0 {
+		t.Fatalf("deleted %v from under a sibling", got)
+	}
+	if !slices.Equal(asked, []int{id}) {
+		t.Fatalf("asked %v, want [%d]", asked, id)
+	}
+}
+
+func TestADownloadRemovedOnceTheTorrentIsCachedStillDeletesIt(t *testing.T) {
+	r := newRig(t, nil)
+	r.fake.Cached(tbHash)
+	calls := 0
+	out := finish(t, r.start(context.Background(), download.Request{InfoHash: tbHash, OnCaching: func(int, int, int) error {
+		if calls++; calls > 1 {
+			return download.ErrRemoved
+		}
+		return nil
+	}}))
+	if !errors.Is(out.err, download.ErrRemoved) {
+		t.Fatalf("got %v", out.err)
+	}
+	if got := r.fake.Deleted(); len(got) != 1 {
+		t.Fatalf("a removed download left its cached torrent on TorBox: deleted %v", got)
+	}
+}
+
+func TestAStallOrTheLifetimeFailsADownloadButKeepsATorrentASiblingStillNeeds(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		reason download.Reason
+		stall  time.Duration
+		run    func(r *rig, id int)
+	}{
+		{"stall", download.ReasonStalled, 30 * time.Minute, func(r *rig, id int) {
+			r.fake.Stall(id)
+			r.clock.Advance(31 * time.Minute)
+		}},
+		{"lifetime", download.ReasonCachingTimeout, 100 * time.Hour, func(r *rig, id int) {
+			r.fake.Step(id, 0.5, 100)
+			r.clock.Advance(5 * time.Hour)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t, func(o *download.TorBoxOptions) { o.StallTimeout = tc.stall })
+			c := &caching{}
+			keep := func(context.Context, int) bool { return true }
+			done := r.start(context.Background(), download.Request{InfoHash: tbHash, OnCaching: c.on, Keep: keep})
+			waitFor(t, "the torrent", func() bool { id, _ := c.ids(); return id != 0 })
+			id, _ := c.ids()
+			tc.run(r, id)
+			f, ok := download.AsFailure(finish(t, done).err)
+			if !ok || f.Reason != tc.reason {
+				t.Fatalf("want %s, got %+v", tc.reason, f)
+			}
+			if got := r.fake.Deleted(); len(got) != 0 {
+				t.Fatalf("deleted %v from under a sibling", got)
+			}
+		})
 	}
 }
 

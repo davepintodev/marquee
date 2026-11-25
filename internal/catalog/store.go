@@ -278,6 +278,9 @@ CREATE TABLE search_budget_new (
 INSERT INTO search_budget_new (title_id, season, number, day, used) SELECT title_id, 0, 0, day, used FROM search_budget;
 DROP TABLE search_budget;
 ALTER TABLE search_budget_new RENAME TO search_budget;
+`, `
+ALTER TABLE downloads ADD COLUMN caching_started_at TEXT NOT NULL DEFAULT '';
+UPDATE downloads SET caching_started_at = created_at WHERE torbox_torrent_id != 0;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

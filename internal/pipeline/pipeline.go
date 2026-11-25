@@ -121,6 +121,12 @@ type Manager struct {
 	torboxMax int
 	cleanup   TorrentDeleter
 
+	// leaving holds the downloads that are giving up on their TorBox torrent,
+	// so that two downloads of one torrent failing together do not each
+	// find the other still using it and both leave it on the account.
+	leaveMu sync.Mutex
+	leaving map[string]bool
+
 	claimMu sync.Mutex
 	claims  map[string]claim
 }
@@ -166,7 +172,7 @@ func New(o Options) *Manager {
 		cat: o.Catalog, dl: dl, movies: o.MoviesPath, series: o.SeriesPath,
 		tempDir: filepath.Join(o.TempPath, "marquee"), log: log, tune: t,
 		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{},
-		claims: map[string]claim{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
+		claims: map[string]claim{}, leaving: map[string]bool{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
 	}
 	if o.JellyfinURL != "" {
 		m.jf = importer.NewJellyfin(o.JellyfinURL, o.JellyfinKey, t.JellyfinTimeout)
@@ -287,6 +293,9 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 				delete(m.running, d.ID)
 				delete(m.caching, d.ID)
 				m.mu.Unlock()
+				m.leaveMu.Lock()
+				delete(m.leaving, d.ID)
+				m.leaveMu.Unlock()
 				m.claimMu.Lock()
 				delete(m.claims, d.ID)
 				m.claimMu.Unlock()
@@ -415,7 +424,7 @@ func (m *Manager) fetch(ctx context.Context, d *catalog.Download) bool {
 	res, err := m.dl.Download(fctx, download.Request{
 		URL: d.URL, Dest: m.partPath(d.ID), ReleaseSize: d.Release.Size,
 		Cached: !d.Uncached, InfoHash: d.Release.InfoHash, FileName: d.Release.FileName,
-		Season: d.Season, Number: d.Number, TorBoxTorrentID: d.TorBoxTorrentID, StartedAt: d.CreatedAt,
+		Season: d.Season, Number: d.Number, TorBoxTorrentID: d.TorBoxTorrentID, StartedAt: d.CachingStartedAt, Keep: m.keepTorrent(d.ID),
 		OnCaching: func(percent, torrentID, fileID int) error {
 			err := m.cat.SetDownloadCaching(fctx, d.ID, percent, torrentID, fileID)
 			if errors.Is(err, catalog.ErrNotFound) {
@@ -647,6 +656,28 @@ func (m *Manager) deleteTorrent(ctx context.Context, d catalog.Download) {
 	}
 	if err := m.cleanup.DeleteTorrent(context.WithoutCancel(ctx), d.TorBoxTorrentID); err != nil && ctx.Err() == nil {
 		m.log.Warn("cannot delete an imported torrent from TorBox", "download", d.ID, "err", err)
+	}
+}
+
+// keepTorrent answers whether a download about to delete its torrent from
+// TorBox must leave it: another unfinished download still reads from it and
+// is not itself giving up. Not knowing counts as in use.
+func (m *Manager) keepTorrent(id string) func(context.Context, int) bool {
+	return func(ctx context.Context, torrentID int) bool {
+		m.leaveMu.Lock()
+		defer m.leaveMu.Unlock()
+		m.leaving[id] = true
+		users, err := m.cat.TorrentUsers(ctx, torrentID, id)
+		if err != nil {
+			m.log.Warn("cannot tell whether a TorBox torrent is still in use", "download", id, "err", err)
+			return true
+		}
+		for _, u := range users {
+			if !m.leaving[u] {
+				return true
+			}
+		}
+		return false
 	}
 }
 
