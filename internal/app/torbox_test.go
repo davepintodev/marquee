@@ -420,12 +420,16 @@ func (r *tbRig) seasonPack() {
 	r.aio.Answer("series", ep2ID, results(listed{name: ep2Name, size: epSize, uncached: true, hash: hashA, season: 1, ep: 2}))
 }
 
-func (r *tbRig) waitStates(want string, n int) {
+func (r *tbRig) waitStates(want string, n int) { r.t.Helper(); r.waitStatesAt(want, -1, n) }
+
+// waitStatesAt waits for n downloads in state want, each at percent (any when negative).
+func (r *tbRig) waitStatesAt(want string, percent, n int) {
 	r.t.Helper()
 	waitFor(r.t, fmt.Sprintf("%d downloads %s", n, want), 10*time.Second, func() bool {
 		got := 0
 		for _, d := range r.downloads() {
-			if d.(map[string]any)["state"] == want {
+			m := d.(map[string]any)
+			if m["state"] == want && (percent < 0 || m["percent"] == float64(percent)) {
 				got++
 			}
 		}
@@ -498,11 +502,13 @@ func TestEpisodesSharingOnePackTorrentThatStallDeleteItExactlyOnce(t *testing.T)
 	r.grabEpisodes("s01e01", "s01e02")
 	id := r.torrentIDs(1)[0]
 	r.tb.Step(id, 0.3, 100)
-	r.waitStates("caching", 2)
+	r.waitStatesAt("caching", 30, 2)
 	if n := len(r.tb.Magnets()); n != 2 {
 		t.Fatalf("each episode asks TorBox for the pack: %d requests", n)
 	}
 	r.tb.Stall(id)
+	seen := r.tb.Hits("/torrents/mylist")
+	waitFor(t, "both episodes to poll the stalled torrent twice", 10*time.Second, func() bool { return r.tb.Hits("/torrents/mylist") >= seen+4 })
 	r.advance(31 * time.Minute)
 	waitFor(t, "both failures", 10*time.Second, func() bool { return len(r.entries("failed")) == 2 })
 	time.Sleep(100 * time.Millisecond)
