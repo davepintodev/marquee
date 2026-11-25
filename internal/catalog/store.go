@@ -216,6 +216,14 @@ CREATE TABLE IF NOT EXISTS people (
 `, `
 ALTER TABLE titles ADD COLUMN monitor_new INTEGER NOT NULL DEFAULT 1;
 UPDATE titles SET monitor_new = monitored;
+`, `
+ALTER TABLE titles ADD COLUMN file_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE titles ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE titles ADD COLUMN file_fingerprint TEXT NOT NULL DEFAULT '';
+ALTER TABLE episodes ADD COLUMN file_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE episodes ADD COLUMN file_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE episodes ADD COLUMN file_fingerprint TEXT NOT NULL DEFAULT '';
+CREATE INDEX episodes_by_fingerprint ON episodes (title_id, file_fingerprint) WHERE file_fingerprint != '';
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

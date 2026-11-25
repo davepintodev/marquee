@@ -161,6 +161,42 @@ func TestReleaseSizeFarFromTheServersFails(t *testing.T) {
 	}
 }
 
+func TestReleaseSizeOffByOneByteFailsBeforeTransfer(t *testing.T) {
+	data := debridfake.MKV(100 << 10)
+	for _, tc := range []struct {
+		name    string
+		listed  int64
+		wantErr bool
+	}{
+		{"one byte more", int64(len(data)) + 1, true},
+		{"one byte less", int64(len(data)) - 1, true},
+		{"a tenth of a percent off", int64(len(data)) * 1001 / 1000, true},
+		{"exact", int64(len(data)), false},
+		{"unknown", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cdn := debridfake.New()
+			defer cdn.Close()
+			url := cdn.Add("a.mkv", debridfake.File{Data: data})
+			dest := filepath.Join(t.TempDir(), "a.part")
+			r := req(url, dest)
+			r.ReleaseSize = tc.listed
+			_, err := download.NewHTTP(fast(download.Options{})).Download(context.Background(), r)
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("download: %v", err)
+				}
+				return
+			}
+			_ = fails(t, err, download.ReasonSizeMismatch)
+			if n := cdn.MaxConcurrent("a.mkv"); n != 0 {
+				t.Errorf("the file was fetched (%d streams) although its size was wrong", n)
+			}
+			gone(t, dest, dest+".plan")
+		})
+	}
+}
+
 func TestUnknownPlaybackLinkFailsAsSourceDown(t *testing.T) {
 	cdn := debridfake.New()
 	defer cdn.Close()

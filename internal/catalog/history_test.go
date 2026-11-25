@@ -26,12 +26,16 @@ func openClock(t *testing.T, at time.Time) (*catalog.Store, *clock) {
 	return s, c
 }
 
+const dropFileColumns = `DROP INDEX episodes_by_fingerprint;
+	ALTER TABLE titles DROP COLUMN file_path; ALTER TABLE titles DROP COLUMN file_size; ALTER TABLE titles DROP COLUMN file_fingerprint;
+	ALTER TABLE episodes DROP COLUMN file_path; ALTER TABLE episodes DROP COLUMN file_size; ALTER TABLE episodes DROP COLUMN file_fingerprint; `
+
 // dropAtMs turns a current database back into one before the migration
 // that added the at_ms columns (and so before every later one), for a test
 // to reopen it.
 const dropAtMs = `DROP INDEX downloads_finished; DROP INDEX downloads_finished_by_target; DROP INDEX activity_by_at;
 	ALTER TABLE downloads DROP COLUMN at_ms; ALTER TABLE activity DROP COLUMN at_ms;
-	ALTER TABLE titles DROP COLUMN monitor_new; `
+	ALTER TABLE titles DROP COLUMN monitor_new; ` + dropFileColumns
 
 func addMovie(t *testing.T, s *catalog.Store, tmdb int) string {
 	t.Helper()
@@ -54,7 +58,7 @@ func finish(t *testing.T, s *catalog.Store, id, title string, season, number int
 		t.Fatal(err)
 	}
 	if reason == "" {
-		err = s.FinishDownload(ctx, id)
+		err = s.FinishDownload(ctx, id, catalog.File{})
 	} else {
 		err = s.FailDownload(ctx, id, reason, "failed", false)
 	}

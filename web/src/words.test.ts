@@ -11,6 +11,7 @@ test("every failure reason has a label in words", () => {
   expect(reasonLabel("size_mismatch")).toBe("Wrong size");
   expect(reasonLabel("source_down")).toBe("Source down");
   expect(reasonLabel("local_error")).toBe("Local error");
+  expect(reasonLabel("duplicate_episode")).toBe("Duplicate episode");
   expect(reasonLabel(undefined)).toBe("Failed");
 });
 

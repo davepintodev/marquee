@@ -122,7 +122,7 @@ func imageRefs(id string, m metadata.Summary) []catalog.ImageRef {
 
 var reasonWords = map[string]string{
 	"stalled": "stalled", "not_video": "fake", "wrong_episode": "wrong episode",
-	"too_small": "too small", "size_mismatch": "wrong size", "source_down": "source down", "local_error": "local error",
+	"too_small": "too small", "size_mismatch": "wrong size", "source_down": "source down", "local_error": "local error", "duplicate_episode": "duplicate episode",
 }
 
 // summarize says in one sentence what was tried, such as "Tried 3

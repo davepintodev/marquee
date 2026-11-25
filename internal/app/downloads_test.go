@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"io/fs"
 	"net"
@@ -22,6 +23,7 @@ import (
 	"github.com/davepintodev/marquee/internal/config"
 	"github.com/davepintodev/marquee/internal/debridfake"
 	"github.com/davepintodev/marquee/internal/download"
+	"github.com/davepintodev/marquee/internal/importer"
 	"github.com/davepintodev/marquee/internal/jellyfinfake"
 	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/scheduler"
@@ -565,13 +567,15 @@ func TestWithoutAJellyfinURLNothingIsRefreshedAndNothingIsReported(t *testing.T)
 
 func TestAtMostTwoDownloadsRunAtOnce(t *testing.T) {
 	r, _ := setup(t)
-	file := func(name string) string {
-		return r.cdn.Add(name, debridfake.File{Data: debridfake.MKV(400 << 10), Pace: 15 * time.Millisecond})
+	// Distinct sizes give distinct bytes: two episodes with the same bytes
+	// would be refused as duplicates.
+	file := func(name string, kib int) string {
+		return r.cdn.Add(name, debridfake.File{Data: debridfake.MKV(kib << 10), Pace: 15 * time.Millisecond})
 	}
-	second := episodeJob(file("b.mkv"), "b.mkv")
-	third := episodeJob(file("c.mkv"), "c.mkv")
+	second := episodeJob(file("b.mkv", 400), "b.mkv")
+	third := episodeJob(file("c.mkv", 401), "c.mkv")
 	third.Number = 2
-	r.enqueue(movieJob(file("a.mkv"), "a.mkv"))
+	r.enqueue(movieJob(file("a.mkv", 402), "a.mkv"))
 	r.enqueue(second)
 	r.enqueue(third)
 	r.waitHistoryKind("imported", 3)
@@ -890,4 +894,156 @@ func TestHistoryPagesWithACursorWhileNewEntriesArrive(t *testing.T) {
 	if r := r.bad("GET", "/api/history?cursor=nonsense", ""); r.status != 400 {
 		t.Errorf("a cursor the server did not give answered %d, want 400", r.status)
 	}
+}
+
+type storedFile struct {
+	path        string
+	size        int64
+	fingerprint string
+}
+
+func (r *rig) storedFile(titleID string, season, number int) storedFile {
+	r.t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(r.env["MARQUEE_DATA_DIR"], catalog.FileName))
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var f storedFile
+	if season == 0 {
+		err = db.QueryRow(`SELECT file_path, file_size, file_fingerprint FROM titles WHERE id = ?`, titleID).Scan(&f.path, &f.size, &f.fingerprint)
+	} else {
+		err = db.QueryRow(`SELECT file_path, file_size, file_fingerprint FROM episodes WHERE title_id = ? AND season = ? AND number = ?`,
+			titleID, season, number).Scan(&f.path, &f.size, &f.fingerprint)
+	}
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return f
+}
+
+func TestAnImportRecordsTheFilesPathSizeAndFingerprint(t *testing.T) {
+	r, root := setup(t)
+	data := debridfake.MKV(300 << 10)
+	r.enqueue(movieJob(r.cdn.Add("m.mkv", debridfake.File{Data: data}), "m.mkv"))
+	r.enqueue(episodeJob(r.cdn.Add("e.mkv", debridfake.File{Data: debridfake.MKV(200 << 10)}), "e.mkv"))
+	r.waitHistoryKind("imported", 2)
+
+	for _, tc := range []struct {
+		id             string
+		season, number int
+		size           int
+		library        string
+		rel            string
+	}{
+		{"movie-438631", 0, 0, 300 << 10, "movies", "Dune (2021)/Dune (2021) [WEBDL-1080p].mkv"},
+		{"series-1408", 1, 1, 200 << 10, "series", "Dune - Prophecy/Season 01/Dune - Prophecy - S01E01 - Aired One [WEBDL-1080p].mkv"},
+	} {
+		got := r.storedFile(tc.id, tc.season, tc.number)
+		want, err := importer.Fingerprint(filepath.Join(root, tc.library, tc.rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.path != tc.rel || got.size != int64(tc.size) || got.fingerprint != want {
+			t.Errorf("%s stored %+v, want path %q size %d fingerprint %s", tc.id, got, tc.rel, tc.size, want)
+		}
+	}
+	if got := r.storedFile("series-1408", 1, 2); got != (storedFile{}) {
+		t.Errorf("S01E02 was never imported but stores %+v", got)
+	}
+}
+
+func TestAnEpisodeFileIdenticalToAnotherEpisodeIsRefusedAndBlocklisted(t *testing.T) {
+	r, root := setup(t)
+	data := debridfake.MKV(200 << 10)
+	r.enqueue(episodeJob(r.cdn.Add("e1.mkv", debridfake.File{Data: data}), "e1.mkv"))
+	r.waitHistoryKind("imported", 1)
+	before := tree(t, filepath.Join(root, "series"))
+
+	const hash = "dddddddddddddddddddddddddddddddddddddddd"
+	dup := episodeJob(r.cdn.Add("e2.mkv", debridfake.File{Data: data}), "e2.mkv")
+	dup.Number = 2
+	dup.Release = catalog.ReleaseID{InfoHash: hash, FileName: "e2.mkv", Size: int64(len(data))}
+	r.enqueue(dup)
+
+	var failed map[string]any
+	waitFor(t, "the duplicate to fail", 10*time.Second, func() bool {
+		for _, e := range r.history() {
+			if m := e.(map[string]any); m["kind"] == "failed" {
+				failed = m
+				return true
+			}
+		}
+		return false
+	})
+	if failed["reason"] != "duplicate_episode" {
+		t.Fatalf("history entry = %v, want reason duplicate_episode", failed)
+	}
+	if msg, _ := failed["message"].(string); !strings.Contains(msg, "S01E01") || !strings.Contains(msg, "already in the library") {
+		t.Errorf("message %q does not name the episode it duplicates in plain language", msg)
+	}
+	if got := tree(t, filepath.Join(root, "series")); strings.Join(got, "|") != strings.Join(before, "|") {
+		t.Errorf("the library holds %v, want %v", got, before)
+	}
+	if got := tree(t, filepath.Join(root, "tmp")); len(got) != 0 {
+		t.Errorf("temp folder still holds %v", got)
+	}
+	if got := r.storedFile("series-1408", 1, 2); got != (storedFile{}) {
+		t.Errorf("the refused episode stores %+v", got)
+	}
+
+	store, err := catalog.Open(r.env["MARQUEE_DATA_DIR"], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	if !isBlocked(t, store, dup.Release) {
+		t.Error("the duplicate release was not blocklisted")
+	}
+	if d := r.downloads(); len(d) != 0 {
+		t.Errorf("the refused download is still queued: %v", d)
+	}
+}
+
+func TestTwoEpisodesDownloadingIdenticalBytesAtOnceImportOnlyOne(t *testing.T) {
+	r, root := setup(t)
+	data := debridfake.MKV(200 << 10)
+	e1 := episodeJob(r.cdn.Add("e1.mkv", debridfake.File{Data: data}), "e1.mkv")
+	e2 := episodeJob(r.cdn.Add("e2.mkv", debridfake.File{Data: data}), "e2.mkv")
+	e2.Number = 2
+	e2.Release = catalog.ReleaseID{InfoHash: "dddddddddddddddddddddddddddddddddddddddd", FileName: "e2.mkv", Size: int64(len(data))}
+	r.enqueue(e1)
+	r.enqueue(e2)
+
+	var h []any
+	waitFor(t, "one import and one refusal", 10*time.Second, func() bool {
+		h = r.history()
+		return len(h) >= 2
+	})
+	kinds := map[string]int{}
+	for _, e := range h {
+		m := e.(map[string]any)
+		kinds[m["kind"].(string)]++
+		if m["kind"] == "failed" && m["reason"] != "duplicate_episode" {
+			t.Errorf("failed with %v, want duplicate_episode", m["reason"])
+		}
+	}
+	if kinds["imported"] != 1 || kinds["failed"] != 1 {
+		t.Fatalf("history kinds = %v, want one imported and one failed", kinds)
+	}
+	if got := len(tree(t, filepath.Join(root, "series"))); got != 1 {
+		t.Errorf("the library holds %d files, want 1", got)
+	}
+	if got := tree(t, filepath.Join(root, "tmp")); len(got) != 0 {
+		t.Errorf("temp folder still holds %v", got)
+	}
+}
+
+func TestAMovieIsNeverCheckedForDuplicateEpisodes(t *testing.T) {
+	r, _ := setup(t)
+	data := debridfake.MKV(200 << 10)
+	r.enqueue(episodeJob(r.cdn.Add("e1.mkv", debridfake.File{Data: data}), "e1.mkv"))
+	r.waitHistoryKind("imported", 1)
+	r.enqueue(movieJob(r.cdn.Add("m.mkv", debridfake.File{Data: data}), "m.mkv"))
+	r.waitHistoryKind("imported", 2)
 }

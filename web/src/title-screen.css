@@ -796,7 +796,8 @@
 [data-reason="not_video"],
 [data-reason="wrong_episode"],
 [data-reason="too_small"],
-[data-reason="size_mismatch"] {
+[data-reason="size_mismatch"],
+[data-reason="duplicate_episode"] {
   --mark: var(--bad);
 }
 

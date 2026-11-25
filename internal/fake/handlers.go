@@ -149,7 +149,7 @@ func (f *Fake) historyFor(id string) []*historyEntry {
 
 var reasonWords = map[string]string{
 	"stalled": "stalled", "not_video": "fake", "wrong_episode": "wrong episode",
-	"too_small": "too small", "size_mismatch": "wrong size", "source_down": "source down", "local_error": "local error",
+	"too_small": "too small", "size_mismatch": "wrong size", "source_down": "source down", "local_error": "local error", "duplicate_episode": "duplicate episode",
 }
 
 func summarize(hs []*historyEntry, next *time.Time) string {

@@ -210,9 +210,19 @@ func (s *Store) SetDownloadLibraryPath(ctx context.Context, id, path string) err
 	return affected(res, err)
 }
 
+// File describes a video in the library: Path is relative to the movies or
+// series folder, Fingerprint is importer.Fingerprint's. A zero File means
+// nothing is known about it.
+type File struct {
+	Path        string
+	Size        int64
+	Fingerprint string
+}
+
 // FinishDownload marks an imported download done and the title or episode
-// as having its file, together, and drops the playback link.
-func (s *Store) FinishDownload(ctx context.Context, id string) error {
+// as having its file, together, records the file, and drops the playback
+// link.
+func (s *Store) FinishDownload(ctx context.Context, id string, f File) error {
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -232,9 +242,11 @@ func (s *Store) FinishDownload(ctx context.Context, id string) error {
 		return err
 	}
 	if season == 0 && number == 0 {
-		_, err = tx.ExecContext(ctx, `UPDATE titles SET have_file = 1 WHERE id = ?`, titleID)
+		_, err = tx.ExecContext(ctx, `UPDATE titles SET have_file = 1, file_path = ?, file_size = ?, file_fingerprint = ? WHERE id = ?`,
+			f.Path, f.Size, f.Fingerprint, titleID)
 	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE episodes SET have_file = 1 WHERE title_id = ? AND season = ? AND number = ?`, titleID, season, number)
+		_, err = tx.ExecContext(ctx, `UPDATE episodes SET have_file = 1, file_path = ?, file_size = ?, file_fingerprint = ?
+			WHERE title_id = ? AND season = ? AND number = ?`, f.Path, f.Size, f.Fingerprint, titleID, season, number)
 	}
 	if err != nil {
 		return err
@@ -246,6 +258,22 @@ func (s *Store) FinishDownload(ctx context.Context, id string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// DuplicateEpisode finds an episode of the series, other than the given one,
+// that has a file with this fingerprint. It reports false when none has.
+func (s *Store) DuplicateEpisode(ctx context.Context, titleID, fingerprint string, season, number int) (int, int, bool, error) {
+	if fingerprint == "" {
+		return 0, 0, false, nil
+	}
+	var sn, nr int
+	err := s.r.QueryRowContext(ctx, `SELECT season, number FROM episodes
+		WHERE title_id = ? AND file_fingerprint = ? AND have_file = 1 AND NOT (season = ? AND number = ?)
+		ORDER BY season, number LIMIT 1`, titleID, fingerprint, season, number).Scan(&sn, &nr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, false, nil
+	}
+	return sn, nr, err == nil, err
 }
 
 // FailDownload ends a download with a reason and a plain-language message
