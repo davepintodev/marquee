@@ -32,6 +32,7 @@ type Store struct {
 
 	runMu   sync.Mutex
 	running map[target]int
+	held    map[target]bool
 }
 
 // FileName is the database file inside the data directory.

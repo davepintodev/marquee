@@ -7,8 +7,8 @@ import (
 
 // Badge is a title's or season's state for a tile. Without a download in
 // flight, a monitored title with no file on disk is "wanted" while it waits
-// for its next scheduled search, "searching" while one runs or Search now
-// asked for one, and "not_found" once a search found nothing usable; one
+// for its next scheduled search, "searching" while one runs or a Search now
+// request can start, and "not_found" once a search found nothing usable; one
 // nobody monitors is "missing". A download in flight shows as
 // "downloading" with its percent, "caching" with TorBox's percent while it
 // fetches an uncached release, or "stalled" when its bytes stand still.
@@ -34,9 +34,8 @@ var badgeLabels = map[string]string{
 
 func simpleBadge(state string) *Badge { return &Badge{State: state, Label: badgeLabels[state]} }
 
-// movieBadge also answers when the movie is next searched, zero when it is not.
 func movieBadge(monitored, haveFile bool, dl *inFlight, p pending, running bool, now time.Time) (*Badge, time.Time) {
-	if dl == nil && !haveFile && (monitored || running || p.searching) {
+	if dl == nil && !haveFile && (monitored || running || p.asked) {
 		state, next := waitState(p, running, now)
 		return simpleBadge(state), next
 	}
@@ -112,7 +111,8 @@ func groupBadge(eps []epView) *Badge {
 				continue
 			}
 		}
-		if !e.monitored || e.state == "unaired" {
+		asked := e.state == "wanted" || e.state == "not_found"
+		if (!e.monitored && !asked) || e.state == "unaired" {
 			continue
 		}
 		total++

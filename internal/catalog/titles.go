@@ -183,12 +183,12 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 	if err != nil {
 		return nil, err
 	}
-	sched, err := s.schedules(ctx, q, where, args)
+	now := s.now()
+	sched, err := s.schedules(ctx, q, where, args, now)
 	if err != nil {
 		return nil, err
 	}
 
-	now := s.now()
 	today := now.UTC().Format(time.DateOnly)
 	for i := range titles {
 		t := &titles[i]
@@ -212,7 +212,6 @@ func (s *Store) load(ctx context.Context, q queryer, where string, args ...any) 
 	return titles, nil
 }
 
-// episodeInfo is what an episode's state needs beyond its own row.
 type episodeInfo struct {
 	dl      *inFlight
 	sched   pending
@@ -585,7 +584,7 @@ func episodeState(r epRow, today string, in episodeInfo) (string, time.Time) {
 		return "unaired", time.Time{}
 	case r.season == 0 && r.monitored:
 		return "wanted", time.Time{}
-	case r.season > 0 && (r.monitored || in.running || in.sched.searching):
+	case r.season > 0 && (r.monitored || in.running || in.sched.asked):
 		return waitState(in.sched, in.running, in.now)
 	}
 	return "missing", time.Time{}

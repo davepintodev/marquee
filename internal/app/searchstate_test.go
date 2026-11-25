@@ -130,3 +130,59 @@ func TestMissingStillMeansNotMonitored(t *testing.T) {
 		t.Errorf("an unmonitored title is not searched: %v", v["nextSearchAt"])
 	}
 }
+
+func TestSearchNowDuringASourceOutageSaysWhenItWillRunAndRunsThen(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.aio.Fail(aiostreamsfake.Step{Status: 500})
+	r.addMovie()
+	r.step()
+	backoffEnds := r.clock().Add(time.Minute)
+	wantBadge(t, "after the search the source failed", r.mustCall("GET", "/api/titles/movie-438631", "", 200), "wanted", "Wanted")
+
+	r.advance(10 * time.Second)
+	v := r.mustCall("POST", "/api/titles/movie-438631/search", "", 200)
+	wantBadge(t, "Search now while the source backs off", v, "wanted", "Wanted")
+	wantNext(t, "Search now while the source backs off", v, backoffEnds)
+	r.step()
+	v = r.mustCall("GET", "/api/titles/movie-438631", "", 200)
+	wantBadge(t, "a step during the backoff", v, "wanted", "Wanted")
+	wantNext(t, "a step during the backoff", v, backoffEnds)
+	r.wantSearches(1, "nothing is searched during the backoff")
+
+	r.aio.Heal()
+	r.advance(time.Minute)
+	r.step()
+	r.wantSearches(2, "the asked-for search runs once the backoff ends")
+	wantBadge(t, "after it", r.mustCall("GET", "/api/titles/movie-438631", "", 200), "not_found", "Not found")
+}
+
+func TestSearchNowThatTheSourceFailsStopsSayingSearching(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.addMovie()
+	r.mustCall("PATCH", "/api/titles/movie-438631", `{"monitored":false}`, 200)
+	r.aio.Fail(aiostreamsfake.Step{Status: 500})
+	r.mustCall("POST", "/api/titles/movie-438631/search", "", 200)
+	r.step()
+	backoffEnds := r.clock().Add(time.Minute)
+	v := r.mustCall("GET", "/api/titles/movie-438631", "", 200)
+	wantBadge(t, "an unmonitored title whose Search now the source failed", v, "wanted", "Wanted")
+	wantNext(t, "it runs again after the backoff", v, backoffEnds)
+
+	r.aio.Heal()
+	r.advance(time.Minute)
+	r.step()
+	r.wantSearches(2, "the request is not lost")
+	wantBadge(t, "once it ran", r.mustCall("GET", "/api/titles/movie-438631", "", 200), "missing", "Missing")
+}
+
+func TestAnUnmonitoredSeriesWhoseSearchNowWaitsOnTheSourceSaysWanted(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.mustCall("PATCH", "/api/titles/series-1408", `{"monitored":false}`, 200)
+	r.aio.Fail(aiostreamsfake.Step{Status: 500})
+	r.mustCall("POST", "/api/titles/series-1408/search", "", 200)
+	r.step()
+	v := r.mustCall("GET", "/api/titles/series-1408", "", 200)
+	wantBadge(t, "the asked-for episodes wait for the source", v, "wanted", "Wanted")
+	wantNext(t, "they run when the backoff ends", v, r.clock().Add(time.Minute))
+}

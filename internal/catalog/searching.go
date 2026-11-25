@@ -26,22 +26,52 @@ func (s *Store) Searching(titleID string, season, number int) (done func()) {
 	}
 }
 
+// Hold records that the scheduler sets a movie or an episode aside until
+// TorBox has a place for its release, so a Search now waiting on it does
+// not read as searching. ReleaseHolds ends every hold.
+func (s *Store) Hold(titleID string, season, number int) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.held == nil {
+		s.held = map[target]bool{}
+	}
+	s.held[target{titleID, season, number}] = true
+}
+
+func (s *Store) ReleaseHolds() {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	clear(s.held)
+}
+
 func (s *Store) isRunning(k target) bool {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	return s.running[k] > 0
 }
 
-// pending is where a movie or an episode stands with the scheduler.
-type pending struct {
-	// searching is a search running now or asked for with Search now.
-	searching bool
-	// nothing is set after a search that found nothing usable.
-	nothing bool
-	nextAt  time.Time
+func (s *Store) isHeld(k target) bool {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	return s.held[k]
 }
 
-func (s *Store) schedules(ctx context.Context, q queryer, where string, args []any) (map[target]pending, error) {
+type pending struct {
+	// asked is a Search now request the scheduler has not run yet.
+	asked     bool
+	searching bool
+	nothing   bool
+	nextAt    time.Time
+}
+
+// schedules reads where each movie or episode stands with the scheduler. A
+// Search now request reads as searching only while nothing keeps it from
+// starting: during the source's backoff it is due when the backoff ends.
+func (s *Store) schedules(ctx context.Context, q queryer, where string, args []any, now time.Time) (map[target]pending, error) {
+	backoffEnds, err := sourceBackoffEnds(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, attempts, next_at, forced FROM schedule
 		WHERE title_id IN (SELECT id FROM titles `+where+`)`, args...)
 	if err != nil {
@@ -56,18 +86,39 @@ func (s *Store) schedules(ctx context.Context, q queryer, where string, args []a
 		if err := rows.Scan(&k.titleID, &k.season, &k.number, &attempts, &next, &forced); err != nil {
 			return nil, err
 		}
-		p := pending{searching: forced == 1, nothing: attempts > 0}
+		p := pending{asked: forced == 1, nothing: attempts > 0}
 		if next.Valid {
 			p.nextAt = time.UnixMilli(next.Int64).UTC()
+		}
+		switch {
+		case !p.asked:
+		case now.Before(backoffEnds):
+			p.nextAt = backoffEnds
+		case !s.isHeld(k):
+			p.searching = true
 		}
 		out[k] = p
 	}
 	return out, rows.Err()
 }
 
-// waitState says whether a monitored item with no file is searching, has
-// found nothing so far or is wanted, and when its next scheduled search is:
-// now when it is already due, zero while it is searching.
+func sourceBackoffEnds(ctx context.Context, q queryer) (time.Time, error) {
+	rows, err := q.QueryContext(ctx, `SELECT until FROM source_backoff WHERE id = 1`)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer func() { _ = rows.Close() }()
+	var until int64
+	if rows.Next() {
+		if err := rows.Scan(&until); err != nil {
+			return time.Time{}, err
+		}
+	}
+	return time.UnixMilli(until).UTC(), rows.Err()
+}
+
+// waitState also answers when the next search is: now when it is already
+// due, zero while it is searching.
 func waitState(p pending, running bool, now time.Time) (string, time.Time) {
 	if running || p.searching {
 		return "searching", time.Time{}

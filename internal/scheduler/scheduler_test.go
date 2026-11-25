@@ -55,3 +55,41 @@ func TestADownloadThatEndsBeforeItCanBeNamedStillFollowsUpTheEpisode(t *testing.
 		t.Errorf("the episode's own download ended in the race, so the next search follows up at once: %+v", targets)
 	}
 }
+
+type goneUnderTheSearch struct{}
+
+func (goneUnderTheSearch) Enqueue(context.Context, pipeline.Job) (catalog.Download, error) {
+	return catalog.Download{}, pipeline.ErrBadJob
+}
+
+func TestSearchNowEndsWhenTheTitleChangedUnderItsSearch(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	cat, err := catalog.Open(t.TempDir(), func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cat.Close() })
+	if _, _, err := cat.Add(ctx, catalog.NewTitle{
+		Kind: "series", TMDBID: 7, Title: "House", TVDBID: 403000,
+		Episodes: []catalog.NewEpisode{{Season: 1, Number: 1, Name: "One", AirDate: "2005-01-01"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cat.RequestSearch(ctx, "series-7", &catalog.EpisodeRef{Season: 1, Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	s := scheduler.New(scheduler.Options{
+		Catalog: cat, Source: oneRelease{}, Transfers: goneUnderTheSearch{}, Tuning: scheduler.Tuning{Tick: -1},
+	})
+
+	s.Step(ctx)
+
+	got, err := cat.Get(ctx, "series-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Badge.State == "searching" {
+		t.Errorf("the asked-for search ran, so the series no longer says Searching: %+v", got.Badge)
+	}
+}
