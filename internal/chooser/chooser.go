@@ -101,9 +101,9 @@ func IdentityOf(infoHash, fileName string, size int64) string {
 
 // Choose filters releases in a fixed order (cached, video, size, episode,
 // profile, blocklist), so each drop names the first rule it broke. The
-// candidates are ranked by the profile's quality order, then by its prefer
-// boosts, then by how few owned episodes they repeat, and keep AIOStreams'
-// order where those tie. The same file listed twice keeps its first listing.
+// candidates are ranked by the profile's quality order, then by how few
+// owned episodes they repeat, then by its prefer boosts, and keep
+// AIOStreams' order where those tie. The same file listed twice keeps its first listing.
 func Choose(releases []aiostreams.Stream, c Context) Result {
 	out := Result{Candidates: []Candidate{}, Dropped: []Drop{}}
 	seen := map[string]bool{}
@@ -129,10 +129,10 @@ func Choose(releases []aiostreams.Stream, c Context) Result {
 		if kept[i].tier != kept[j].tier {
 			return kept[i].tier < kept[j].tier
 		}
-		if kept[i].boost != kept[j].boost {
-			return kept[i].boost > kept[j].boost
+		if kept[i].overlap != kept[j].overlap {
+			return kept[i].overlap < kept[j].overlap
 		}
-		return kept[i].overlap < kept[j].overlap
+		return kept[i].boost > kept[j].boost
 	})
 	for _, k := range kept {
 		out.Candidates = append(out.Candidates, k.Candidate)

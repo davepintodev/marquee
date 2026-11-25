@@ -347,8 +347,8 @@ func TestASingleEpisodeBeatsAMultiEpisodeFileThatOverlapsAnEpisodeOnDisk(t *test
 
 	ddp := pf("Show.S01E01E02.ddp.mkv", 3000*mb, "1080p", "WEB-DL", "DD+")
 	ddp.ParsedFile.Seasons, ddp.ParsedFile.Episodes = []int{1}, []int{1, 2}
-	if got := order(ctx(2), single, ddp); got != "Show.S01E01E02.ddp.mkv,Show.S01E01.mkv" {
-		t.Errorf("the profile's prefer boost outranks the tie-breaker, got %s", got)
+	if got := order(ctx(2), ddp, single); got != "Show.S01E01.mkv,Show.S01E01E02.ddp.mkv" {
+		t.Errorf("the tie-breaker outranks the profile's prefer boost, got %s", got)
 	}
 }
 
