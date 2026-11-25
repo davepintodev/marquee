@@ -912,7 +912,7 @@ func TestAnAdoptedSeriesFromBeforeTheFixIsRefreshedAfterARestart(t *testing.T) {
 	}
 	// What the database looked like when adoption left no refresh row behind.
 	if _, err := db.Exec(`DROP INDEX downloads_finished; DROP INDEX downloads_finished_by_target; DROP INDEX activity_by_at;
-		ALTER TABLE downloads DROP COLUMN at_ms; ALTER TABLE activity DROP COLUMN at_ms;
+		ALTER TABLE downloads DROP COLUMN at_ms; ALTER TABLE activity DROP COLUMN at_ms; ALTER TABLE titles DROP COLUMN monitor_new;
 		DELETE FROM series_refresh; PRAGMA user_version = 7`); err != nil {
 		t.Fatal(err)
 	}

@@ -213,6 +213,9 @@ CREATE TABLE IF NOT EXISTS people (
   person_id    INTEGER PRIMARY KEY,
   profile_path TEXT NOT NULL
 );
+`, `
+ALTER TABLE titles ADD COLUMN monitor_new INTEGER NOT NULL DEFAULT 1;
+UPDATE titles SET monitor_new = monitored;
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {
