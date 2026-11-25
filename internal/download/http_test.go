@@ -302,7 +302,9 @@ type openCounter struct {
 }
 
 func (c *openCounter) RoundTrip(r *http.Request) (*http.Response, error) {
-	c.peak.Store(max(c.peak.Load(), c.cur.Add(1)))
+	n := c.cur.Add(1)
+	for p := c.peak.Load(); n > p && !c.peak.CompareAndSwap(p, n); p = c.peak.Load() {
+	}
 	resp, err := c.rt.RoundTrip(r)
 	if err != nil {
 		c.cur.Add(-1)
@@ -331,6 +333,7 @@ func TestNeverMoreThanTenConnectionsPerFile(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "a.part")
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.MaxIdleConnsPerHost = 2 * download.MaxConnections
+	defer tr.CloseIdleConnections()
 	counter := &openCounter{rt: tr}
 	opt := fast(download.Options{Connections: 25, Transport: counter})
 	if _, err := download.NewHTTP(opt).Download(context.Background(), req(url, dest)); err != nil {
