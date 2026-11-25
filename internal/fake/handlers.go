@@ -232,7 +232,7 @@ func (f *Fake) title(t *entry) titleOut {
 		for _, e := range s.Episodes {
 			st, p := f.epState(t, s, e)
 			eo := episodeOut{ID: epID(s, e), Number: e.Number, Name: e.Name, AirDate: e.AirDate, Monitored: e.monitored, State: st}
-			if st == "downloading" {
+			if st == "downloading" || st == "caching" {
 				eo.Percent = &p
 			}
 			if sharers := sharedFile(s, e); len(sharers) > 1 {
@@ -673,19 +673,22 @@ func (f *Fake) listReleases(w http.ResponseWriter, r *http.Request) {
 		Reason  string  `json:"reason"`
 		Message string  `json:"message"`
 	}
-	candidates, drops := []release{}, []dropped{}
+	candidates, drops, uncached := []release{}, []dropped{}, []release{}
 	for _, x := range f.releases[t.Kind] {
 		rel := release{x.ID, x.Name, x.Quality, nonNil(x.Tags), x.SizeBytes, x.Source, x.Cached}
 		if ep := r.URL.Query().Get("episode"); len(ep) == 6 {
 			rel.Name = strings.ReplaceAll(strings.ReplaceAll(rel.Name, "S04E03", "S"+strings.ToUpper(ep[1:3])+"E"+nextEp(ep[4:])), "S04E02", strings.ToUpper(ep))
 		}
-		if x.Drop == "" || (x.Drop == "profile_rejected" && t.profile == openProfile) {
+		switch {
+		case x.Drop == "not_cached" && f.opts.TorBox:
+			uncached = append(uncached, rel)
+		case x.Drop == "" || (x.Drop == "profile_rejected" && t.profile == openProfile):
 			candidates = append(candidates, rel)
-		} else {
+		default:
 			drops = append(drops, dropped{rel, x.Drop, x.Message})
 		}
 	}
-	write(w, http.StatusOK, map[string]any{"candidates": candidates, "dropped": drops})
+	write(w, http.StatusOK, map[string]any{"candidates": append(candidates, uncached...), "dropped": drops})
 }
 
 var ungrabbable = []string{"not_cached", "not_video", "too_small", "wrong_episode"}
@@ -713,7 +716,7 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "no such release")
 		return
 	}
-	if slices.Contains(ungrabbable, rel.Drop) {
+	if slices.Contains(ungrabbable, rel.Drop) && (rel.Drop != "not_cached" || !f.opts.TorBox) {
 		fail(w, http.StatusConflict, "this release cannot be grabbed: "+rel.Message)
 		return
 	}
@@ -732,7 +735,11 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 	}
 	d := f.activeDownload(t.id(), req.Episode)
 	if d == nil {
-		d = &download{ID: f.newID("dl"), TitleID: t.id(), Episode: req.Episode, ReleaseName: rel.Name, BytesTotal: rel.SizeBytes, State: "queued"}
+		state := "queued"
+		if !rel.Cached {
+			state = "caching"
+		}
+		d = &download{ID: f.newID("dl"), TitleID: t.id(), Episode: req.Episode, ReleaseName: rel.Name, BytesTotal: rel.SizeBytes, State: state}
 		f.downloads = append(f.downloads, d)
 	}
 	write(w, http.StatusAccepted, f.downloadOut(d))

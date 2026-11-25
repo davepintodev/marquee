@@ -373,3 +373,43 @@ func TestCoveredEpisodesAreOnlyTheOnesAReleaseOfOneSeasonNames(t *testing.T) {
 		})
 	}
 }
+
+func TestWithTorBoxEveryCachedReleaseRanksBeforeEveryUncachedOne(t *testing.T) {
+	ctx := chooser.Context{Kind: "movie", Now: now, Profile: anyProfile, AllowUncached: true}
+	got := chooser.Choose([]aiostreams.Stream{
+		rel("Uncached.2160p.mkv", 9000*mb, uncached, res("2160p")),
+		rel("Cached.720p.mkv", 1000*mb, res("720p")),
+		rel("Uncached.1080p.mkv", 4000*mb, uncached, res("1080p")),
+		rel("Cached.1080p.mkv", 3000*mb, res("1080p")),
+	}, ctx)
+	want := []string{"Cached.1080p.mkv", "Cached.720p.mkv", "Uncached.2160p.mkv", "Uncached.1080p.mkv"}
+	if !slices.Equal(names(got.Candidates), want) || len(got.Dropped) != 0 {
+		t.Fatalf("candidates %v, dropped %v; want %v", names(got.Candidates), got.Dropped, want)
+	}
+}
+
+func TestWithoutTorBoxUncachedReleasesAreStillDropped(t *testing.T) {
+	ctx := chooser.Context{Kind: "movie", Now: now, Profile: anyProfile}
+	got := chooser.Choose([]aiostreams.Stream{rel("Uncached.mkv", 4000*mb, uncached)}, ctx)
+	if len(got.Candidates) != 0 || len(got.Dropped) != 1 || got.Dropped[0].Reason != chooser.NotCached {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestAnUncachedReleaseWithoutAnInfoHashCannotBeFetchedAndIsDropped(t *testing.T) {
+	ctx := chooser.Context{Kind: "movie", Now: now, Profile: anyProfile, AllowUncached: true}
+	noHash := rel("Uncached.mkv", 4000*mb, uncached, func(s *aiostreams.Stream) { s.InfoHash = "" })
+	got := chooser.Choose([]aiostreams.Stream{noHash}, ctx)
+	if len(got.Candidates) != 0 || len(got.Dropped) != 1 || got.Dropped[0].Reason != chooser.NotCached ||
+		!strings.Contains(got.Dropped[0].Message, "info hash") {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestUncachedReleasesStillFaceEveryOtherRule(t *testing.T) {
+	ctx := chooser.Context{Kind: "movie", Now: now, Profile: config.Profile{Qualities: []string{"1080p"}}, AllowUncached: true}
+	got := chooser.Choose([]aiostreams.Stream{rel("Uncached.mkv", 4000*mb, uncached, res("2160p"))}, ctx)
+	if len(got.Candidates) != 0 || len(got.Dropped) != 1 || got.Dropped[0].Reason != chooser.ProfileRejected {
+		t.Fatalf("got %+v", got)
+	}
+}

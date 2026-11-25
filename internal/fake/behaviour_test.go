@@ -695,3 +695,60 @@ func TestAFileOfTwoEpisodesIsSharedAndAWrongFileResetsBoth(t *testing.T) {
 	}
 	exchange(t, srv, router, "POST", "/api/titles/series-213375/episodes/s01e01/wrong-file", "", 409)
 }
+
+func TestWithTorBoxHealthListsItAndUncachedReleasesComeLastAndCacheBeforeDownloading(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, Step: 50, TorBox: true})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+
+	var ids []string
+	for _, c := range exchange(t, srv, router, "GET", "/api/health", "", 200)["checks"].([]any) {
+		ids = append(ids, c.(map[string]any)["id"].(string))
+	}
+	if !reflect.DeepEqual(ids[:3], []string{"fake_data", "dry_run", "aiostreams"}) || ids[3] != "torbox" {
+		t.Errorf("TorBox belongs after AIOStreams: %v", ids)
+	}
+
+	rels := exchange(t, srv, router, "GET", "/api/titles/movie-335984/releases", "", 200)
+	cands := rels["candidates"].([]any)
+	last := cands[len(cands)-1].(map[string]any)
+	if last["cached"] != false || last["id"] != "rel-movie-3" || cands[0].(map[string]any)["cached"] != true {
+		t.Fatalf("an uncached candidate comes after the cached ones: %v", cands)
+	}
+	for _, d := range rels["dropped"].([]any) {
+		if d.(map[string]any)["reason"] == "not_cached" {
+			t.Errorf("nothing is dropped as not cached once TorBox is set up: %v", d)
+		}
+	}
+
+	exchange(t, srv, router, "POST", "/api/titles/movie-335984/releases/rel-movie-3/grab", "", 202)
+	badge := exchange(t, srv, router, "GET", "/api/titles/movie-335984", "", 200)["badge"].(map[string]any)
+	if badge["state"] != "caching" && badge["state"] != "downloading" {
+		t.Errorf("badge = %v", badge)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	seen := map[string]bool{}
+	for time.Now().Before(deadline) && !seen["downloading"] {
+		for _, d := range exchange(t, srv, router, "GET", "/api/downloads", "", 200)["downloads"].([]any) {
+			if d.(map[string]any)["releaseName"] == "Blade.Runner.2049.2017.720p.HDTV" {
+				seen[d.(map[string]any)["state"].(string)] = true
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !seen["downloading"] {
+		t.Errorf("the download never moved on from caching: %v", seen)
+	}
+}
+
+func TestWithoutTorBoxAnUncachedReleaseStaysDroppedAndOffHealth(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	for _, c := range exchange(t, srv, router, "GET", "/api/health", "", 200)["checks"].([]any) {
+		if c.(map[string]any)["id"] == "torbox" {
+			t.Fatal("TorBox is on Health without a key")
+		}
+	}
+	exchange(t, srv, router, "POST", "/api/titles/movie-335984/releases/rel-movie-3/grab", "", 409)
+}

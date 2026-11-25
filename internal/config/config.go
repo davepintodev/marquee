@@ -58,6 +58,18 @@ type Config struct {
 	// RescanInterval is how often the library is read again; zero turns the timer off.
 	RescanInterval time.Duration
 
+	// TorBoxAPIKey is optional: without it marquee only downloads releases
+	// the debrid service already has cached.
+	TorBoxAPIKey Secret
+	// TorBoxMaxActive caps the torrents TorBox is caching for marquee at once.
+	TorBoxMaxActive int
+	// TorBoxStallTimeout and TorBoxMaxLifetime end a caching torrent that
+	// makes no progress, or takes too long overall.
+	TorBoxStallTimeout, TorBoxMaxLifetime time.Duration
+	// TorBoxDeleteOnComplete removes a torrent from the TorBox account once
+	// its file has been imported.
+	TorBoxDeleteOnComplete bool
+
 	// Profiles is never empty after Load: without any in the file it holds
 	// the built-in "default". Both defaults name one of them.
 	Profiles             map[string]Profile
@@ -80,6 +92,11 @@ func (c Config) LogValue() slog.Value {
 		slog.Any("api_token", c.APIToken),
 		slog.Bool("dry_run", c.DryRun),
 		slog.Duration("rescan_interval", c.RescanInterval),
+		slog.Any("torbox_key", c.TorBoxAPIKey),
+		slog.Int("torbox_max_active", c.TorBoxMaxActive),
+		slog.Duration("torbox_stall_timeout", c.TorBoxStallTimeout),
+		slog.Duration("torbox_max_lifetime", c.TorBoxMaxLifetime),
+		slog.Bool("torbox_delete_on_complete", c.TorBoxDeleteOnComplete),
 		slog.Int("profiles", len(c.Profiles)),
 		slog.String("default_movie_profile", c.DefaultMovieProfile),
 		slog.String("default_series_profile", c.DefaultSeriesProfile),
@@ -100,6 +117,12 @@ type fileConfig struct {
 	APIToken              string `json:"api_token"`
 	DryRun                *bool  `json:"dry_run"`
 	RescanInterval        string `json:"rescan_interval"`
+
+	TorBoxAPIKey           string `json:"torbox_api_key"`
+	TorBoxMaxActive        *int   `json:"torbox_max_active"`
+	TorBoxStallTimeout     string `json:"torbox_stall_timeout"`
+	TorBoxMaxLifetime      string `json:"torbox_max_lifetime"`
+	TorBoxDeleteOnComplete *bool  `json:"torbox_delete_on_complete"`
 
 	Profiles             map[string]Profile `json:"profiles"`
 	DefaultMovieProfile  string             `json:"default_movie_profile"`
@@ -172,6 +195,10 @@ func Load(getenv func(string) string) (Config, error) {
 		c.RescanInterval = d
 	}
 
+	if err := loadTorBox(&c, &f, getenv, pick); err != nil {
+		return Config{}, err
+	}
+
 	var missing []string
 	for _, e := range []struct {
 		env, key, value string
@@ -202,4 +229,60 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	return c, nil
+}
+
+const (
+	defaultTorBoxMaxActive    = 2
+	defaultTorBoxStallTimeout = 30 * time.Minute
+	defaultTorBoxMaxLifetime  = 4 * time.Hour
+)
+
+func loadTorBox(c *Config, f *fileConfig, getenv func(string) string, pick func(env, fromFile string) string) error {
+	c.TorBoxAPIKey = Secret(pick("MARQUEE_TORBOX_API_KEY", f.TorBoxAPIKey))
+
+	c.TorBoxMaxActive = defaultTorBoxMaxActive
+	if f.TorBoxMaxActive != nil {
+		c.TorBoxMaxActive = *f.TorBoxMaxActive
+	}
+	if v := getenv("MARQUEE_TORBOX_MAX_ACTIVE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			n = 0
+		}
+		c.TorBoxMaxActive = n
+	}
+	if c.TorBoxMaxActive < 1 {
+		return errors.New("MARQUEE_TORBOX_MAX_ACTIVE (torbox_max_active in the config file) must be a whole number of at least 1")
+	}
+
+	for _, d := range []struct {
+		dst           *time.Duration
+		def           time.Duration
+		env, key, val string
+	}{
+		{&c.TorBoxStallTimeout, defaultTorBoxStallTimeout, "MARQUEE_TORBOX_STALL_TIMEOUT", "torbox_stall_timeout", f.TorBoxStallTimeout},
+		{&c.TorBoxMaxLifetime, defaultTorBoxMaxLifetime, "MARQUEE_TORBOX_MAX_LIFETIME", "torbox_max_lifetime", f.TorBoxMaxLifetime},
+	} {
+		*d.dst = d.def
+		if v := pick(d.env, d.val); v != "" {
+			parsed, err := time.ParseDuration(v)
+			if err != nil || parsed < time.Second {
+				return fmt.Errorf("%s (%s in the config file) must be a duration of at least 1s, such as 30m", d.env, d.key)
+			}
+			*d.dst = parsed
+		}
+	}
+
+	c.TorBoxDeleteOnComplete = true
+	if f.TorBoxDeleteOnComplete != nil {
+		c.TorBoxDeleteOnComplete = *f.TorBoxDeleteOnComplete
+	}
+	if v := getenv("MARQUEE_TORBOX_DELETE_ON_COMPLETE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return errors.New("MARQUEE_TORBOX_DELETE_ON_COMPLETE must be true or false")
+		}
+		c.TorBoxDeleteOnComplete = b
+	}
+	return nil
 }

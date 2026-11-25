@@ -13,11 +13,17 @@ type badge struct {
 func downloading(p int) *badge {
 	return &badge{State: "downloading", Label: fmt.Sprintf("Downloading %d%%", p), Percent: &p}
 }
+func caching(p int) *badge {
+	return &badge{State: "caching", Label: fmt.Sprintf("Caching %d%%", p), Percent: &p}
+}
 func stalled() *badge { return &badge{State: "stalled", Label: "Stalled"} }
 
 // epState is an episode's stored state, overridden while it downloads.
 func (f *Fake) epState(t *entry, s *season, e *episode) (state string, percent int) {
 	if d := f.activeDownload(t.id(), epID(s, e)); d != nil {
+		if d.State == "caching" {
+			return "caching", d.Percent
+		}
 		if d.Stalled {
 			return "stalled", 0
 		}
@@ -32,6 +38,9 @@ func (f *Fake) badge(t *entry) *badge {
 	}
 	if t.Kind == "movie" {
 		if d := f.activeDownload(t.id(), ""); d != nil {
+			if d.State == "caching" {
+				return caching(d.Percent)
+			}
 			if d.Stalled {
 				return stalled()
 			}
@@ -80,8 +89,8 @@ func (f *Fake) seasonBadge(t *entry, s *season) *badge {
 
 func (f *Fake) group(t *entry, seasons []*season) *badge {
 	var have, searching, missing, total int
-	var dl, stall bool
-	percent := 0
+	var dl, stall, cache bool
+	percent, cachePercent := 0, 0
 	gapSeason := 0
 	for _, s := range seasons {
 		seasonGap := false
@@ -106,6 +115,11 @@ func (f *Fake) group(t *entry, seasons []*season) *badge {
 					percent = p
 				}
 				dl = true
+			case "caching":
+				if !cache {
+					cachePercent = p
+				}
+				cache = true
 			case "stalled":
 				stall = true
 			}
@@ -121,6 +135,8 @@ func (f *Fake) group(t *entry, seasons []*season) *badge {
 		return nil
 	case dl:
 		return downloading(percent)
+	case cache:
+		return caching(cachePercent)
 	case stall:
 		return stalled()
 	case have > 0 && gaps > 0:

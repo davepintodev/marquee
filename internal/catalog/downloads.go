@@ -13,9 +13,11 @@ import (
 )
 
 // States of a download. A download moves queued, downloading, verifying,
-// importing, done, or ends failed with a reason.
+// importing, done, or ends failed with a reason. One TorBox has to fetch
+// first spends its time between queued and downloading caching.
 const (
 	StateQueued      = "queued"
+	StateCaching     = "caching"
 	StateDownloading = "downloading"
 	StateVerifying   = "verifying"
 	StateImporting   = "importing"
@@ -28,8 +30,12 @@ const (
 // after a minute.
 const StallAfter = 15 * time.Second
 
-// Percent is how much of the file has arrived, 0 until the size is known.
+// Percent is how much of the file has arrived, or of the torrent TorBox has
+// cached; 0 until the size is known.
 func (d Download) Percent() int {
+	if d.State == StateCaching {
+		return min(d.CachePercent, 100)
+	}
 	if d.BytesTotal <= 0 {
 		return 0
 	}
@@ -72,39 +78,53 @@ type NewDownload struct {
 	// a release named S01E01E02 does. A file of a single episode leaves it
 	// empty; otherwise it is sorted and holds Number.
 	Covered []int
+	// Uncached marks a release the debrid service does not hold, which TorBox
+	// must fetch before the file can be downloaded; it has no playback link.
+	Uncached bool
 }
 
 type Download struct {
 	NewDownload
-	State       string
-	BytesDone   int64
-	BytesTotal  int64
-	Reason      string
-	Message     string
-	LibraryPath string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	TitleName   string
+	// CachePercent is how much of the torrent TorBox has fetched so far.
+	CachePercent int
+	// TorBoxTorrentID and TorBoxFileID name the torrent TorBox created for
+	// the download, and the file of it that was chosen, once they are known.
+	TorBoxTorrentID, TorBoxFileID int
+	// CachingStartedAt is when the torrent was first recorded, which is when
+	// caching began; zero until then.
+	CachingStartedAt time.Time
+	State            string
+	BytesDone        int64
+	BytesTotal       int64
+	Reason           string
+	Message          string
+	LibraryPath      string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	TitleName        string
 }
 
 const downloadColumns = `d.id, d.title_id, t.title, d.season, d.number, d.state, d.info_hash, d.file_name, d.size,
 	d.release_name, d.resolution, d.quality, d.url, d.bytes_done, d.bytes_total, d.reason, d.message,
-	d.library_path, d.created_at, d.updated_at, d.replace_existing, d.covered_episodes`
+	d.library_path, d.created_at, d.updated_at, d.replace_existing, d.covered_episodes,
+	d.cached, d.cache_percent, d.torbox_torrent_id, d.torbox_file_id, d.caching_started_at`
 
 func scanDownload(sc interface{ Scan(...any) error }, extra ...any) (Download, error) {
 	var d Download
-	var url, created, updated, covered string
-	var replace int
+	var url, created, updated, covered, cachingStarted string
+	var replace, cached int
 	dest := append([]any{&d.ID, &d.TitleID, &d.TitleName, &d.Season, &d.Number, &d.State, &d.Release.InfoHash,
 		&d.Release.FileName, &d.Release.Size, &d.ReleaseName, &d.Resolution, &d.Quality, &url, &d.BytesDone,
-		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated, &replace, &covered}, extra...)
+		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated, &replace, &covered,
+		&cached, &d.CachePercent, &d.TorBoxTorrentID, &d.TorBoxFileID, &cachingStarted}, extra...)
 	if err := sc.Scan(dest...); err != nil {
 		return Download{}, err
 	}
-	d.URL, d.ReplaceExisting = config.Secret(url), replace == 1
+	d.URL, d.ReplaceExisting, d.Uncached = config.Secret(url), replace == 1, cached == 0
 	d.Covered = decodeCovered(covered)
 	d.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
+	d.CachingStartedAt, _ = time.Parse(time.RFC3339Nano, cachingStarted)
 	return d, nil
 }
 
@@ -144,9 +164,9 @@ func (s *Store) AddDownload(ctx context.Context, n NewDownload) (Download, error
 	}
 	now := s.stamp()
 	_, err = tx.ExecContext(ctx, `INSERT INTO downloads (id, title_id, season, number, state, info_hash, file_name, size,
-		release_name, resolution, quality, url, replace_existing, covered_episodes, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		release_name, resolution, quality, url, replace_existing, covered_episodes, cached, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		n.ID, n.TitleID, n.Season, n.Number, n.Release.InfoHash, n.Release.FileName, n.Release.Size,
-		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), stored, now, now)
+		n.ReleaseName, n.Resolution, n.Quality, n.URL.Reveal(), b2i(n.ReplaceExisting), stored, b2i(!n.Uncached), now, now)
 	if err != nil {
 		if isUnique(err) {
 			return Download{}, ErrActiveDownload
@@ -282,6 +302,61 @@ func (s *Store) pruneDownloads(ctx context.Context, tx *sql.Tx) error {
 func (s *Store) SetDownloadState(ctx context.Context, id, state string) error {
 	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET state = ?, updated_at = ? WHERE id = ? AND state NOT IN ('done', 'failed')`, state, s.stamp(), id)
 	return affected(res, err)
+}
+
+// SetDownloadCaching records how far TorBox has fetched a download's torrent,
+// and which torrent and file that is. A download already transferring or
+// further on keeps its state, so a late report never moves it back. A
+// download that is gone or finished answers ErrNotFound.
+func (s *Store) SetDownloadCaching(ctx context.Context, id string, percent, torrentID, fileID int) error {
+	stamp := s.stamp()
+	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET state = 'caching', cache_percent = ?, torbox_torrent_id = ?, torbox_file_id = ?, updated_at = ?,
+		caching_started_at = CASE WHEN caching_started_at = '' THEN ? ELSE caching_started_at END
+		WHERE id = ? AND state IN ('queued', 'caching')`, percent, torrentID, fileID, stamp, stamp, id)
+	if err := affected(res, err); !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	var live int
+	err = s.w.QueryRowContext(ctx, `SELECT 1 FROM downloads WHERE id = ? AND state NOT IN ('done', 'failed')`, id).Scan(&live)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+// UncachedActive counts the downloads waiting for TorBox or being fetched by
+// it, which is what the number of torrents TorBox may cache at once limits.
+func (s *Store) UncachedActive(ctx context.Context) (int, error) {
+	var n int
+	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE cached = 0 AND state IN ('queued', 'caching')`).Scan(&n)
+	return n, err
+}
+
+// TorrentUsers are the unfinished downloads other than exceptID that refer
+// to the TorBox torrent, which must not be deleted while any of them runs.
+func (s *Store) TorrentUsers(ctx context.Context, torrentID int, exceptID string) ([]string, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT id FROM downloads WHERE torbox_torrent_id = ? AND id != ? AND state NOT IN ('done', 'failed')`,
+		torrentID, exceptID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// TorrentInUse reports whether an unfinished download other than exceptID
+// refers to the TorBox torrent, in which case it must not be deleted.
+func (s *Store) TorrentInUse(ctx context.Context, torrentID int, exceptID string) (bool, error) {
+	ids, err := s.TorrentUsers(ctx, torrentID, exceptID)
+	return len(ids) > 0, err
 }
 
 // SetDownloadProgress records the bytes written and the size the server reported.

@@ -9,9 +9,10 @@ export const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Some
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const unadded = (s: TitleSummary): Title => ({ ...s, seasons: [], historySummary: "", history: [] });
 
-function withProgress(t: Title, episode: string | undefined, percent: number): Title {
-  if (!episode) return { ...t, badge: t.badge && { ...t.badge, label: `Downloading ${percent}%`, percent } };
-  return { ...t, seasons: t.seasons.map((s) => ({ ...s, episodes: s.episodes.map((e) => (e.id === episode ? { ...e, state: "downloading", percent } : e)) })) };
+function withProgress(t: Title, episode: string | undefined, percent: number, state: "caching" | "downloading"): Title {
+  const word = state === "caching" ? "Caching" : "Downloading";
+  if (!episode) return { ...t, badge: t.badge && { ...t.badge, state, label: `${word} ${percent}%`, percent } };
+  return { ...t, seasons: t.seasons.map((s) => ({ ...s, episodes: s.episodes.map((e) => (e.id === episode ? { ...e, state, percent } : e)) })) };
 }
 
 interface Opts {
@@ -61,7 +62,7 @@ export function useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast }:
     if (e.type === "reconnected") return refetch();
     if (e.data.titleId !== id) return;
     if (e.type === "title") return refetch();
-    setLoad((l) => (l.status === "ok" ? { status: "ok", title: withProgress(l.title, e.data.episode, e.data.percent) } : l));
+    setLoad((l) => (l.status === "ok" ? { status: "ok", title: withProgress(l.title, e.data.episode, e.data.percent, e.data.state === "caching" ? "caching" : "downloading") } : l));
   });
 
   // Resolves to whether the action went through; a refusal is left in `error`.

@@ -254,6 +254,7 @@ func TestEachEpisodeHasItsOwnDailySearchBudget(t *testing.T) {
 // oldBudget turns a current database back into one at schema 14: the
 // search budget kept per title.
 const oldBudget = `
+ALTER TABLE downloads DROP COLUMN caching_started_at;
 CREATE TABLE search_budget_old (
   title_id TEXT PRIMARY KEY REFERENCES titles(id) ON DELETE CASCADE,
   day      TEXT NOT NULL,

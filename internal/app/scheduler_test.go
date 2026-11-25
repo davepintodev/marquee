@@ -35,13 +35,15 @@ const (
 // clock and calls Step, so every search happens exactly when the test says.
 type schedRig struct {
 	*realSvc
-	aio *aiostreamsfake.Fake
-	cdn *debridfake.Server
-	jf  *jellyfinfake.Server
-	sch *scheduler.Scheduler
+	aio     *aiostreamsfake.Fake
+	cdn     *debridfake.Server
+	jf      *jellyfinfake.Server
+	sch     *scheduler.Scheduler
 	adopted chan error
 	root    string
 	stop    func()
+	// tweak changes the options the service starts with.
+	tweak func(*app.Options)
 }
 
 func newSchedRig(t *testing.T, dryRun bool) *schedRig {
@@ -51,7 +53,12 @@ func newSchedRig(t *testing.T, dryRun bool) *schedRig {
 
 func newSchedRigWith(t *testing.T, dryRun bool, tm *tmdbfake.Fake, prep func(env map[string]string)) *schedRig {
 	t.Helper()
-	r := &schedRig{aio: newAIO(t), cdn: debridfake.New(), jf: jellyfinfake.New(), adopted: make(chan error, 4)}
+	return newSchedRigTweaked(t, dryRun, tm, prep, nil)
+}
+
+func newSchedRigTweaked(t *testing.T, dryRun bool, tm *tmdbfake.Fake, prep func(env map[string]string), tweak func(*app.Options)) *schedRig {
+	t.Helper()
+	r := &schedRig{aio: newAIO(t), cdn: debridfake.New(), jf: jellyfinfake.New(), adopted: make(chan error, 4), tweak: tweak}
 	t.Cleanup(r.cdn.Close)
 	t.Cleanup(r.jf.Close)
 	env := testEnv(t)
@@ -92,6 +99,9 @@ func (r *schedRig) start() {
 		Scheduler:   scheduler.Tuning{Tick: -1},
 		OnScheduler: func(s *scheduler.Scheduler) { r.sch = s },
 		OnAdopted:   func(err error) { r.adopted <- err },
+	}
+	if r.tweak != nil {
+		r.tweak(&opts)
 	}
 	r.run(opts)
 }
@@ -180,6 +190,10 @@ type listed struct {
 	season, ep int
 	// eps lists every episode a multi-episode release holds; it replaces ep.
 	eps []int
+	// uncached lists a release the debrid service does not hold: it has no link.
+	uncached bool
+	// hash overrides the info hash, which is otherwise made from the position.
+	hash string
 }
 
 // results is an AIOStreams answer holding the given releases, all cached.
@@ -193,10 +207,14 @@ func results(rs ...listed) []byte {
 				parsed["episodes"] = l.eps
 			}
 		}
+		hash := l.hash
+		if hash == "" {
+			hash = fmt.Sprintf("%040d", i+1)
+		}
 		list = append(list, map[string]any{
 			"url": l.url, "filename": l.name, "folderName": strings.TrimSuffix(l.name, ".mkv"), "size": l.size,
-			"type": "debrid", "service": "torbox", "cached": true, "addon": "Torrentio",
-			"infoHash": fmt.Sprintf("%040d", i+1), "parsedFile": parsed,
+			"type": "debrid", "service": "torbox", "cached": !l.uncached, "addon": "Torrentio",
+			"infoHash": hash, "parsedFile": parsed,
 		})
 	}
 	b, err := json.Marshal(map[string]any{"success": true, "data": map[string]any{"results": list}})

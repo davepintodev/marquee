@@ -760,6 +760,7 @@
 }
 
 .ts-have[data-state="searching"] b,
+.ts-have[data-state="caching"] b,
 .ts-have[data-state="downloading"] b {
   color: var(--info);
 }
@@ -1207,6 +1208,7 @@
 }
 
 [data-state="searching"],
+[data-state="caching"],
 [data-state="downloading"] {
   --st: var(--info);
 }

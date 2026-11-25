@@ -60,6 +60,9 @@ type Deps struct {
 	Profiles config.ProfileSet
 	// Jellyfin is nil when Jellyfin is not set up, which leaves it off Health.
 	Jellyfin Pinger
+	// TorBox is nil when no TorBox key is set: releases the debrid service
+	// has not cached are then unusable, and TorBox is left off Health.
+	TorBox Pinger
 	// HealthTimeout bounds each probe a Health read makes; zero is eight seconds.
 	HealthTimeout time.Duration
 	// EventsEvery is how often the event stream looks for changes while a

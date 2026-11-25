@@ -77,8 +77,11 @@ type Options struct {
 	// Profiles are the quality profiles a title is judged by; the zero value
 	// has only the built-in default.
 	Profiles config.ProfileSet
-	Log      *slog.Logger
-	Tuning   Tuning
+	// TorBoxMaxActive is how many uncached downloads TorBox may be caching
+	// at once. Zero means TorBox is not set up, and only cached releases count.
+	TorBoxMaxActive int
+	Log             *slog.Logger
+	Tuning          Tuning
 }
 
 // Scheduler searches for what is missing. Every time it reads is the
@@ -93,9 +96,18 @@ type Scheduler struct {
 	log      *slog.Logger
 	tick     time.Duration
 	wake     chan struct{}
+	torbox   int
 
 	mu         sync.Mutex
 	lastSearch time.Time
+	// deferred are the targets whose search found only an uncached release
+	// while TorBox had no place for it. They wait, unsearched, until one opens.
+	deferred map[slot]bool
+}
+
+type slot struct {
+	titleID        string
+	season, number int
 }
 
 func New(o Options) *Scheduler {
@@ -109,7 +121,7 @@ func New(o Options) *Scheduler {
 	}
 	return &Scheduler{
 		cat: o.Catalog, src: o.Source, tmdb: o.TMDB, tr: o.Transfers, dry: o.DryRun, profiles: o.Profiles, log: log,
-		tick: tick, wake: make(chan struct{}, 1),
+		tick: tick, wake: make(chan struct{}, 1), torbox: o.TorBoxMaxActive, deferred: map[slot]bool{},
 	}
 }
 
@@ -198,12 +210,16 @@ func (s *Scheduler) searchOne(ctx context.Context) {
 		return
 	}
 	day := now.UTC().Format(time.DateOnly)
-	type slot struct {
-		titleID        string
-		season, number int
-	}
 	used := map[slot]int{}
+	waiting, err := s.torboxFull(ctx)
+	if err != nil {
+		s.logErr(ctx, "cannot count the torrents TorBox is caching", err)
+		return
+	}
 	for _, t := range targets {
+		if waiting && s.deferred[slot{t.TitleID, t.Season, t.Number}] {
+			continue
+		}
 		if t.FollowUp && !t.Forced && s.failedLocally(ctx, t) {
 			// The same release would be chosen again: wait like any other title.
 			s.backOff(ctx, now, t, "")
@@ -226,6 +242,23 @@ func (s *Scheduler) searchOne(ctx context.Context) {
 		s.search(ctx, now, t, failures)
 		return
 	}
+}
+
+// torboxFull reports whether TorBox has no place for another uncached
+// download. When it has one again, every deferred target is searched afresh.
+func (s *Scheduler) torboxFull(ctx context.Context) (bool, error) {
+	if s.torbox == 0 || len(s.deferred) == 0 {
+		return false, nil
+	}
+	n, err := s.cat.UncachedActive(ctx)
+	if err != nil {
+		return false, err
+	}
+	if n < s.torbox {
+		clear(s.deferred)
+		return false, nil
+	}
+	return true, nil
 }
 
 // failedLocally reports whether the target's last download failed on
@@ -283,14 +316,15 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 	}
 	res := chooser.Choose(streams, chooser.Context{
 		Kind: t.Kind, Season: t.Season, Episode: t.Number, OwnedEpisodes: owned, Profile: profile,
-		Blocklist: blocked, Now: now,
+		AllowUncached: s.torbox > 0, Blocklist: blocked, Now: now,
 	})
 	if !s.stillWanted(ctx, now, t) {
 		return
 	}
 	var pick *chooser.Candidate
 	for i, c := range res.Candidates {
-		if c.Stream.URL.Reveal() != "" {
+		// An uncached release has no link until TorBox holds it.
+		if c.Stream.URL.Reveal() != "" || !c.Stream.Cached {
 			pick = &res.Candidates[i]
 			break
 		}
@@ -300,9 +334,31 @@ func (s *Scheduler) search(ctx context.Context, now time.Time, t catalog.Target,
 		s.backOff(ctx, now, t, nothingUsable(len(streams), res.Dropped))
 	case s.dry:
 		s.wouldGrab(ctx, now, t, *pick)
+	case !pick.Stream.Cached && s.noRoomOnTorBox(ctx):
+		s.deferTarget(ctx, t, now)
 	default:
 		s.grab(ctx, now, t, *pick)
 	}
+}
+
+func (s *Scheduler) noRoomOnTorBox(ctx context.Context) bool {
+	n, err := s.cat.UncachedActive(ctx)
+	if err != nil {
+		s.logErr(ctx, "cannot count the torrents TorBox is caching", err)
+		return true
+	}
+	return n >= s.torbox
+}
+
+// deferTarget sets a target aside until TorBox has a place for its release.
+// It is neither a search that found nothing, which would back off, nor one
+// that was spent, so the budget is given back.
+func (s *Scheduler) deferTarget(ctx context.Context, t catalog.Target, now time.Time) {
+	s.deferred[slot{t.TitleID, t.Season, t.Number}] = true
+	if !t.Forced && !t.FollowUp {
+		s.ignoreGone(s.cat.RefundSearch(ctx, t.TitleID, t.Season, t.Number, now.UTC().Format(time.DateOnly)))
+	}
+	s.log.Info("an uncached release waits for a free place on TorBox", "title", t.TitleID)
 }
 
 // stillWanted checks that the target was not unmonitored, removed or
@@ -341,7 +397,7 @@ func (s *Scheduler) grab(ctx context.Context, now time.Time, t catalog.Target, c
 	job := pipeline.Job{
 		TitleID: t.TitleID, Season: t.Season, Number: t.Number,
 		Release:     catalog.ReleaseID{InfoHash: st.InfoHash, FileName: st.Filename, Size: st.Size},
-		ReleaseName: releaseName(st), URL: st.URL,
+		ReleaseName: releaseName(st), URL: st.URL, Uncached: !st.Cached,
 	}
 	if p := st.ParsedFile; p != nil {
 		job.Resolution, job.Quality = p.Resolution, p.Quality

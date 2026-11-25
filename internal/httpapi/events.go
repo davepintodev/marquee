@@ -197,7 +197,7 @@ func diff(prev, next view) []event {
 	}
 	for id, d := range next.downloads {
 		old, had := prev.downloads[id]
-		if had && old.State == d.State && old.BytesDone == d.BytesDone && old.BytesTotal == d.BytesTotal {
+		if had && old.State == d.State && old.BytesDone == d.BytesDone && old.BytesTotal == d.BytesTotal && old.CachePercent == d.CachePercent {
 			continue
 		}
 		p := map[string]any{

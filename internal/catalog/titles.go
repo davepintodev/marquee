@@ -86,8 +86,8 @@ type Episode struct {
 	Name      string
 	AirDate   string
 	Monitored bool
-	State     string // downloaded, searching, downloading, stalled, missing or unaired
-	Percent   *int   // set while downloading
+	State     string // downloaded, searching, caching, downloading, stalled, missing or unaired
+	Percent   *int   // set while caching or downloading
 	// Shared lists, in order, the ids of every episode that shares this
 	// episode's file, itself included; it is empty unless the file holds
 	// more than one episode.
@@ -199,7 +199,7 @@ type target struct {
 // inFlight returns the unfinished downloads of the titles selected by
 // where, by movie or episode.
 func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []any) (map[target]*inFlight, error) {
-	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, updated_at, covered_episodes FROM downloads
+	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, cache_percent, updated_at, covered_episodes FROM downloads
 		WHERE state NOT IN ('done', 'failed') AND title_id IN (SELECT id FROM titles `+where+`)`, args...)
 	if err != nil {
 		return nil, err
@@ -211,11 +211,11 @@ func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []an
 		var k target
 		var d Download
 		var updated, covered string
-		if err := rows.Scan(&k.titleID, &k.season, &k.number, &d.State, &d.BytesDone, &d.BytesTotal, &updated, &covered); err != nil {
+		if err := rows.Scan(&k.titleID, &k.season, &k.number, &d.State, &d.BytesDone, &d.BytesTotal, &d.CachePercent, &updated, &covered); err != nil {
 			return nil, err
 		}
 		d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-		fl := &inFlight{stalled: d.Stalled(now), percent: d.Percent()}
+		fl := &inFlight{stalled: d.Stalled(now), caching: d.State == StateCaching, percent: d.Percent()}
 		out[k] = fl
 		for _, n := range decodeCovered(covered) {
 			out[target{k.titleID, k.season, n}] = fl
@@ -486,7 +486,10 @@ func buildSeasons(rows []epRow, today string, flying func(season, number int) *i
 		percent := 0
 		if dl := flying(r.season, r.number); dl != nil {
 			state, percent = "downloading", dl.percent
-			if dl.stalled {
+			switch {
+			case dl.caching:
+				state = "caching"
+			case dl.stalled:
 				state = "stalled"
 			}
 		}
@@ -494,7 +497,7 @@ func buildSeasons(rows []epRow, today string, flying func(season, number int) *i
 		if ids := sharing[r.path]; r.haveFile && r.path != "" && len(ids) > 1 {
 			ep.Shared = ids
 		}
-		if state == "downloading" {
+		if state == "downloading" || state == "caching" {
 			ep.Percent = &percent
 		}
 		eps[r.season] = append(eps[r.season], ep)

@@ -312,3 +312,76 @@ func TestARescanIntervalOfZeroDisablesTheTimerAndABadOneStopsStartup(t *testing.
 		}
 	}
 }
+
+const torboxVal = "torbox-SECRETghi"
+
+func TestTorBoxSettingsDefaultToCachedOnlyAndComeFromEnvironmentOrFile(t *testing.T) {
+	cfg, err := config.Load(envOf(fullEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TorBoxAPIKey != "" || cfg.TorBoxMaxActive != 2 || cfg.TorBoxStallTimeout != 30*time.Minute ||
+		cfg.TorBoxMaxLifetime != 4*time.Hour || !cfg.TorBoxDeleteOnComplete {
+		t.Errorf("defaults: %+v", cfg)
+	}
+
+	env := fullEnv()
+	env["MARQUEE_TORBOX_API_KEY"] = torboxVal
+	env["MARQUEE_TORBOX_MAX_ACTIVE"] = "3"
+	env["MARQUEE_TORBOX_STALL_TIMEOUT"] = "10m"
+	env["MARQUEE_TORBOX_MAX_LIFETIME"] = "90m"
+	env["MARQUEE_TORBOX_DELETE_ON_COMPLETE"] = "false"
+	cfg, err = config.Load(envOf(env))
+	if err != nil || cfg.TorBoxAPIKey.Reveal() != torboxVal || cfg.TorBoxMaxActive != 3 ||
+		cfg.TorBoxStallTimeout != 10*time.Minute || cfg.TorBoxMaxLifetime != 90*time.Minute || cfg.TorBoxDeleteOnComplete {
+		t.Fatalf("env: %+v, %v", cfg, err)
+	}
+
+	file := filepath.Join(t.TempDir(), "marquee.json")
+	body := `{"aiostreams_manifest_url":"` + manifestVal + `","tmdb_key":"` + tmdbVal + `",
+	"movies_path":"/a","series_path":"/b","temp_path":"/c","data_dir":"/d","torbox_api_key":"` + torboxVal + `",
+	"torbox_max_active":4,"torbox_stall_timeout":"20m","torbox_max_lifetime":"2h","torbox_delete_on_complete":false}`
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file}))
+	if err != nil || cfg.TorBoxMaxActive != 4 || cfg.TorBoxStallTimeout != 20*time.Minute || cfg.TorBoxMaxLifetime != 2*time.Hour || cfg.TorBoxDeleteOnComplete {
+		t.Fatalf("file: %+v, %v", cfg, err)
+	}
+	cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file, "MARQUEE_TORBOX_MAX_ACTIVE": "1", "MARQUEE_TORBOX_DELETE_ON_COMPLETE": "true"}))
+	if err != nil || cfg.TorBoxMaxActive != 1 || !cfg.TorBoxDeleteOnComplete {
+		t.Errorf("env overrides the file: %+v, %v", cfg, err)
+	}
+}
+
+func TestBadTorBoxSettingsStopStartupNamingTheSetting(t *testing.T) {
+	for env, value := range map[string]string{
+		"MARQUEE_TORBOX_MAX_ACTIVE":         "0",
+		"MARQUEE_TORBOX_STALL_TIMEOUT":      "soon",
+		"MARQUEE_TORBOX_MAX_LIFETIME":       "0s",
+		"MARQUEE_TORBOX_DELETE_ON_COMPLETE": "maybe",
+	} {
+		e := fullEnv()
+		e[env] = value
+		_, err := config.Load(envOf(e))
+		if err == nil || !strings.Contains(err.Error(), env) {
+			t.Errorf("%s=%s: want an error naming it, got %v", env, value, err)
+		}
+	}
+}
+
+func TestTheTorBoxKeyIsRedactedEverywhere(t *testing.T) {
+	env := fullEnv()
+	env["MARQUEE_TORBOX_API_KEY"] = torboxVal
+	cfg, err := config.Load(envOf(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf strings.Builder
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("config", "config", cfg)
+	for _, s := range []string{buf.String(), fmt.Sprintf("%v %+v %#v", cfg, cfg, cfg)} {
+		if strings.Contains(s, "SECRETghi") {
+			t.Errorf("leaks the TorBox key: %q", s)
+		}
+	}
+}

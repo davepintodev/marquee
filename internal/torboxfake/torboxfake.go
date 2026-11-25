@@ -5,6 +5,7 @@
 package torboxfake
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Key is the API key the fake accepts.
@@ -190,7 +192,7 @@ func (f *Fake) Deleted() []int {
 
 func (f *Fake) serve(w http.ResponseWriter, r *http.Request) {
 	if tail, ok := strings.CutPrefix(r.URL.Path, "/dl/"); ok {
-		f.download(w, tail)
+		f.download(w, r, tail)
 		return
 	}
 	p := strings.TrimPrefix(r.URL.Path, "/v1/api")
@@ -253,7 +255,17 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request, p string) {
 			return
 		}
 		f.magnets = append(f.magnets, magnet)
-		t := f.add(strings.ToLower(hash))
+		hash = strings.ToLower(hash)
+		// TorBox answers a hash the account already holds with that torrent.
+		var t *torrent
+		for _, have := range f.byID {
+			if have.hash == hash && (t == nil || have.id < t.id) {
+				t = have
+			}
+		}
+		if t == nil {
+			t = f.add(hash)
+		}
 		ok(w, map[string]any{"torrent_id": t.id, "hash": t.hash, "name": t.hash})
 
 	case r.Method == http.MethodGet && p == "/torrents/mylist":
@@ -276,6 +288,12 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request, p string) {
 		ok(w, list)
 
 	case r.Method == http.MethodGet && p == "/torrents/requestdl":
+		// TorBox documents requestdl's key as a "token" query parameter, so
+		// its permalinks work outside an authenticated client.
+		if q.Get("token") != Key {
+			fail(w, http.StatusUnauthorized, "BAD_TOKEN")
+			return
+		}
 		id, _ := strconv.Atoi(q.Get("torrent_id"))
 		fileID, _ := strconv.Atoi(q.Get("file_id"))
 		t, found := f.byID[id]
@@ -332,22 +350,27 @@ func (f *Fake) add(hash string) *torrent {
 	return t
 }
 
-func (f *Fake) download(w http.ResponseWriter, tail string) {
+func (f *Fake) download(w http.ResponseWriter, r *http.Request, tail string) {
 	idPart, filePart, _ := strings.Cut(tail, "-")
 	id, _ := strconv.Atoi(idPart)
 	fileID, _ := strconv.Atoi(filePart)
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	if t, found := f.byID[id]; found && t.present {
+	var body []byte
+	found := false
+	if t, ok := f.byID[id]; ok && t.present {
 		for _, file := range t.files {
 			if file.ID == fileID {
-				w.Header().Set("Content-Type", "application/octet-stream")
-				_, _ = w.Write(file.Body)
-				return
+				body, found = file.Body, true
 			}
 		}
 	}
-	http.NotFound(w, nil)
+	f.mu.Unlock()
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))
 }
 
 func (t *torrent) json() map[string]any {
