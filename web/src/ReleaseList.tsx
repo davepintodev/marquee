@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Api } from "./api/client";
 import type { Release, Releases, TitleSummary } from "./api/types";
 import { IconChevron } from "./icons";
-import { bytesOf } from "./words";
+import { bytesOf, tagWord } from "./words";
 import "./release.css";
 import { Notice } from "./Notice";
 import { ReleasesSkeleton } from "./Skeleton";
@@ -111,6 +111,15 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
         </span>
         <span className="rt-file">
           {r.name}
+          {r.tags && r.tags.length > 0 && (
+            <span className="rl-tags">
+              {r.tags.map((t) => (
+                <span key={t} className="rl-tag">
+                  {tagWord(t)}
+                </span>
+              ))}
+            </span>
+          )}
           {opts.top && <small className="rl-pick-tag">marquee’s pick</small>}
           {opts.why && <small className="rl-why">{opts.why}</small>}
         </span>
@@ -220,7 +229,7 @@ export function ReleaseList({ api, titleId, titleName, episodeId, what, manual, 
             <>
               <p className="rl-skip-note">marquee will not try these.</p>
               <ul className="rt-list" aria-label="Dropped releases">
-                {dropped.map((d, i) => tableRow(d.release, i, { why: d.message, pick: d.reason === "blocklisted" ? "anyway" : undefined }))}
+                {dropped.map((d, i) => tableRow(d.release, i, { why: d.message, pick: d.reason === "blocklisted" || d.reason === "profile_rejected" ? "anyway" : undefined }))}
               </ul>
             </>
           )}

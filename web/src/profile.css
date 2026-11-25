@@ -1,0 +1,60 @@
+.pp {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: 0 var(--space-4) 0 18px;
+  border: 1px solid color-mix(in srgb, var(--fg) 25%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--mute);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.pp:hover {
+  border-color: var(--line-strong);
+}
+
+.pp:focus-within {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.pp-select {
+  appearance: none;
+  min-width: 0;
+  max-width: 14ch;
+  padding: 12px 18px 12px 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.pp-select:focus {
+  outline: none;
+}
+
+.pp .fold-chev {
+  position: absolute;
+  right: var(--space-4);
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .pp {
+    flex: 1 1 auto;
+    justify-content: space-between;
+  }
+
+  .pp-select {
+    flex: 1 1 auto;
+    max-width: none;
+    text-align: right;
+  }
+}

@@ -92,6 +92,24 @@
   font-weight: 600;
 }
 
+.rl-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}
+
+.rl-tag {
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--mute);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  white-space: nowrap;
+}
+
 .rl-why {
   color: var(--mute);
   font-size: var(--text-xs);
@@ -238,6 +256,11 @@
   .rt-file small {
     display: block;
     margin-left: 0;
+  }
+
+  .rl-tags {
+    display: flex;
+    margin: var(--space-1) 0 0;
   }
 
   .rt-src {

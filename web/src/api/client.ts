@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Download, Health, HistoryEntry, LiveEvent, MonitorChoice, ProgressEvent, Releases, Title, TitleAbout, TitleEvent, TitleSummary, Wall } from "./types";
+import type { Download, Health, HistoryEntry, LiveEvent, MonitorChoice, ProgressEvent, Profiles, Releases, Title, TitleAbout, TitleEvent, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -15,7 +15,11 @@ export interface Api {
   wall(signal?: AbortSignal): Promise<Wall["items"]>;
   search(q: string, signal?: AbortSignal): Promise<TitleSummary[]>;
   // Adding a title that is already in the library changes nothing and still answers with it.
-  addTitle(kind: TitleSummary["kind"], tmdbId: number, monitor?: MonitorChoice, signal?: AbortSignal): Promise<Title>;
+  // A missing profile means the default of the title's kind.
+  addTitle(kind: TitleSummary["kind"], tmdbId: number, choice?: { monitor?: MonitorChoice; profile?: string }, signal?: AbortSignal): Promise<Title>;
+  profiles(signal?: AbortSignal): Promise<Profiles>;
+  // Null puts the title back on the default of its kind.
+  setProfile(id: string, profile: string | null, signal?: AbortSignal): Promise<Title>;
   searchNow(id: string, signal?: AbortSignal): Promise<Title>;
   title(id: string, signal?: AbortSignal): Promise<Title>;
   // Scores, cast and similar titles: extras, so a caller treats any failure as "nothing to show".
@@ -160,8 +164,17 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       const data = await call(() => client.GET("/api/search", { params: { query: { q } }, signal }), (d) => Array.isArray(d.results));
       return data.results;
     },
-    addTitle(kind, tmdbId, monitor, signal) {
-      return call(() => client.POST("/api/titles", { body: { kind, tmdbId, monitor }, signal }), (d) => typeof d.id === "string");
+    addTitle(kind, tmdbId, { monitor, profile } = {}, signal) {
+      return call(() => client.POST("/api/titles", { body: { kind, tmdbId, monitor, profile }, signal }), (d) => typeof d.id === "string");
+    },
+    profiles(signal) {
+      return call(
+        () => client.GET("/api/profiles", { signal }),
+        (d) => Array.isArray(d.profiles) && typeof d.defaultMovieProfile === "string" && typeof d.defaultSeriesProfile === "string",
+      );
+    },
+    setProfile(id, profile, signal) {
+      return call(() => client.PATCH("/api/titles/{id}", { params: { path: { id } }, body: { profile }, signal }), isTitle);
     },
     searchNow(id, signal) {
       return call(() => client.POST("/api/titles/{id}/search", { params: { path: { id } }, signal }), (d) => typeof d.id === "string");

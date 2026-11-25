@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Title, TitleAbout } from "./api/types";
-import { aboutOf, dune, house } from "./fixtures";
+import { aboutOf, dune, house, profiles } from "./fixtures";
 import { FakeEventSource, json, setupApp, titleApi } from "./testkit";
 
 beforeEach(() => {
@@ -499,4 +499,46 @@ test("the screen's own fade is decided once, when it mounts: a morph in progress
   window.location.hash = "";
   await open(house());
   expect(screen.getByRole("main").hasAttribute("data-enter")).toBe(true);
+});
+
+const withProfiles = (extra?: Parameters<typeof titleApi>[1]): Parameters<typeof titleApi>[1] => (url, init) => (url.pathname === "/api/profiles" ? json(profiles) : extra?.(url, init));
+const profilePicker = () => screen.findByRole("combobox", { name: "Quality profile" }) as Promise<HTMLSelectElement>;
+
+test("a title in the library shows its profile, the default of its kind when it has none of its own", async () => {
+  await open(dune(), withProfiles());
+  expect((await profilePicker()).value).toBe("tv-safe");
+
+  cleanup();
+  window.location.hash = "";
+  await open(dune({ profile: "everything" }), withProfiles());
+  expect((await profilePicker()).value).toBe("everything");
+});
+
+test("changing the profile saves it and says so", async () => {
+  const { writes } = await open(
+    dune(),
+    withProfiles((url, init) => (init.method === "PATCH" && url.pathname === "/api/titles/movie-1" ? json(dune({ profile: "everything" })) : undefined)),
+  );
+
+  fireEvent.change(await profilePicker(), { target: { value: "everything" } });
+
+  expect((await screen.findByRole("status")).textContent).toBe("“Dune” now uses the everything profile.");
+  expect(writes).toEqual([{ method: "PATCH", path: "/api/titles/movie-1", body: { profile: "everything" } }]);
+  expect((await profilePicker()).value).toBe("everything");
+});
+
+test("a refused profile change is said in words and the picker goes back to the saved profile", async () => {
+  await open(dune({ profile: "everything" }), withProfiles((_url, init) => (init.method === "PATCH" ? json({ error: "unknown profile" }, 400) : undefined)));
+
+  fireEvent.change(await profilePicker(), { target: { value: "tv-safe" } });
+
+  expect((await screen.findByRole("alert")).textContent).toContain("unknown profile");
+  expect((await profilePicker()).value).toBe("everything");
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+test("without profiles from the API the screen has no picker", async () => {
+  await open(dune());
+  await screen.findByRole("button", { name: "Search automatically" });
+  expect(screen.queryByRole("combobox", { name: "Quality profile" })).toBeNull();
 });

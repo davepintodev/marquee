@@ -148,6 +148,41 @@ test("dropped releases sit behind their own quieter fold, with the reason, and o
   expect(screen.queryByRole("list", { name: "Dropped releases" })).toBeNull();
 });
 
+const tagged: Releases = {
+  candidates: [{ ...release("rel-1", "Dune.2021.2160p.WEB-DL", "WEBDL-2160p", 34_359_738_368, "Comet"), tags: ["dd+-atmos", "hdr10+", "hevc"] }, release("rel-2", "Dune.2021.1080p.WEB-DL", "WEBDL-1080p", 6_442_450_944, "Comet")],
+  dropped: [
+    { release: { ...release("rel-3", "Dune.2021.2160p.Remux", "Remux-2160p", 60_000_000_000, "Comet"), tags: ["truehd", "dv-p7"] }, reason: "profile_rejected", message: "rejected by profile: TrueHD audio, DV Profile 7" },
+    { release: release("rel-4", "Dune.2021.1080p.exe", "WEBDL-1080p", 4_194_304_000, "Torrentio"), reason: "not_video", message: "a .exe file, not a video" },
+  ],
+};
+
+test("format tags sit on the row in words, on candidates and dropped releases alike, and a row without tags has none", async () => {
+  await openMovie(tagged);
+  const rows = within(await table()).getAllByRole("listitem");
+
+  expect([...rows[0].querySelectorAll(".rl-tag")].map((t) => t.textContent)).toEqual(["DD+ Atmos", "HDR10+", "HEVC"]);
+  expect(rows[1].querySelector(".rl-tag")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Show 2 dropped releases" }));
+  const dropped = within(screen.getByRole("list", { name: "Dropped releases" })).getAllByRole("listitem");
+  expect([...dropped[0].querySelectorAll(".rl-tag")].map((t) => t.textContent)).toEqual(["TrueHD", "DV P7"]);
+});
+
+test("a release the profile rejected says why in words and can be picked anyway, which grabs it", async () => {
+  const { writes } = await openMovie(tagged, (_url, init) => (init.method === "POST" ? json(queued({ releaseName: "Dune.2021.2160p.Remux" }), 202) : undefined));
+  await table();
+  fireEvent.click(screen.getByRole("button", { name: "Show 2 dropped releases" }));
+  const rows = within(screen.getByRole("list", { name: "Dropped releases" })).getAllByRole("listitem");
+
+  expect(within(rows[0]).getByText("rejected by profile: TrueHD audio, DV Profile 7")).toBeTruthy();
+  expect(within(rows[1]).queryByRole("button")).toBeNull();
+  fireEvent.click(within(rows[0]).getByRole("button", { name: "Pick anyway Dune.2021.2160p.Remux" }));
+
+  expect((await screen.findByRole("status")).textContent).toBe("Queued Dune.2021.2160p.Remux.");
+  expect(writes).toEqual([{ method: "POST", path: "/api/titles/movie-1/releases/rel-3/grab", body: undefined }]);
+  expect(within(rows[0]).getByText("Queued")).toBeTruthy();
+});
+
 test("picking a release grabs it, confirms with a toast and refreshes the title", async () => {
   const { writes, calls } = await openMovie(rels, (url, init) => (init.method === "POST" && url.pathname === "/api/titles/movie-1/releases/rel-1/grab" ? json(queued(), 202) : undefined));
   await table();

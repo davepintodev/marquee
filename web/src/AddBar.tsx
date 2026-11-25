@@ -1,23 +1,27 @@
 import { useRef, useState } from "react";
 import type { Api } from "./api/client";
-import type { Title, TitleSummary } from "./api/types";
+import type { Profiles, Title, TitleSummary } from "./api/types";
 import { AddMenu, addChoices, type AddChoice } from "./AddMenu";
 import { Notice } from "./Notice";
+import { ProfilePicker, defaultProfile } from "./ProfilePicker";
 
 interface Props {
   api: Api;
+  profiles: Profiles | null;
   title: TitleSummary;
   onChanged: (title: TitleSummary) => void;
   onToast: (text: string) => void;
   onAdded: (title: Title) => void;
 }
 
-export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
+export function AddBar({ api, profiles, title, onChanged, onToast, onAdded }: Props) {
   const working = useRef(false);
   const lastChoice = useRef<AddChoice>("all");
   const primary = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Left alone, the title is added without a profile and keeps following the default of its kind.
+  const [chosen, setChosen] = useState<string | null>(null);
   const isSeries = title.kind === "series";
 
   const press = async (choice: AddChoice = "all") => {
@@ -29,7 +33,10 @@ export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
     try {
       // The menu's button unmounts when it closes; focus has to be somewhere that survives the add.
       primary.current?.focus();
-      const added = await api.addTitle(title.kind, title.tmdbId, isSeries ? (choice === "select" ? "none" : choice) : undefined);
+      const added = await api.addTitle(title.kind, title.tmdbId, {
+        monitor: isSeries ? (choice === "select" ? "none" : choice) : undefined,
+        profile: chosen ?? undefined,
+      });
       onChanged(added);
       onAdded(added);
       if (isSeries) {
@@ -59,6 +66,7 @@ export function AddBar({ api, title, onChanged, onToast, onAdded }: Props) {
         </button>
         {isSeries && <AddMenu busy={busy} onChoose={press} />}
       </div>
+      {profiles && <ProfilePicker profiles={profiles} value={chosen ?? defaultProfile(profiles, title.kind)} onChange={setChosen} />}
     </>
   );
 }
