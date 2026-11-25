@@ -710,7 +710,6 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusAccepted, f.downloadOut(d))
 }
 
-// hasFile reports whether the movie, or the episode named by ep, is downloaded.
 func (f *Fake) hasFile(t *entry, ep string) bool {
 	if t.Kind == "movie" {
 		return t.State == "downloaded"

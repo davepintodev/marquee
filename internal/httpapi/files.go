@@ -12,7 +12,6 @@ import (
 	"github.com/davepintodev/marquee/internal/importer"
 )
 
-// libraryRoot is the folder a title's files live under.
 func (a *api) libraryRoot(kind string) string {
 	if kind == "movie" {
 		return a.Paths.Movies
@@ -173,7 +172,6 @@ func (a *api) refreshLibrary(ctx context.Context) {
 	}
 }
 
-// ownsFile reports whether the movie, or the episode, already has its file.
 func (a *api) ownsFile(ctx context.Context, id string, season, number int) (bool, error) {
 	f, err := a.Catalog.FileOf(ctx, id, season, number)
 	if errors.Is(err, catalog.ErrNotFound) {

@@ -601,7 +601,6 @@ func (m *Manager) rootOf(t catalog.Title) string {
 	return m.series
 }
 
-// relPath is dst relative to the title's library folder, in slash form.
 func (m *Manager) relPath(t catalog.Title, dst string) string {
 	rel, err := filepath.Rel(m.rootOf(t), dst)
 	if err != nil {

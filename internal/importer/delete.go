@@ -168,7 +168,6 @@ func resolveMedia(root, relPath string) (dir, name string, err error) {
 	return dir, name, nil
 }
 
-// checkRel resolves the root and returns relPath cleaned, in slash form.
 func checkRel(root, relPath string) (resolvedRoot, rel string, err error) {
 	if root == "" {
 		return "", "", errors.New("importer: no library root to delete from")
