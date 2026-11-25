@@ -1,4 +1,4 @@
-import type { Download, Releases, Title, TitleAbout } from "./api/types";
+import type { Download, Profiles, Releases, Title, TitleAbout } from "./api/types";
 
 export const house = (over: Partial<Title> = {}): Title => ({
   id: "series-2",
@@ -106,3 +106,12 @@ export const aboutOf = (over: Partial<TitleAbout> = {}): TitleAbout => ({
   similar: [{ id: "series-9", tmdbId: 9, kind: "series", title: "Scrubs", year: 2001, overview: "", posterPath: "/api/images/poster/series-9", backdropPath: "", inLibrary: false }],
   ...over,
 });
+
+export const profiles: Profiles = {
+  profiles: [
+    { name: "everything", qualities: ["Remux-2160p", "WEBDL-1080p"], reject: [], prefer: [], sizeLimits: { minMb: 0, maxMb: 0 } },
+    { name: "tv-safe", qualities: ["WEBDL-1080p"], reject: ["truehd", "dv-p7"], prefer: ["dd+"], sizeLimits: { minMb: 0, maxMb: 0 } },
+  ],
+  defaultMovieProfile: "tv-safe",
+  defaultSeriesProfile: "everything",
+};

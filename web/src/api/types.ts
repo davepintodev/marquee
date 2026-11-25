@@ -12,6 +12,7 @@ export type TitleAbout = Schemas["TitleAbout"];
 export type Rating = Schemas["Rating"];
 export type CastMember = Schemas["CastMember"];
 export type Release = Schemas["Release"];
+export type Profiles = Schemas["Profiles"];
 export type Releases = Schemas["Releases"];
 export type Download = Schemas["Download"];
 export type HistoryEntry = Schemas["HistoryEntry"];

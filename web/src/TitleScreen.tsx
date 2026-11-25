@@ -11,9 +11,11 @@ import { Say, Sk, TitleSkeleton } from "./Skeleton";
 import { ErrorState } from "./State";
 import { MonitorMark } from "./MonitorMark";
 import { ProgressLine } from "./Progress";
+import { ProfilePicker, defaultProfile } from "./ProfilePicker";
 import { ReleaseList } from "./ReleaseList";
 import { BackBar, Collapse, RemoveBlock } from "./TitleParts";
 import { useEscape } from "./useEscape";
+import { useProfiles } from "./useProfiles";
 import { useTitleScreen } from "./useTitleScreen";
 import { inHours, stateLabel } from "./words";
 import "./icons.css";
@@ -40,6 +42,7 @@ const reduced = () => typeof window.matchMedia === "function" && window.matchMed
 export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onToast, onOpenTitle }: Props) {
   const { load, setLoad, busy, error, run, remove, reload } = useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast });
   const about = useAbout(api, id);
+  const profiles = useProfiles(api);
   const [enter] = useState(() => !document.documentElement.hasAttribute("data-morph"));
   const [season, setSeason] = useState<number | null>(null);
   const [seasonOpen, setSeasonOpen] = useState(true);
@@ -192,9 +195,16 @@ export function TitleScreen({ api, id, seed, onClose, onChanged, onRemoved, onTo
                   >
                     <IconBookmark on={monitored} />
                   </IconButton>
+                  {profiles && (
+                    <ProfilePicker
+                      profiles={profiles}
+                      value={t.profile ?? defaultProfile(profiles, t.kind)}
+                      onChange={(name) => run("profile", () => api.setProfile(t.id, name), `“${t.title}” now uses the ${name} profile.`)}
+                    />
+                  )}
                 </>
               ) : (
-                <AddBar api={api} title={t} onChanged={onChanged} onToast={onToast} onAdded={(added) => setLoad({ status: "ok", title: added })} />
+                <AddBar api={api} profiles={profiles} title={t} onChanged={onChanged} onToast={onToast} onAdded={(added) => setLoad({ status: "ok", title: added })} />
               )}
             </div>
             <FactList about={about} />

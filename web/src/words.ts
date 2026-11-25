@@ -68,3 +68,27 @@ export function bytesOf(n: number) {
   const text = i === 0 || v >= 10 ? String(Math.round(v)) : v.toFixed(1).replace(/\.0$/, "");
   return `${text} ${units[i]}`;
 }
+
+const TAG_WORDS: Record<string, string> = {
+  truehd: "TrueHD",
+  "dts-hd": "DTS-HD",
+  "dts-x": "DTS:X",
+  "dd+-atmos": "DD+ Atmos",
+  "dd+": "DD+",
+  dts: "DTS",
+  dd: "DD",
+  aac: "AAC",
+  flac: "FLAC",
+  opus: "Opus",
+  "dv-p7": "DV P7",
+  dv: "DV",
+  "hdr10+": "HDR10+",
+  hdr10: "HDR10",
+  hdr: "HDR",
+  av1: "AV1",
+  hevc: "HEVC",
+  avc: "AVC",
+};
+
+// A tag the table does not know yet still shows, as itself.
+export const tagWord = (tag: string) => TAG_WORDS[tag] ?? tag.toUpperCase();

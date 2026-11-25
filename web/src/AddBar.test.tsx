@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Title, TitleSummary } from "./api/types";
+import { profiles } from "./fixtures";
 import { json, setupApp } from "./testkit";
 
 const severance: TitleSummary = {
@@ -28,16 +29,17 @@ afterEach(() => {
   window.location.hash = "";
 });
 
-function serve(post: (init: Request) => Response | Promise<Response> = () => json(added(severance), 201)) {
+function serve(post: (init: Request) => Response | Promise<Response> = () => json(added(severance), 201), withProfiles = false) {
   return (url: URL, init: Request) => {
+    if (withProfiles && url.pathname === "/api/profiles") return json(profiles);
     if (url.pathname === "/api/wall") return json({ items: [{ source: "trending", title: severance }, { source: "trending", title: dune }] });
     if (init.method === "POST" && url.pathname === "/api/titles") return post(init);
     return json({ error: "no such title in the library" }, 404);
   };
 }
 
-async function open(name: RegExp, post?: Parameters<typeof serve>[0]) {
-  const app = setupApp(serve(post), "#/");
+async function open(name: RegExp, post?: Parameters<typeof serve>[0], withProfiles = false) {
+  const app = setupApp(serve(post, withProfiles), "#/");
   fireEvent.click((await screen.findAllByRole("button", { name }))[0]);
   await screen.findByRole("main");
   return app;
@@ -236,4 +238,58 @@ test.each([
 
   await page().findByRole("button", { name: "Search automatically" });
   expect(writes.map((w) => (w.body as { monitor: string }).monitor)).toEqual([monitor, monitor]);
+});
+
+const picker = () => page().findByRole("combobox", { name: "Quality profile" });
+
+test("a title not in the library offers a profile picker that starts on the default of its kind", async () => {
+  await open(/^Severance \(2022\)/, undefined, true);
+  const series = (await picker()) as HTMLSelectElement;
+  expect(series.value).toBe("everything");
+  expect([...series.options].map((o) => o.value)).toEqual(["everything", "tv-safe"]);
+
+  cleanup();
+  window.location.hash = "";
+  await open(/^Dune \(2021\)/, () => json(added(dune), 201), true);
+  expect(((await picker()) as HTMLSelectElement).value).toBe("tv-safe");
+});
+
+test("adding with the picker left alone sends no profile, so the title keeps following the default", async () => {
+  const { writes } = await open(/^Severance \(2022\)/, undefined, true);
+  await picker();
+
+  fireEvent.click(page().getByRole("button", { name: "Add & monitor" }));
+
+  await screen.findByRole("status");
+  expect(writes).toEqual([{ method: "POST", path: "/api/titles", body: { kind: "series", tmdbId: 2, monitor: "all" } }]);
+});
+
+test("a profile chosen before adding is sent with the add, for the main button and the monitor menu", async () => {
+  const { writes } = await open(/^Dune \(2021\)/, () => json(added(dune), 201), true);
+  fireEvent.change(await picker(), { target: { value: "everything" } });
+
+  fireEvent.click(page().getByRole("button", { name: "Add & monitor" }));
+
+  await screen.findByRole("status");
+  expect(writes).toEqual([{ method: "POST", path: "/api/titles", body: { kind: "movie", tmdbId: 1, profile: "everything" } }]);
+
+  cleanup();
+  window.location.hash = "";
+  const series = await open(/^Severance \(2022\)/, undefined, true);
+  fireEvent.change(await picker(), { target: { value: "tv-safe" } });
+  fireEvent.click(toggle());
+  fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "First season" }));
+
+  await screen.findByRole("status");
+  expect(series.writes).toEqual([{ method: "POST", path: "/api/titles", body: { kind: "series", tmdbId: 2, monitor: "first_season", profile: "tv-safe" } }]);
+});
+
+test("when the profiles cannot be loaded the add still works and no picker shows", async () => {
+  const { writes } = await open(/^Severance \(2022\)/);
+
+  expect(page().queryByRole("combobox")).toBeNull();
+  fireEvent.click(page().getByRole("button", { name: "Add & monitor" }));
+
+  await screen.findByRole("status");
+  expect(writes).toHaveLength(1);
 });
