@@ -221,7 +221,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
     [changed, live],
   );
   const wallTitles = useMemo(() => (wall.status === "ok" ? wall.data.map((i) => current(i.title)) : wall.status === "error" ? [] : null), [wall, current]);
-  // What the last wall fetch called trending; a title the owner removes since is not on this list, so it never lands in Trending.
+  // What the last wall fetch called trending; a library title removed since is not on this list, so it does not land in Trending until a fetch says it is trending.
   const trendingIds = useMemo(() => new Set(wall.status === "ok" ? wall.data.filter((i) => i.source === "trending").map((i) => i.title.id) : []), [wall]);
   const results: Load<TitleSummary[]> =
     answer.query !== q ? { status: "loading" } : answer.load.status === "ok" ? { status: "ok", data: answer.load.data.map(current) } : answer.load;

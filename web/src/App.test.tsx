@@ -441,7 +441,6 @@ function pageApi(extra: Handler = notFound): Handler {
 const isAdd = (url: URL, init: Request) => init.method === "POST" && url.pathname === "/api/titles";
 const addAnswering = (answer: () => Response | Promise<Response>): Handler => (url, init) => (isAdd(url, init) ? answer() : notFound());
 
-// Opens a title from wherever the wall shows it: the library grid, or the Trending section when the library does not hold it.
 const openTile = async (name: RegExp) => {
   await grid().findByRole("list", { name: "Library titles" });
   if (!grid().queryByRole("button", { name })) fireEvent.click(chip(/^trending/i));
@@ -701,7 +700,7 @@ test("the clear button empties the search and brings the library back", async ()
   expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
 });
 
-test("exactly one filter is pressed, and it follows the click", async () => {
+test("clicking a kind moves the pressed state to it", async () => {
   setup(() => json(wall));
   await grid().findAllByRole("button", { name: /house/i });
 

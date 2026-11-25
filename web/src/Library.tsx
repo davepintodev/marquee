@@ -42,7 +42,7 @@ export function colsOf(width: number) {
 interface Props {
   api: Api;
   items: TitleSummary[] | null;
-  // Ids the wall listed as trending; a title that is in the library or was removed is never one of them.
+  // Ids the last wall fetch listed as trending; a title that was in the library then is never one of them.
   trending?: ReadonlySet<string>;
   onSelect?: (title: TitleSummary) => void;
   notice?: ReactNode;
@@ -102,7 +102,7 @@ export function Library({ api, items, trending = NO_IDS, onSelect, notice, activ
   const slot = (i: number) => ({ ["--d" as string]: (i % cols) * 45 + Math.min(Math.floor(i / cols), STAGGER_ROWS) * 70 });
   // In Trending the Library chip is the way back, so it is pressed only in the Library section.
   const kindOn = (k: Kind) => (inTrending ? kind === k && k !== "all" : status === null && kind === k);
-  const barOn = (b: string) => b !== "" && b === barKey;
+  const barOn = (b: string) => b === barKey;
   const pickKind = (k: Kind) => {
     setKind(k);
     setStatus(null);
