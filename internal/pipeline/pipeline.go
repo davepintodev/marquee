@@ -93,6 +93,16 @@ type Manager struct {
 	mu       sync.Mutex
 	running  map[string]bool
 	idSource func() string
+
+	claimMu sync.Mutex
+	claims  map[string]claim
+}
+
+// claim is a verified download's place in its series until it has been
+// imported or dropped.
+type claim struct {
+	titleID, fingerprint string
+	season, number       int
 }
 
 // New returns a manager; call Run to start it.
@@ -127,7 +137,7 @@ func New(o Options) *Manager {
 	m := &Manager{
 		cat: o.Catalog, dl: dl, movies: o.MoviesPath, series: o.SeriesPath,
 		tempDir: filepath.Join(o.TempPath, "marquee"), log: log, tune: t,
-		wake: make(chan struct{}, 1), running: map[string]bool{}, idSource: newID,
+		wake: make(chan struct{}, 1), running: map[string]bool{}, claims: map[string]claim{}, idSource: newID,
 	}
 	if o.JellyfinURL != "" {
 		m.jf = importer.NewJellyfin(o.JellyfinURL, o.JellyfinKey, t.JellyfinTimeout)
@@ -225,6 +235,9 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 				m.mu.Lock()
 				delete(m.running, d.ID)
 				m.mu.Unlock()
+				m.claimMu.Lock()
+				delete(m.claims, d.ID)
+				m.claimMu.Unlock()
 				m.kick()
 			}()
 			m.process(ctx, d)
@@ -412,21 +425,41 @@ func (m *Manager) verify(ctx context.Context, d catalog.Download) bool {
 // isDuplicate fails the download and reports true when an episode's file is
 // byte-for-byte what another episode of the series already has, which is
 // how a pack's mislabelled file looks. A fingerprint that cannot be read
-// fails it on marquee's side.
+// fails it on marquee's side. The other episode may be one still being
+// imported, so the check and the claim on the fingerprint are made under one
+// lock, and the claim is only dropped after the import has been recorded
+// (see dispatch). A shutdown leaves the download untouched to resume.
 func (m *Manager) isDuplicate(ctx context.Context, d catalog.Download, t catalog.Title, part string) bool {
 	if t.Kind == "movie" {
 		return false
 	}
 	fp, err := importer.Fingerprint(part)
 	if err != nil {
+		if ctx.Err() != nil {
+			return true
+		}
 		m.fail(ctx, d, ReasonLocalError, "the downloaded file could not be read", false)
 		return true
 	}
+	m.claimMu.Lock()
 	season, number, found, err := m.cat.DuplicateEpisode(ctx, d.TitleID, fp, d.Season, d.Number)
-	if err != nil {
-		if ctx.Err() == nil {
-			m.log.Error("cannot look for a duplicate episode", "download", d.ID, "err", err)
+	if err == nil && !found {
+		for id, c := range m.claims {
+			if id != d.ID && c.titleID == d.TitleID && c.fingerprint == fp && (c.season != d.Season || c.number != d.Number) {
+				season, number, found = c.season, c.number, true
+				break
+			}
 		}
+	}
+	if err == nil && !found {
+		m.claims[d.ID] = claim{titleID: d.TitleID, fingerprint: fp, season: d.Season, number: d.Number}
+	}
+	m.claimMu.Unlock()
+	if err != nil {
+		if ctx.Err() != nil {
+			return true
+		}
+		m.log.Error("cannot look for a duplicate episode", "download", d.ID, "err", err)
 		m.fail(ctx, d, ReasonLocalError, "the library could not be checked for duplicates", false)
 		return true
 	}

@@ -1005,6 +1005,40 @@ func TestAnEpisodeFileIdenticalToAnotherEpisodeIsRefusedAndBlocklisted(t *testin
 	}
 }
 
+func TestTwoEpisodesDownloadingIdenticalBytesAtOnceImportOnlyOne(t *testing.T) {
+	r, root := setup(t)
+	data := debridfake.MKV(200 << 10)
+	e1 := episodeJob(r.cdn.Add("e1.mkv", debridfake.File{Data: data}), "e1.mkv")
+	e2 := episodeJob(r.cdn.Add("e2.mkv", debridfake.File{Data: data}), "e2.mkv")
+	e2.Number = 2
+	e2.Release = catalog.ReleaseID{InfoHash: "dddddddddddddddddddddddddddddddddddddddd", FileName: "e2.mkv", Size: int64(len(data))}
+	r.enqueue(e1)
+	r.enqueue(e2)
+
+	var h []any
+	waitFor(t, "one import and one refusal", 10*time.Second, func() bool {
+		h = r.history()
+		return len(h) >= 2
+	})
+	kinds := map[string]int{}
+	for _, e := range h {
+		m := e.(map[string]any)
+		kinds[m["kind"].(string)]++
+		if m["kind"] == "failed" && m["reason"] != "duplicate_episode" {
+			t.Errorf("failed with %v, want duplicate_episode", m["reason"])
+		}
+	}
+	if kinds["imported"] != 1 || kinds["failed"] != 1 {
+		t.Fatalf("history kinds = %v, want one imported and one failed", kinds)
+	}
+	if got := len(tree(t, filepath.Join(root, "series"))); got != 1 {
+		t.Errorf("the library holds %d files, want 1", got)
+	}
+	if got := tree(t, filepath.Join(root, "tmp")); len(got) != 0 {
+		t.Errorf("temp folder still holds %v", got)
+	}
+}
+
 func TestAMovieIsNeverCheckedForDuplicateEpisodes(t *testing.T) {
 	r, _ := setup(t)
 	data := debridfake.MKV(200 << 10)
