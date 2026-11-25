@@ -20,6 +20,8 @@ const FILTERS: { key: Filter; label: string; none: string; test: (t: TitleSummar
   { key: "missing", label: "Missing", none: "Nothing is missing.", test: (t) => t.inLibrary && isMissing(t) },
 ];
 
+const KIND_FILTERS = new Set<Filter>(["all", "movies", "series"]);
+
 // Rows below the first screenful share one delay, so a long library never leaves its lower rows blank for seconds.
 const STAGGER_ROWS = 4;
 
@@ -44,12 +46,10 @@ export function Library({ api, items, onSelect, notice, active = true }: Props) 
   const [slide, setSlide] = useState(false);
   const { width } = useViewport();
   const cols = colsOf(width);
-  const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.key, (items ?? []).filter(f.test).length])) as Record<Filter, number>, [items]);
-  const shown = useMemo(() => {
-    const match = FILTERS.find((f) => f.key === filter)!.test;
-    const list = (items ?? []).filter(match);
-    return [...list.filter((t) => t.inLibrary), ...list.filter((t) => !t.inLibrary)];
-  }, [items, filter]);
+  const owned = useMemo(() => (items ?? []).filter((t) => t.inLibrary), [items]);
+  const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.key, owned.filter(f.test).length])) as Record<Filter, number>, [owned]);
+  const shown = useMemo(() => owned.filter(FILTERS.find((f) => f.key === filter)!.test), [owned, filter]);
+  const trending = useMemo(() => (KIND_FILTERS.has(filter) ? (items ?? []).filter((t) => !t.inLibrary && FILTERS.find((f) => f.key === filter)!.test(t)) : []), [items, filter]);
   const loaded = items !== null && items.length > 0;
 
   useLayoutEffect(() => {
@@ -98,13 +98,28 @@ export function Library({ api, items, onSelect, notice, active = true }: Props) 
           {shown.length === 0 ? (
             <EmptyState fit="area">{FILTERS.find((f) => f.key === filter)!.none}</EmptyState>
           ) : (
-            <ul className="tiles" style={{ ["--cols" as string]: cols }}>
+            <ul className="tiles" aria-label="Library titles" style={{ ["--cols" as string]: cols }}>
               {shown.map((t, i) => (
                 <li key={`${filter}-${t.id}`} style={slot(i)}>
                   <Cell api={api} title={t} onSelect={onSelect} />
                 </li>
               ))}
             </ul>
+          )}
+          {trending.length > 0 && (
+            <section className="shelf" aria-labelledby="shelf-trending">
+              <header className="shelf-head">
+                <h2 id="shelf-trending">Trending</h2>
+                <span>Not in your library yet</span>
+              </header>
+              <ul className="tiles" aria-label="Trending titles" style={{ ["--cols" as string]: cols }}>
+                {trending.map((t, i) => (
+                  <li key={`${filter}-${t.id}`} style={slot(i)}>
+                    <Cell api={api} title={t} onSelect={onSelect} />
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
         </>
       ) : !active ? null : items === null ? (

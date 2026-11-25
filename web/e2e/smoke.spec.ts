@@ -261,10 +261,17 @@ for (const s of screens.slice(0, 2)) {
   });
 }
 
-test("the library comes first in the grid, then trending", async ({ page }) => {
+const inLibrary = /Downloaded|missing|Searching|Downloading|Stalled|Caching/i;
+
+test("the library grid holds only library titles and trending sits on its own shelf below", async ({ page }) => {
   await openApp(page);
-  const first = await page.locator(".cell").first().getAttribute("aria-label");
-  expect(first).toMatch(/Downloaded|missing|Searching|Downloading|Stalled/i);
+  const grid = page.getByRole("list", { name: "Library titles" });
+  for (const label of await grid.locator(".cell").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""))) expect(label).toMatch(inLibrary);
+  const shelf = page.getByRole("region", { name: "Trending" });
+  await expect(shelf.getByRole("heading", { name: "Trending" })).toBeVisible();
+  await expect(shelf.getByText("Not in your library yet")).toBeVisible();
+  const [g, sh] = [await grid.boundingBox(), await shelf.boundingBox()];
+  expect(sh!.y).toBeGreaterThan(g!.y + g!.height - 1);
 });
 
 for (const s of screens.slice(0, 2)) {
@@ -362,8 +369,6 @@ for (const s of pageTitles) {
     await expect(bar).toHaveValue(s.title.toLowerCase());
   });
 }
-
-const inLibrary = /Downloaded|missing|Searching|Downloading|Stalled/i;
 
 async function tileOnScreen(page: Page, name: RegExp) {
   await expect(page.locator(".ptile[data-shape] img").first()).toBeVisible();

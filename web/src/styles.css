@@ -406,6 +406,32 @@ button {
   transition-delay: calc(var(--d, 0) * 1ms + 450ms);
 }
 
+.shelf {
+  margin-top: var(--space-6);
+  border-top: 1px solid var(--line);
+}
+
+.shelf-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+
+.shelf-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.shelf-head span {
+  font-size: var(--text-sm);
+  color: var(--mute);
+}
+
+.shelf .tiles {
+  padding-top: var(--space-3);
+}
+
 [data-screen="front"] .tiles > li {
   opacity: 0;
   transform: translateY(32px) scale(0.94);
