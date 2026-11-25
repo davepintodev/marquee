@@ -307,3 +307,43 @@ func TestReplacingASharedFileWithANewlyNamedOneDeletesTheOldFileOnceAndKeepsBoth
 		}
 	}
 }
+
+func busyEpisodeRig(t *testing.T) (r *schedRig, busy map[string]any, pair listed) {
+	t.Helper()
+	r = newSchedRig(t, false)
+	slow := r.cdn.Add("two.mkv", debridfake.File{Data: debridfake.MKV(53 << 20), Pace: 100 * time.Millisecond})
+	r.aio.Answer("series", "tvdb:403000:1:2", results(listed{name: "Dune.Prophecy.S01E02.1080p.WEB-DL.mkv", size: 53 << 20, url: slow, season: 1, ep: 2}))
+	cands, _ := r.releases("/api/titles/series-1408/releases?episode=s01e02")
+	busy = r.mustCall("POST", "/api/titles/series-1408/releases/"+cands[0]["id"].(string)+"/grab", `{"episode":"s01e02"}`, 202)
+	both := r.cdn.Add("pair.mkv", debridfake.File{Data: debridfake.MKV(54 << 20)})
+	pair = listed{name: "Dune.Prophecy.S01E01E02.1080p.WEB-DL.mkv", size: 54 << 20, url: both, season: 1, eps: []int{1, 2}}
+	r.aio.Answer("series", "tvdb:403000:1:1", results(pair))
+	return r, busy, pair
+}
+
+func TestGrabbingAMultiEpisodeFileWhileAnotherCoveredEpisodeDownloadsAnswersThatDownload(t *testing.T) {
+	r, busy, _ := busyEpisodeRig(t)
+	cands, _ := r.releases("/api/titles/series-1408/releases?episode=s01e01")
+	got := r.mustCall("POST", "/api/titles/series-1408/releases/"+cands[0]["id"].(string)+"/grab", `{"episode":"s01e01"}`, 202)
+	if got["id"] == "" || got["id"] != busy["id"] {
+		t.Errorf("the answer is the download in flight: %v, want %v", got, busy)
+	}
+	if d := r.downloads(); len(d) != 1 {
+		t.Errorf("queue = %v", d)
+	}
+}
+
+func TestACoveredEpisodeBeingDownloadedDoesNotMakeTheSchedulerSearchTheNextOneEveryGap(t *testing.T) {
+	r, _, _ := busyEpisodeRig(t)
+	r.step()
+	if n := r.searchedID("tvdb:403000:1:1"); n != 1 {
+		t.Fatalf("S01E01 is searched once: %d", n)
+	}
+	for range 5 {
+		r.advance(5 * time.Second)
+		r.step()
+	}
+	if n := r.searchedID("tvdb:403000:1:1"); n != 1 {
+		t.Errorf("S01E01 backs off while S01E02 downloads, it is not searched again at once: %d searches", n)
+	}
+}

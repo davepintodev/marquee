@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -346,8 +347,12 @@ func (s *Scheduler) grab(ctx context.Context, now time.Time, t catalog.Target, c
 		job.Resolution, job.Quality = p.Resolution, p.Quality
 		job.Covered = chooser.CoveredEpisodes(st, t.Season)
 	}
-	_, err := s.tr.Enqueue(ctx, job)
+	d, err := s.tr.Enqueue(ctx, job)
 	switch {
+	case errors.Is(err, catalog.ErrActiveDownload) && d.Number != t.Number && !slices.Contains(d.Covered, t.Number):
+		// The release collides with a download of another episode it covers. A
+		// follow-up would skip backoff and the budget and search the target every gap.
+		s.backOff(ctx, now, t, "")
 	case err == nil, errors.Is(err, catalog.ErrActiveDownload):
 		// The download failing leads straight to a new search, which skips the blocklisted release.
 		s.ignoreGone(s.cat.SetSchedule(ctx, t, catalog.Schedule{Attempts: t.Attempts, FollowUp: true, ClearForced: t.Forced}))
