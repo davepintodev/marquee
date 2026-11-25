@@ -38,13 +38,13 @@ type Transfers interface {
 type Deps struct {
 	Catalog   *catalog.Store
 	Transfers Transfers
-	TMDB      TMDB
+	TMDB    TMDB
 	// OMDb is nil when no OMDb key is set, which leaves the scores to TMDB's own.
 	OMDb   Scorer
-	Source Source
-	Images *metadata.Images
-	Log    *slog.Logger
-	DryRun bool
+	Source  Source
+	Images  *metadata.Images
+	Log     *slog.Logger
+	DryRun  bool
 	// Now is the clock the blocklist's expiry is judged by; nil is the system clock.
 	Now func() time.Time
 	// Wake tells the scheduler a Search now was asked for; nil does nothing.
@@ -67,7 +67,7 @@ type api struct {
 	Deps
 	adds   keylock.Locks
 	abouts keylock.Locks
-	hub    *hub
+	hub  *hub
 }
 
 var (

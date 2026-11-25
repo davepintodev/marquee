@@ -198,7 +198,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		api = httpapi.New(httpapi.Deps{
 			Catalog: store, Transfers: transfers, TMDB: tmdb, OMDb: scores, Source: source, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
 			Paths: cfg.Paths(), Jellyfin: jellyfin, HealthTimeout: opts.HealthTimeout,
-			Images:      metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
+			Images: metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 			EventsEvery: opts.EventsEvery, Stop: streamsStop,
 		})
 		msg, attrs = "marquee starting", []any{"config", cfg}
