@@ -115,8 +115,6 @@ func (p Profile) validate(name string) error {
 	return nil
 }
 
-// resolveProfiles fills in the built-in profile and the defaults, then
-// checks every profile and both defaults.
 func resolveProfiles(c *Config, movie, series string) error {
 	if len(c.Profiles) == 0 {
 		c.Profiles = map[string]Profile{DefaultProfileName: DefaultProfile()}
