@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ago, bytesOf, inHours, reasonLabel, seasonBadgeLabel, stateLabel } from "./words";
+import { ago, bytesOf, inHours, leftOf, rateOf, reasonLabel, seasonBadgeLabel, sizeOf, stateLabel } from "./words";
 
 const NOW = new Date("2026-11-18T12:00:00Z");
 
@@ -62,4 +62,31 @@ test("a season row's badge drops the season name the row already shows", () => {
 
 test("a torrent TorBox could not finish in time reads as a timeout", () => {
   expect(reasonLabel("caching_timeout")).toBe("Caching timed out");
+});
+
+test.each([
+  [3_328_599_654, 3_865_470_566, "3.1 of 3.6 GB"],
+  [900_000_000, 3_865_470_566, "858 MB of 3.6 GB"],
+  [0, 3_865_470_566, "0 B of 3.6 GB"],
+])("sizeOf(%i, %i) drops the unit only when both sides share it", (done, total, want) => {
+  expect(sizeOf(done, total)).toBe(want);
+});
+
+test("rateOf says bytes a second", () => {
+  expect(rateOf(50_331_648)).toBe("48 MB/s");
+  expect(rateOf(1_572_864)).toBe("1.5 MB/s");
+});
+
+test.each([
+  [{ bytesDone: 0, bytesTotal: 11_000, bytesPerSecond: 1_000 }, "11 s left"],
+  [{ bytesDone: 1_000, bytesTotal: 11_000, bytesPerSecond: 1_000 }, "10 s left"],
+  [{ bytesDone: 0, bytesTotal: 300_000, bytesPerSecond: 1_000 }, "5 min left"],
+  [{ bytesDone: 0, bytesTotal: 3_900_000, bytesPerSecond: 1_000 }, "1 h 5 min left"],
+  [{ bytesDone: 0, bytesTotal: 7_200_000, bytesPerSecond: 1_000 }, "2 h left"],
+  [{ bytesDone: 0, bytesTotal: 100, bytesPerSecond: 1_000 }, "1 s left"],
+  [{ bytesDone: 500, bytesTotal: 1_000, bytesPerSecond: 0 }, null],
+  [{ bytesDone: 1_000, bytesTotal: 1_000, bytesPerSecond: 500 }, null],
+  [{ bytesDone: 0, bytesTotal: 0, bytesPerSecond: 500 }, null],
+])("leftOf %j is %s", (d, want) => {
+  expect(leftOf(d)).toBe(want);
 });

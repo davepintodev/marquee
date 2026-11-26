@@ -15,6 +15,12 @@ export type Release = Schemas["Release"];
 export type Profiles = Schemas["Profiles"];
 export type Releases = Schemas["Releases"];
 export type Download = Schemas["Download"];
+export type DownloadState = Schemas["DownloadState"];
+export type DownloadsEvent = Schemas["DownloadsEvent"];
+export interface DownloadQueue {
+  downloads: Download[];
+  paused: boolean;
+}
 export type HistoryEntry = Schemas["HistoryEntry"];
 export type ProgressEvent = Schemas["ProgressEvent"];
 export type Health = Schemas["Health"];
@@ -27,5 +33,6 @@ export type TitleEvent = Schemas["TitleEvent"];
 export type LiveEvent =
   | { type: "progress"; data: ProgressEvent }
   | { type: "title"; data: TitleEvent }
+  | { type: "downloads"; data: DownloadsEvent }
   // The stream dropped and came back; events in between were lost.
   | { type: "reconnected" };

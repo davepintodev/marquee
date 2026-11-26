@@ -99,6 +99,26 @@ export function bytesOf(n: number) {
   return `${text} ${units[i]}`;
 }
 
+export function sizeOf(done: number, total: number) {
+  const a = bytesOf(done);
+  const b = bytesOf(total);
+  const unit = b.slice(b.indexOf(" "));
+  return a.endsWith(unit) ? `${a.slice(0, a.length - unit.length)} of ${b}` : `${a} of ${b}`;
+}
+
+export const rateOf = (bytesPerSecond: number) => `${bytesOf(bytesPerSecond)}/s`;
+
+export function leftOf(d: { bytesDone: number; bytesTotal: number; bytesPerSecond: number }) {
+  const left = d.bytesTotal - d.bytesDone;
+  if (d.bytesPerSecond <= 0 || left <= 0) return null;
+  const s = Math.ceil(left / d.bytesPerSecond);
+  if (s < 60) return `${s} s left`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min left`;
+  const h = Math.floor(m / 60);
+  return m % 60 === 0 ? `${h} h left` : `${h} h ${m % 60} min left`;
+}
+
 const TAG_WORDS: Record<string, string> = {
   truehd: "TrueHD",
   "dts-hd": "DTS-HD",

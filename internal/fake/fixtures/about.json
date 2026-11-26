@@ -951,5 +951,27 @@
    "series-213375",
    "movie-687163"
   ]
+ },
+ "series-1668": {
+  "ratings": [
+   {
+    "source": "tmdb",
+    "score": 8.4,
+    "scale": 10,
+    "votes": 9100
+   }
+  ],
+  "genres": [
+   "Comedy"
+  ],
+  "runtimeMinutes": 22,
+  "status": "Ended",
+  "language": "English",
+  "cast": [],
+  "similar": [
+   "series-1408",
+   "series-226745",
+   "series-95396"
+  ]
  }
 }

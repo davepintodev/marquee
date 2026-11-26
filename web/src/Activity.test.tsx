@@ -34,6 +34,7 @@ afterEach(() => {
 
 interface World {
   downloads: Download[];
+  paused?: boolean;
   history: HistoryEntry[];
   titles: TitleSummary[];
 }
@@ -43,7 +44,7 @@ function serve(w: World, extra?: (url: URL, init: Request) => Response | undefin
     const special = extra?.(url, init);
     if (special) return special;
     if (url.pathname === "/api/wall") return json({ items: [] });
-    if (url.pathname === "/api/downloads") return json({ downloads: w.downloads });
+    if (url.pathname === "/api/downloads") return json({ downloads: w.downloads, paused: w.paused ?? false });
     if (url.pathname === "/api/history") return json({ history: w.history });
     if (url.pathname === "/api/titles") return json({ titles: w.titles });
     return json({ error: "nope" }, 404);
@@ -63,19 +64,18 @@ test("Activity is a board of Downloading, Waiting and History, each with its hin
   expect(screen.queryByRole("heading", { name: "Queue" })).toBeNull();
 });
 
-test("each download state shows its own word, state attribute and numbers", async () => {
+test("each title with downloads is one group with its summary, bar and state, and the others wait in compact rows", async () => {
   const world: World = { downloads: [dune, arrival, sicario, house], history: [], titles: [lib({ id: "movie-9", title: "Heat", badge: { state: "searching", label: "Searching" } })] };
   setupApp(serve(world), "#/activity");
 
-  const cards = within(await screen.findByRole("list", { name: "Downloads" })).getAllByRole("listitem");
+  const cards = within(await screen.findByRole("list", { name: "Downloads" })).getAllByRole("listitem").filter((li) => li.classList.contains("grp"));
   expect(cards).toHaveLength(3);
   expect(cards.map((c) => c.getAttribute("data-state"))).toEqual(["downloading", "stalled", "verifying"]);
 
   expect(within(cards[0]).getByRole("link", { name: "Dune: Part Two" }).getAttribute("href")).toBe("#/title/movie-1");
   expect(within(cards[0]).getByText("43%")).toBeTruthy();
   expect(within(cards[0]).getByText("Downloading")).toBeTruthy();
-  expect(within(cards[0]).getByText("8.6 GB of 20 GB")).toBeTruthy();
-  expect(within(cards[0]).getByText("Dune.Part.Two.2024.2160p.WEB-DL")).toBeTruthy();
+  expect(within(cards[0]).getByText("8.6 of 20 GB")).toBeTruthy();
   expect(within(cards[0]).getByRole("progressbar", { name: "Dune: Part Two progress" }).getAttribute("aria-valuenow")).toBe("43");
 
   expect(within(cards[1]).getByText("Stalled")).toBeTruthy();
@@ -85,10 +85,11 @@ test("each download state shows its own word, state attribute and numbers", asyn
   const waiting = within(section("Waiting")).getAllByRole("listitem");
   expect(within(section("Waiting")).getByText("Queued behind a download, or searching for a release.")).toBeTruthy();
   expect(waiting.map((w) => w.getAttribute("data-state"))).toEqual(["queued", "searching"]);
-  expect(within(waiting[0]).getByRole("link", { name: /^House/ }).getAttribute("href")).toBe("#/title/series-4");
+  expect(within(waiting[0]).getByRole("link", { name: "House" }).getAttribute("href")).toBe("#/title/series-4");
   expect(within(waiting[0]).getByText("S04E03 queued")).toBeTruthy();
   expect(within(waiting[1]).getByText("Heat")).toBeTruthy();
   expect(within(waiting[1]).getByText("Searching")).toBeTruthy();
+  expect(within(waiting[1]).queryByRole("button")).toBeNull();
   expect(within(section("Downloading")).queryByText("House")).toBeNull();
 });
 
@@ -142,7 +143,7 @@ test("a running download's progress updates from the event stream, not from a re
   expect(FakeEventSource.open()[0].url).toBe("http://marquee.test/api/events");
   const before = calls.length;
 
-  FakeEventSource.open()[0].emit("progress", { downloadId: "dl-1", titleId: "movie-1", state: "downloading", percent: 57, bytesDone: 12_240_000_000, bytesTotal: 21_474_836_480 });
+  FakeEventSource.open()[0].emit("progress", { downloadId: "dl-1", titleId: "movie-1", state: "downloading", percent: 57, bytesDone: 12_240_000_000, bytesTotal: 21_474_836_480, bytesPerSecond: 0 });
 
   expect(await within(card).findByText("57%")).toBeTruthy();
   expect(within(card).getByRole("progressbar").getAttribute("aria-valuenow")).toBe("57");
@@ -154,7 +155,7 @@ test("a progress event that moves a download to verifying changes its state word
   const card = (await within(await screen.findByRole("list", { name: "Downloads" })).findAllByRole("listitem"))[0];
   await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
 
-  FakeEventSource.open()[0].emit("progress", { downloadId: "dl-1", titleId: "movie-1", state: "verifying", percent: 100, bytesDone: 21_474_836_480, bytesTotal: 21_474_836_480 });
+  FakeEventSource.open()[0].emit("progress", { downloadId: "dl-1", titleId: "movie-1", state: "verifying", percent: 100, bytesDone: 21_474_836_480, bytesTotal: 21_474_836_480, bytesPerSecond: 0 });
 
   expect(await within(card).findByText("Verifying")).toBeTruthy();
   expect(card.getAttribute("data-state")).toBe("verifying");
@@ -168,7 +169,7 @@ test("progress for a download the page has not seen refetches the queue; a finis
   const es = () => FakeEventSource.open()[0];
 
   world.downloads = [dune, { ...arrival, stalled: false, id: "dl-9", titleName: "Interstellar" }];
-  es().emit("progress", { downloadId: "dl-9", titleId: "movie-2", state: "downloading", percent: 1, bytesDone: 1, bytesTotal: 100 });
+  es().emit("progress", { downloadId: "dl-9", titleId: "movie-2", state: "downloading", percent: 1, bytesDone: 1, bytesTotal: 100, bytesPerSecond: 0 });
   expect(await screen.findByText("Interstellar")).toBeTruthy();
 
   const asked = calls.length;
@@ -249,7 +250,7 @@ test("the page shows a skeleton of the board while it loads, then the board", as
   expect((await screen.findByRole("status")).textContent).toBe("Loading activity");
   expect(document.querySelectorAll(".sk").length).toBeGreaterThan(0);
 
-  release(json({ downloads: [dune] }));
+  release(json({ downloads: [dune], paused: false }));
   await screen.findByRole("region", { name: "Downloading" });
   expect(document.querySelectorAll(".sk")).toHaveLength(0);
 });
@@ -299,7 +300,7 @@ test("a series waiting on episodes shows under Waiting on a fresh load, whatever
   expect(items).toHaveLength(1);
   expect(items[0].getAttribute("title")).toContain("S04E02, S04E03");
   expect(items[0].closest("[data-state]")?.getAttribute("data-state")).toBe("wanted");
-  expect(screen.getByText("1 waiting")).toBeTruthy();
+  expect(screen.getByText("2 waiting")).toBeTruthy();
 });
 
 test("a series whose badge is searching names its episodes when the list has them, and says so generally when it has none", async () => {
@@ -342,62 +343,6 @@ test("a failing API says so with a way to try again", async () => {
   setupApp(() => json({ error: "boom" }, 500), "#/activity");
   expect((await screen.findByRole("alert")).textContent).toContain("boom");
   expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
-});
-
-// jsdom does no layout, so the gallery's size is whatever the test says it is.
-function sized(scrollWidth: number, clientWidth: number) {
-  const scrollBy = vi.fn();
-  Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => scrollWidth });
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => clientWidth });
-  Element.prototype.scrollBy = scrollBy as unknown as typeof Element.prototype.scrollBy;
-  return scrollBy;
-}
-
-function reducedMotion(on: boolean) {
-  vi.stubGlobal("matchMedia", (q: string) => ({ matches: on && q.includes("prefers-reduced-motion"), media: q, addEventListener() {}, removeEventListener() {} }));
-}
-
-afterEach(() => {
-  delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
-  delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
-  vi.unstubAllGlobals();
-});
-
-test("the gallery has no arrows while every download fits", async () => {
-  sized(380, 380);
-  setupApp(serve({ downloads: [dune], history: [], titles: [] }), "#/activity");
-  await screen.findByRole("list", { name: "Downloads" });
-  expect(screen.queryByRole("button", { name: /previous downloads/i })).toBeNull();
-  expect(screen.queryByRole("button", { name: /next downloads/i })).toBeNull();
-});
-
-test("when downloads overflow, arrows page the gallery sideways and dim at its ends", async () => {
-  const scrollBy = sized(1200, 600);
-  reducedMotion(false);
-  setupApp(serve({ downloads: [dune, arrival, sicario], history: [], titles: [] }), "#/activity");
-  const previous = await screen.findByRole("button", { name: "Previous downloads" });
-  const next = screen.getByRole("button", { name: "Next downloads" });
-  expect((previous as HTMLButtonElement).disabled).toBe(true);
-  expect((next as HTMLButtonElement).disabled).toBe(false);
-
-  fireEvent.click(next);
-  expect(scrollBy).toHaveBeenCalledWith({ left: 540, behavior: "smooth" });
-
-  const list = screen.getByRole("list", { name: "Downloads" });
-  list.scrollLeft = 600;
-  fireEvent.scroll(list);
-  await waitFor(() => expect((next as HTMLButtonElement).disabled).toBe(true));
-  expect((previous as HTMLButtonElement).disabled).toBe(false);
-  fireEvent.click(previous);
-  expect(scrollBy).toHaveBeenLastCalledWith({ left: -540, behavior: "smooth" });
-});
-
-test("the gallery jumps instead of gliding when the person prefers less motion", async () => {
-  const scrollBy = sized(1200, 600);
-  reducedMotion(true);
-  setupApp(serve({ downloads: [dune, arrival], history: [], titles: [] }), "#/activity");
-  fireEvent.click(await screen.findByRole("button", { name: "Next downloads" }));
-  expect(scrollBy).toHaveBeenCalledWith({ left: 540, behavior: "auto" });
 });
 
 test("the grid links to Activity, and a library title opens its own page from there", async () => {
@@ -534,9 +479,10 @@ test("leaving Activity cancels a refetch still waiting for its burst to end", as
 test("a caching download says Caching with its percent and a bar of its own, not Downloading", async () => {
   setupApp(serve({ downloads: [dune, caching], history: [], titles: [] }), "#/activity");
 
-  const cards = within(await screen.findByRole("list", { name: "Downloads" })).getAllByRole("listitem");
+  const cards = within(await screen.findByRole("list", { name: "Downloads" })).getAllByRole("listitem").filter((li) => li.classList.contains("grp"));
   expect(cards.map((c) => c.getAttribute("data-state"))).toEqual(["downloading", "caching"]);
-  expect(within(cards[1]).getByText("Caching 42%")).toBeTruthy();
+  expect(within(cards[1]).getByText("Caching")).toBeTruthy();
+  expect(within(cards[1]).getByText("42%")).toBeTruthy();
   expect(within(cards[1]).queryByText("Downloading")).toBeNull();
   expect(within(cards[1]).queryByText(/of 3(\.0)? GB/)).toBeNull();
   expect(within(cards[1]).getByRole("progressbar", { name: "Blade Runner 2049 progress" }).getAttribute("aria-valuenow")).toBe("42");

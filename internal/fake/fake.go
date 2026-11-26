@@ -207,6 +207,9 @@ func New(opts Options) *Fake {
 		if d.Rate == 0 {
 			d.Rate = defaultRate
 		}
+		if d.State == "paused" {
+			d.resume = "downloading"
+		}
 	}
 	f.Handler = f.routes()
 	go f.simulate()
@@ -316,6 +319,9 @@ func (f *Fake) emitChangedBadges(before map[string]string) {
 
 const defaultRate = 12 << 20
 
+// maxRunning is how many files of one title transfer at once; the rest of a queued season waits its turn.
+const maxRunning = 3
+
 type progressEvent struct {
 	DownloadID     string `json:"downloadId"`
 	TitleID        string `json:"titleId"`
@@ -367,12 +373,22 @@ func (f *Fake) advance() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var finished []*download
+	running := map[string]int{}
+	for _, d := range f.downloads {
+		if d.State == "downloading" {
+			running[d.TitleID]++
+		}
+	}
 	for _, d := range f.downloads {
 		if d.Stalled || d.State == "paused" || f.held(d) {
 			continue
 		}
 		switch d.State {
 		case "queued":
+			if running[d.TitleID] >= maxRunning {
+				continue
+			}
+			running[d.TitleID]++
 			d.State = "downloading"
 		case "verifying":
 			d.State = "importing"
