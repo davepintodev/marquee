@@ -1009,12 +1009,19 @@ export interface components {
             reason: "unmatched" | "ambiguous" | "unparsed_file";
             message: string;
         };
-        /** @description How much the library holds, so a client need not read every title to say so. */
+        /**
+         * @description What the library holds, so a client need not read every title to say so. Only wanted or owned items count:
+         *     an episode TMDB lists that is neither monitored nor on disk is not in the library.
+         */
         LibraryTotals: {
-            /** @description Movies in the library. */
-            movies: number;
-            /** @description Episodes of every series in the library. */
-            episodes: number;
+            movies: components["schemas"]["LibraryCount"];
+            episodes: components["schemas"]["LibraryCount"];
+        };
+        LibraryCount: {
+            /** @description How many are monitored: wanted. */
+            monitored: number;
+            /** @description How many have a file in the library, monitored or not. */
+            onDisk: number;
         };
         Health: {
             status: components["schemas"]["CheckStatus"];

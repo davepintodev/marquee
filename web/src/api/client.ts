@@ -309,7 +309,7 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       };
     },
     health(signal) {
-      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems) && typeof d.libraryTotals?.movies === "number" && typeof d.libraryTotals?.episodes === "number");
+      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems) && typeof d.libraryTotals?.movies?.monitored === "number" && typeof d.libraryTotals?.movies?.onDisk === "number" && typeof d.libraryTotals?.episodes?.monitored === "number" && typeof d.libraryTotals?.episodes?.onDisk === "number");
     },
     imageUrl: (path) => base + path,
   };

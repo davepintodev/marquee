@@ -142,14 +142,19 @@ func (s *Store) LibraryProblems(ctx context.Context) ([]LibraryProblem, error) {
 	return out, rows.Err()
 }
 
-// LibraryTotals counts the movies and the episodes of every series in the library, in two aggregate queries that
-// read no row into memory.
-func (s *Store) LibraryTotals(ctx context.Context) (movies, episodes int, err error) {
-	if err = s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM titles WHERE kind = 'movie'`).Scan(&movies); err != nil {
-		return 0, 0, err
+// LibraryCount is how many movies or episodes are monitored and how many have a file on disk.
+type LibraryCount struct{ Monitored, OnDisk int }
+
+// LibraryTotals counts the movies and the episodes the library wants (monitored) or holds (on disk), in two
+// aggregate queries that read no row into memory. An episode the metadata lists that is neither is not counted.
+func (s *Store) LibraryTotals(ctx context.Context) (movies, episodes LibraryCount, err error) {
+	if err = s.r.QueryRowContext(ctx, `SELECT COALESCE(SUM(monitored), 0), COALESCE(SUM(have_file), 0) FROM titles WHERE kind = 'movie'`).
+		Scan(&movies.Monitored, &movies.OnDisk); err != nil {
+		return LibraryCount{}, LibraryCount{}, err
 	}
-	if err = s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes`).Scan(&episodes); err != nil {
-		return 0, 0, err
+	if err = s.r.QueryRowContext(ctx, `SELECT COALESCE(SUM(monitored), 0), COALESCE(SUM(have_file), 0) FROM episodes`).
+		Scan(&episodes.Monitored, &episodes.OnDisk); err != nil {
+		return LibraryCount{}, LibraryCount{}, err
 	}
 	return movies, episodes, nil
 }

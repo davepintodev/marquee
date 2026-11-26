@@ -231,7 +231,7 @@ test("a late acceptance of an older token does not count as the held token being
 });
 
 test("health reads the contract's shape", async () => {
-  const health = { status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 0, episodes: 0 }, libraryProblems: [] };
+  const health = { status: "ok", dryRun: false, checks: [], libraryTotals: { movies: { monitored: 0, onDisk: 0 }, episodes: { monitored: 0, onDisk: 0 } }, libraryProblems: [] };
   const fetchStub = vi.fn(async (r: Request) => (new URL(r.url).pathname === "/api/health" ? ok(health) : ok({})));
   const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
 
@@ -247,7 +247,7 @@ test("a health answer without the library totals is an ApiError, not a crash on 
 });
 
 test("a health answer with only the movie total is an ApiError too", async () => {
-  const half = { status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 3 }, libraryProblems: [] };
+  const half = { status: "ok", dryRun: false, checks: [], libraryTotals: { movies: { monitored: 3, onDisk: 3 } }, libraryProblems: [] };
   const fetchStub = vi.fn(async () => ok(half));
   const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
 

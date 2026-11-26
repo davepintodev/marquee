@@ -116,7 +116,7 @@ test("every page, by path or by hash, asks for the token on a 401 and comes back
     const answers = (input: Request) => {
       if (input.headers.get("Authorization") !== `Bearer ${TOKEN}`) return json({ error: "this marquee needs its API token" }, 401);
       const p = new URL(input.url).pathname;
-      if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 0, episodes: 0 }, libraryProblems: [] });
+      if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: { monitored: 0, onDisk: 0 }, episodes: { monitored: 0, onDisk: 0 } }, libraryProblems: [] });
       if (p === "/api/wall") return json({ items: [] });
       return json({ error: "nope" }, 404);
     };
@@ -324,7 +324,7 @@ function healthMarquee(token: string | null) {
   const f = vi.fn(async (input: Request) => {
     if (token !== null && input.headers.get("Authorization") !== `Bearer ${token}`) return json({ error: "this marquee needs its API token" }, 401);
     const p = new URL(input.url).pathname;
-    if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: 0, episodes: 0 }, libraryProblems: [] });
+    if (p === "/api/health") return json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: { monitored: 0, onDisk: 0 }, episodes: { monitored: 0, onDisk: 0 } }, libraryProblems: [] });
     return json({ items: [] });
   });
   return f as unknown as typeof fetch;

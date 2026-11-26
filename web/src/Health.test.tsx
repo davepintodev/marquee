@@ -16,7 +16,7 @@ const sick: HealthData = {
     { id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." },
     { id: "temp_path", name: "Temp path", status: "error", message: "The temp folder is on a different filesystem than the movies folder." },
   ],
-  libraryTotals: { movies: 7, episodes: 15 },
+  libraryTotals: { movies: { monitored: 7, onDisk: 6 }, episodes: { monitored: 15, onDisk: 12 } },
   libraryProblems: [
     { path: "Movies/Heat", reason: "ambiguous", message: "Matched more than one TMDB title (1995 and 1986); add the title to pick one." },
     { path: "Series/Unknown Show", reason: "unmatched", message: "No TMDB title matches this folder name." },
@@ -31,7 +31,7 @@ const fine = (over: Partial<HealthData> = {}): HealthData => ({
     { id: "aiostreams", name: "AIOStreams", status: "ok", message: "Reachable." },
     { id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." },
   ],
-  libraryTotals: { movies: 1, episodes: 1 },
+  libraryTotals: { movies: { monitored: 1, onDisk: 1 }, episodes: { monitored: 1, onDisk: 1 } },
   libraryProblems: [],
   ...over,
 });
@@ -190,7 +190,7 @@ test("the library is folded with its totals and problem count, and Show problems
   await line();
 
   const lib = screen.getByRole("region", { name: /library/i });
-  expect(within(lib).getByText("7 movies · 15 episodes")).toBeTruthy();
+  expect(within(lib).getByText("6 of 7 movies · 12 of 15 episodes on disk")).toBeTruthy();
   expect(within(lib).getByText("3 problems")).toBeTruthy();
   expect(screen.queryByRole("list", { name: /library problems/i })).toBeNull();
   const toggle = within(lib).getByRole("button", { name: /show problems/i });
@@ -212,18 +212,24 @@ test("the library is folded with its totals and problem count, and Show problems
 });
 
 test("a library with one problem and one title of each kind reads in the singular", async () => {
-  setup([() => json(fine({ libraryTotals: { movies: 1, episodes: 1 }, libraryProblems: [sick.libraryProblems[0]] }))]);
+  setup([() => json(fine({ libraryTotals: { movies: { monitored: 1, onDisk: 1 }, episodes: { monitored: 1, onDisk: 1 } }, libraryProblems: [sick.libraryProblems[0]] }))]);
   const lib = await screen.findByRole("region", { name: /library/i });
-  expect(within(lib).getByText("1 movie · 1 episode")).toBeTruthy();
+  expect(within(lib).getByText("1 of 1 movie · 1 of 1 episode on disk")).toBeTruthy();
   expect(within(lib).getByText("1 problem")).toBeTruthy();
 });
 
+test("the library counts what is on disk out of what is monitored, and never more on disk than the library holds", async () => {
+  setup([() => json(fine({ libraryTotals: { movies: { monitored: 4, onDisk: 4 }, episodes: { monitored: 73, onDisk: 75 } } }))]);
+  const lib = await screen.findByRole("region", { name: /library/i });
+  expect(within(lib).getByText("4 of 4 movies · 75 of 75 episodes on disk")).toBeTruthy();
+});
+
 test("a library with no problems says so and has nothing to unfold; an empty one counts zero", async () => {
-  setup([() => json(fine({ libraryTotals: { movies: 0, episodes: 0 } }))]);
+  setup([() => json(fine({ libraryTotals: { movies: { monitored: 0, onDisk: 0 }, episodes: { monitored: 0, onDisk: 0 } } }))]);
 
   const lib = await screen.findByRole("region", { name: /library/i });
   expect(within(lib).getByText("No problems")).toBeTruthy();
-  expect(within(lib).getByText("0 movies · 0 episodes")).toBeTruthy();
+  expect(within(lib).getByText("0 of 0 movies · 0 of 0 episodes on disk")).toBeTruthy();
   expect(within(lib).getAllByRole("button").map((b) => b.textContent)).toEqual(["Rescan library"]);
 });
 

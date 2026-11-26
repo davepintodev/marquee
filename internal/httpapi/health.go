@@ -105,7 +105,10 @@ func (a *api) health(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": status, "dryRun": a.DryRun, "checks": checks, "libraryProblems": library2,
-		"libraryTotals": map[string]int{"movies": movies, "episodes": episodes},
+		"libraryTotals": map[string]map[string]int{
+			"movies":   {"monitored": movies.Monitored, "onDisk": movies.OnDisk},
+			"episodes": {"monitored": episodes.Monitored, "onDisk": episodes.OnDisk},
+		},
 	})
 }
 
