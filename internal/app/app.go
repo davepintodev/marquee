@@ -97,6 +97,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 	var (
 		listen string
 		token  config.Secret
+		lookup config.Secret
 		api    http.Handler
 		closer func()
 		msg    string
@@ -116,6 +117,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			listen = ":8080"
 		}
 		token = config.Secret(getenv("MARQUEE_API_TOKEN"))
+		lookup = config.Secret(getenv("MARQUEE_SUBFIT_TOKEN"))
 		f := fake.New(fake.Options{ArtDir: getenv("MARQUEE_FAKE_ART_DIR"), TorBox: getenv("MARQUEE_FAKE_TORBOX") != ""})
 		defer f.Close()
 		api, closer = f, f.Close
@@ -254,7 +256,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 			<-schedDone
 		}()
 		listen = cfg.Listen
-		token = cfg.APIToken
+		token, lookup = cfg.APIToken, cfg.SubfitToken
 		streamsStop := make(chan struct{})
 		closer = func() { close(streamsStop) }
 		var jellyfin httpapi.Pinger
@@ -282,7 +284,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 	if err != nil {
 		return fmt.Errorf("MARQUEE_LISTEN: cannot listen on %s: %w", listen, err)
 	}
-	srv := &http.Server{Handler: server.New(ui, httpapi.RequireToken(token, api)), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(ui, httpapi.RequireToken(token, lookup, api)), ReadHeaderTimeout: 10 * time.Second}
 	// Shutdown waits for handlers, and an event stream only returns once it is told to stop.
 	srv.RegisterOnShutdown(closer)
 

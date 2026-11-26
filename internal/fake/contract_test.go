@@ -78,6 +78,7 @@ var calls = map[string]call{
 	"listProfiles":         {"GET", "/api/profiles", "", 200},
 	"getTitleAbout":        {"GET", "/api/titles/series-95396/about", "", 200},
 	"getPersonImage":       {"GET", "/api/people/9/image", "", 404},
+	"getFileIdentity":      {"GET", "/api/files/identity?library=series&path=House+%282004%29%2FSeason+01%2FHouse+%282004%29+-+S01E03E04+-+Occam%27s+Razor.mkv", "", 200},
 }
 
 func do(t *testing.T, srv *httptest.Server, c call, path string) *http.Response {
@@ -148,7 +149,7 @@ func TestEveryOperationIsCoveredAndMatchesItsSchema(t *testing.T) {
 func TestEveryOperationAnswers401WithoutTheTokenAndNormallyWithIt(t *testing.T) {
 	_, router := loadSpec(t)
 	f := fake.New(fake.Options{Tick: stillTick, Step: 10})
-	srv := httptest.NewServer(httpapi.RequireToken(config.Secret("fake-token"), f))
+	srv := httptest.NewServer(httpapi.RequireToken(config.Secret("fake-token"), "", f))
 	t.Cleanup(func() { f.Close(); srv.Close() })
 
 	send := func(c call, header map[string]string, cookie *http.Cookie) *http.Response {
@@ -230,7 +231,7 @@ func TestMissingResourcesAnswerWithTheContractsError(t *testing.T) {
 		"series-1408", "series-1", "movie-693134", "movie-1", "movie-13187", "movie-1",
 		"movie-329865", "movie-1", "movie-335984", "movie-1", "movie-438631", "movie-1", "movie-687163", "movie-1",
 		"h-failed-stalled", "h-none", "rel-movie-1", "rel-none", "series-95396", "series-1", "people/9", "people/8",
-		"dl-1", "dl-none", "dl-3", "dl-none",
+		"dl-1", "dl-none", "dl-3", "dl-none", "S01E03E04", "S09E99",
 	)
 	for path, item := range doc.Paths.Map() {
 		for _, op := range item.Operations() {

@@ -57,7 +57,10 @@ type Config struct {
 	SubfitURL Secret
 	Listen    string
 	APIToken  Secret
-	DryRun    bool
+	// SubfitToken opens the file identity lookup and nothing else; empty
+	// leaves the lookup to the API token alone.
+	SubfitToken Secret
+	DryRun      bool
 	// RescanInterval is how often the library is read again; zero turns the timer off.
 	RescanInterval time.Duration
 
@@ -94,6 +97,7 @@ func (c Config) LogValue() slog.Value {
 		slog.Any("subfit_url", c.SubfitURL),
 		slog.String("listen", c.Listen),
 		slog.Any("api_token", c.APIToken),
+		slog.Any("subfit_token", c.SubfitToken),
 		slog.Bool("dry_run", c.DryRun),
 		slog.Duration("rescan_interval", c.RescanInterval),
 		slog.Any("torbox_key", c.TorBoxAPIKey),
@@ -120,6 +124,7 @@ type fileConfig struct {
 	SubfitURL             string `json:"subfit_url"`
 	Listen                string `json:"listen"`
 	APIToken              string `json:"api_token"`
+	SubfitToken           string `json:"subfit_token"`
 	DryRun                *bool  `json:"dry_run"`
 	RescanInterval        string `json:"rescan_interval"`
 
@@ -176,6 +181,7 @@ func Load(getenv func(string) string) (Config, error) {
 		SubfitURL:             Secret(pick("MARQUEE_SUBFIT_URL", f.SubfitURL)),
 		Listen:                pick("MARQUEE_LISTEN", f.Listen),
 		APIToken:              Secret(pick("MARQUEE_API_TOKEN", f.APIToken)),
+		SubfitToken:           Secret(pick("MARQUEE_SUBFIT_TOKEN", f.SubfitToken)),
 		Profiles:              f.Profiles,
 	}
 	if c.Listen == "" {

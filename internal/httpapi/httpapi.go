@@ -27,6 +27,7 @@ type TMDB interface {
 	Summary(ctx context.Context, kind string, id int) (metadata.Summary, error)
 	Details(ctx context.Context, kind string, id int) (metadata.Details, error)
 	About(ctx context.Context, kind string, id int) (metadata.About, error)
+	Names(ctx context.Context, kind string, id int, title string) (metadata.Names, error)
 }
 
 // Transfers is the part of the download manager the API uses; an
@@ -96,6 +97,7 @@ type api struct {
 	Deps
 	adds   keylock.Locks
 	abouts keylock.Locks
+	names  keylock.Locks
 	hub    *hub
 }
 
@@ -157,6 +159,7 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/titles/{id}/about", a.about)
 	mux.HandleFunc("GET /api/people/{personId}/image", a.personImage)
 	mux.HandleFunc("GET /api/events", a.events)
+	mux.HandleFunc("GET /api/files/identity", a.fileIdentity)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		fail(w, http.StatusNotFound, "not found")
 	})

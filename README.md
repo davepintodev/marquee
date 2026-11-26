@@ -74,6 +74,7 @@ Settings come from environment variables, or from a JSON file named by `MARQUEE_
 | `MARQUEE_DEFAULT_MOVIE_PROFILE`, `MARQUEE_DEFAULT_SERIES_PROFILE` | no | The [quality profile](#quality-profiles) a movie or series gets when it names none. Default `default`. |
 | `MARQUEE_OMDB_KEY` | no | A free [OMDb API key](https://www.omdbapi.com/apikey.aspx). With it a title page shows IMDb and Rotten Tomatoes marks beside TMDB's; without it only TMDB's. Treated as a secret. |
 | `MARQUEE_API_TOKEN` | no | Require this bearer token on the API; each browser asks for it once. Set it if anyone else can reach the port. Treated as a secret. |
+| `MARQUEE_SUBFIT_TOKEN` | no | A bearer token that opens only `GET /api/files/identity?library=<series\|movies>&path=<path-relative-to-that-library>`, which tells a subtitle tool such as subfit what a file is (ids, title, year, episode, original language, alternative titles). The `MARQUEE_API_TOKEN` also opens it; with neither set the lookup answers 401. Treated as a secret. |
 | `MARQUEE_LISTEN` | no | Address to listen on. Default `:8080`. |
 
 Quality profiles can only be set in the JSON file. Secrets are redacted in logs, errors and the API.

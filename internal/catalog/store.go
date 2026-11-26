@@ -298,6 +298,11 @@ CREATE TABLE pause_all (
   id     INTEGER PRIMARY KEY CHECK (id = 1),
   paused INTEGER NOT NULL
 );
+`, `
+ALTER TABLE titles ADD COLUMN original_language TEXT NOT NULL DEFAULT '';
+ALTER TABLE titles ADD COLUMN alternative_titles TEXT;
+CREATE INDEX episodes_by_file ON episodes (file_path) WHERE file_path != '';
+CREATE INDEX titles_by_file ON titles (file_path) WHERE file_path != '';
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

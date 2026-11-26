@@ -60,6 +60,10 @@ type Title struct {
 	Votes                  int
 	// Similar lists the ids of titles of the same kind.
 	Similar []int
+	// OriginalName is the title in its original language; empty is Name.
+	OriginalName string
+	// AltTitles are the alternative titles TMDB lists, repeats and all.
+	AltTitles []string
 }
 
 // Step scripts one answer: a status, an optional Retry-After, a hang that
@@ -302,6 +306,18 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request) {
 			}
 			s["similar"] = map[string]any{"results": similar}
 		}
+		if slices.Contains(extras, "alternative_titles") {
+			alts := []map[string]any{}
+			for _, a := range t.AltTitles {
+				alts = append(alts, map[string]any{"iso_3166_1": "US", "title": a, "type": ""})
+			}
+			// TMDB names the list differently for each kind.
+			if t.Kind == "movie" {
+				s["alternative_titles"] = map[string]any{"titles": alts}
+			} else {
+				s["alternative_titles"] = map[string]any{"results": alts}
+			}
+		}
 		f.describe(s, t)
 		writeJSON(w, 200, s)
 	case len(parts) == 4 && parts[0] == "tv" && parts[2] == "season":
@@ -359,6 +375,15 @@ func (f *Fake) describe(m map[string]any, t Title) {
 		genres = append(genres, map[string]any{"id": i + 1, "name": g})
 	}
 	m["genres"], m["status"], m["original_language"] = genres, t.Status, t.Language
+	original := t.OriginalName
+	if original == "" {
+		original = t.Name
+	}
+	if t.Kind == "movie" {
+		m["original_title"] = original
+	} else {
+		m["original_name"] = original
+	}
 	m["vote_average"], m["vote_count"] = t.Score, t.Votes
 	m["spoken_languages"] = []map[string]any{{"iso_639_1": t.Language, "english_name": t.LanguageName}}
 	if t.Kind == "movie" {

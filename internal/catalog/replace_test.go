@@ -15,7 +15,7 @@ import (
 
 // oldDownloads turns a current database back into one at schema 13: the
 // downloads table without the v2 columns and without the 'caching' state.
-const oldDownloads = `
+const oldDownloads = dropTitleNames + `
 CREATE TABLE downloads_old (
   id TEXT PRIMARY KEY,
   title_id TEXT NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
