@@ -110,6 +110,7 @@ func TestFixtureTmdbIdsAreTheRealTMDBEntries(t *testing.T) {
 		{"series", 95396, "Severance"},
 		{"series", 83867, "Andor"},
 		{"series", 62560, "Mr. Robot"},
+		{"series", 1668, "Friends"},
 	}
 	got := map[string]fake.Title{}
 	for _, ti := range fake.Titles() {

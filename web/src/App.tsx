@@ -207,6 +207,7 @@ export function App({ api, keys = true, onForget }: { api: Api; keys?: boolean; 
       setWallTry((n) => n + 1);
       return;
     }
+    if (e.type === "downloads") return;
     const id = e.data.titleId;
     if (e.type === "title" && e.data.badge) joinWall(id);
     const badge: Badge | null =

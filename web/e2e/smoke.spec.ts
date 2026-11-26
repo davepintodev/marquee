@@ -586,6 +586,59 @@ for (const s of retries) {
   });
 }
 
+// One test, not one per size: the flows change the shared fake's queue, so two running side by side would trip over each other.
+test("Activity folds a season into one group, with row, group and global controls, on laptop and phone", async ({ page }) => {
+  const s = screens[1];
+  await page.setViewportSize({ width: s.width, height: s.height });
+  await page.goto("about:blank");
+  await page.goto("/#/activity");
+
+  const friends = page.getByRole("heading", { level: 3, name: "Friends" }).locator("xpath=ancestor::li[1]");
+  // The fake keeps downloading while the run goes on, so which episodes run is not fixed; that there is one group is.
+  await expect(friends.getByText(/^S01E\d\d (\d+%|paused)/)).toBeVisible();
+  await expect(friends.getByText(/\d+ waiting/)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Friends" })).toHaveCount(1);
+  await noSideScroll(page, s.width);
+
+  await friends.getByRole("button", { name: /^Show \d+ downloads of Friends$/ }).click();
+  const rows = friends.getByRole("list", { name: "Friends downloads" }).getByRole("listitem");
+  expect(await rows.count()).toBeGreaterThan(15);
+  const first = rows.filter({ hasText: "Downloading" }).first();
+  await expect(first).toContainText(/MB\/s/);
+  const code = await first.locator(".drow-ep").innerText();
+  const moving = rows.filter({ has: page.locator(".drow-ep", { hasText: code }) });
+  await noSideScroll(page, s.width);
+
+  await moving.getByRole("button", { name: `Pause ${code} of Friends` }).click();
+  await expect(moving.getByText("Paused")).toBeVisible();
+  await moving.getByRole("button", { name: `Resume ${code} of Friends` }).click();
+  await expect(moving.getByText("Downloading")).toBeVisible();
+
+  await page.getByRole("button", { name: "Pause all downloads", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Downloads paused" })).toBeVisible();
+  await expect(moving.getByText("Paused")).toBeVisible();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(shots, `activity-paused-${s.name}.png`) });
+  await page.getByRole("button", { name: "Resume all downloads", exact: true }).click();
+  await expect(page.getByText("Downloads paused")).toHaveCount(0);
+  await expect(moving.getByText("Downloading")).toBeVisible();
+
+  await friends.getByRole("button", { name: "Cancel all downloads of Friends" }).click();
+  await expect(friends.getByRole("group", { name: "Cancel all downloads of Friends" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(friends.getByRole("group")).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
+  await page.screenshot({ path: join(shots, `activity-groups-${s.name}.png`) });
+
+  await page.setViewportSize({ width: screens[0].width, height: screens[0].height });
+  await noSideScroll(page, screens[0].width);
+  await expect(friends.getByRole("button", { name: "Cancel all downloads of Friends" })).toBeVisible();
+  await page.screenshot({ path: join(shots, "activity-groups-phone.png") });
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".app")).toHaveAttribute("data-mode", "library");
+});
+
 test("a library title opens its page and Back returns to the grid", async ({ page }) => {
   await page.setViewportSize({ width: screens[1].width, height: screens[1].height });
   await openApp(page);

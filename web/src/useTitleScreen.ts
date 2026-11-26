@@ -59,7 +59,7 @@ export function useTitleScreen({ api, id, seed, onChanged, onRemoved, onToast }:
   }, [api, id]);
 
   useLive(api, (e: LiveEvent) => {
-    if (e.type === "reconnected") return refetch();
+    if (e.type === "reconnected" || e.type === "downloads") return refetch();
     if (e.data.titleId !== id) return;
     if (e.type === "title") return refetch();
     setLoad((l) => (l.status === "ok" ? { status: "ok", title: withProgress(l.title, e.data.episode, e.data.percent, e.data.state === "caching" ? "caching" : "downloading") } : l));

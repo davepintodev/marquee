@@ -56,11 +56,7 @@ export function ActivitySkeleton() {
     <div aria-busy="true">
       <Say>Loading activity</Say>
       <Sk shape="line" width={210} style={{ marginTop: "var(--space-2)" }} />
-      <div
-        className="board-cols"
-        style={{ "--n": 2 } as CSSProperties}
-        aria-hidden="true"
-      >
+      <div className="board-cols" aria-hidden="true">
         <div className="board-main">
           <section className="board-section">
             <Sk shape="h2" width={132} />
@@ -69,12 +65,14 @@ export function ActivitySkeleton() {
               width={170}
               style={{ margin: "var(--space-2) 0 var(--space-3)" }}
             />
-            <div className="sk-pair">
+            <div className="sk-groups">
               {range(2).map((i) => (
-                <div key={i} className="sk-show">
-                  <Sk shape="card" />
-                  <Sk shape="line" width="62%" />
-                  <Sk shape="line" width="38%" />
+                <div key={i} className="sk-group">
+                  <Sk shape="poster" />
+                  <div className="sk-group-body">
+                    <Sk shape="line" width="48%" />
+                    <Sk shape="line" width="72%" />
+                  </div>
                 </div>
               ))}
             </div>
@@ -86,10 +84,14 @@ export function ActivitySkeleton() {
               width={230}
               style={{ margin: "var(--space-2) 0 var(--space-3)" }}
             />
-            <div className="sk-strip">
-              {range(4).map((i) => (
-                <Sk key={i} shape="poster" />
-              ))}
+            <div className="sk-groups">
+              <div className="sk-group">
+                <Sk shape="poster" />
+                <div className="sk-group-body">
+                  <Sk shape="line" width="40%" />
+                  <Sk shape="line" width="30%" />
+                </div>
+              </div>
             </div>
           </section>
         </div>

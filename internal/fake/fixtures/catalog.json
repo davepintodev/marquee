@@ -1346,5 +1346,165 @@
     ]
    }
   ]
+ },
+ {
+  "tmdbId": 1668,
+  "kind": "series",
+  "title": "Friends",
+  "year": 1994,
+  "inLibrary": true,
+  "overview": "Six friends share apartments, coffee and the years in between.",
+  "nextSearchIn": "4h",
+  "seasons": [
+   {
+    "number": 1,
+    "episodes": [
+     {
+      "number": 1,
+      "name": "The Pilot",
+      "airDate": "1994-09-22",
+      "state": "missing"
+     },
+     {
+      "number": 2,
+      "name": "The Sonogram",
+      "airDate": "1994-09-29",
+      "state": "missing"
+     },
+     {
+      "number": 3,
+      "name": "The Thumb",
+      "airDate": "1994-10-06",
+      "state": "missing"
+     },
+     {
+      "number": 4,
+      "name": "The Interview",
+      "airDate": "1994-10-13",
+      "state": "missing"
+     },
+     {
+      "number": 5,
+      "name": "The Laundry",
+      "airDate": "1994-10-20",
+      "state": "missing"
+     },
+     {
+      "number": 6,
+      "name": "The Butt",
+      "airDate": "1994-10-27",
+      "state": "missing"
+     },
+     {
+      "number": 7,
+      "name": "The Blackout",
+      "airDate": "1994-11-03",
+      "state": "missing"
+     },
+     {
+      "number": 8,
+      "name": "The Funeral",
+      "airDate": "1994-11-10",
+      "state": "missing"
+     },
+     {
+      "number": 9,
+      "name": "The Escape",
+      "airDate": "1994-11-17",
+      "state": "missing"
+     },
+     {
+      "number": 10,
+      "name": "The Monkey",
+      "airDate": "1994-11-24",
+      "state": "missing"
+     },
+     {
+      "number": 11,
+      "name": "The Landlord",
+      "airDate": "1994-12-01",
+      "state": "missing"
+     },
+     {
+      "number": 12,
+      "name": "The Lasagnas",
+      "airDate": "1994-12-08",
+      "state": "missing"
+     },
+     {
+      "number": 13,
+      "name": "The Photo",
+      "airDate": "1994-12-15",
+      "state": "missing"
+     },
+     {
+      "number": 14,
+      "name": "The Candy Hearts",
+      "airDate": "1994-12-22",
+      "state": "missing"
+     },
+     {
+      "number": 15,
+      "name": "The Visitor",
+      "airDate": "1994-12-29",
+      "state": "missing"
+     },
+     {
+      "number": 16,
+      "name": "The Party Part 1",
+      "airDate": "1995-01-05",
+      "state": "missing"
+     },
+     {
+      "number": 17,
+      "name": "The Party Part 2",
+      "airDate": "1995-01-12",
+      "state": "missing"
+     },
+     {
+      "number": 18,
+      "name": "The Poker Game",
+      "airDate": "1995-01-19",
+      "state": "missing"
+     },
+     {
+      "number": 19,
+      "name": "The Return",
+      "airDate": "1995-01-26",
+      "state": "missing"
+     },
+     {
+      "number": 20,
+      "name": "The Orthodontist",
+      "airDate": "1995-02-02",
+      "state": "missing"
+     },
+     {
+      "number": 21,
+      "name": "The Impostor",
+      "airDate": "1995-02-09",
+      "state": "missing"
+     },
+     {
+      "number": 22,
+      "name": "The Factor",
+      "airDate": "1995-02-16",
+      "state": "missing"
+     },
+     {
+      "number": 23,
+      "name": "The Birth",
+      "airDate": "1995-02-23",
+      "state": "missing"
+     },
+     {
+      "number": 24,
+      "name": "The Finale",
+      "airDate": "1995-03-02",
+      "state": "missing"
+     }
+    ]
+   }
+  ]
  }
 ]

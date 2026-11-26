@@ -368,3 +368,63 @@ test("with no token held the stream opens at once", () => {
   api.events(() => {});
   expect(streams).toHaveLength(1);
 });
+
+test("downloads answers the queue with the Pause all flag", async () => {
+  const fetchStub = vi.fn(async () => ok({ downloads: [{ id: "dl-1" }], paused: true }));
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  expect(await api.downloads()).toEqual({ downloads: [{ id: "dl-1" }], paused: true });
+});
+
+test("pausing, resuming and cancelling go to the download, the title or every download", async () => {
+  const seen: string[] = [];
+  const fetchStub = vi.fn(async (r: Request) => {
+    seen.push(`${r.method} ${new URL(r.url).pathname}`);
+    if (r.url.endsWith("/cancel")) return new Response(null, { status: 204 });
+    if (/downloads\/(pause|resume)$/.test(r.url) && !r.url.includes("/titles/")) return ok({ downloads: [], paused: true });
+    if (r.url.includes("/titles/")) return ok({ downloads: [{ id: "dl-1" }] });
+    return ok({ id: "dl-1" });
+  });
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  expect(await api.pauseDownload("dl-1")).toEqual({ id: "dl-1" });
+  expect(await api.resumeDownload("dl-1")).toEqual({ id: "dl-1" });
+  await api.cancelDownload("dl-1");
+  expect(await api.pauseTitleDownloads("series-1")).toEqual([{ id: "dl-1" }]);
+  expect(await api.resumeTitleDownloads("series-1")).toEqual([{ id: "dl-1" }]);
+  await api.cancelTitleDownloads("series-1");
+  expect(await api.pauseAllDownloads()).toEqual({ downloads: [], paused: true });
+  expect(await api.resumeAllDownloads()).toEqual({ downloads: [], paused: true });
+
+  expect(seen).toEqual([
+    "POST /api/downloads/dl-1/pause",
+    "POST /api/downloads/dl-1/resume",
+    "POST /api/downloads/dl-1/cancel",
+    "POST /api/titles/series-1/downloads/pause",
+    "POST /api/titles/series-1/downloads/resume",
+    "POST /api/titles/series-1/downloads/cancel",
+    "POST /api/downloads/pause",
+    "POST /api/downloads/resume",
+  ]);
+});
+
+test("a refused pause says why, as every other call does", async () => {
+  const fetchStub = vi.fn(async () => new Response(JSON.stringify({ error: "this download has already finished" }), { status: 409, headers: { "Content-Type": "application/json" } }));
+  const api = createApi({ baseUrl: "http://host.test", fetch: fetchStub as unknown as typeof fetch });
+
+  await expect(api.pauseDownload("dl-1")).rejects.toMatchObject({ message: "this download has already finished", status: 409 });
+  await expect(api.cancelDownload("dl-1")).rejects.toMatchObject({ message: "this download has already finished", status: 409 });
+});
+
+test("events delivers the downloads message that says Pause all flipped", () => {
+  const stream = new Stream();
+  const api = createApi({ baseUrl: "http://host.test", eventSource: () => stream as unknown as EventSource });
+  const got: unknown[] = [];
+
+  const stop = api.events((e) => got.push(e));
+  stream.send("downloads", JSON.stringify({ paused: true }));
+  stream.send("downloads", "nope");
+  stop();
+
+  expect(got).toEqual([{ type: "downloads", data: { paused: true } }]);
+});

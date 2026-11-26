@@ -1,6 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
-import type { Download, Health, HistoryEntry, LibraryRescan, LiveEvent, MonitorChoice, ProgressEvent, Profiles, Releases, Title, TitleAbout, TitleEvent, TitleSummary, Wall } from "./types";
+import type { Download, DownloadQueue, DownloadsEvent, Health, HistoryEntry, LibraryRescan, LiveEvent, MonitorChoice, ProgressEvent, Profiles, Releases, Title, TitleAbout, TitleEvent, TitleSummary, Wall } from "./types";
 
 export class ApiError extends Error {
   readonly status?: number;
@@ -40,7 +40,19 @@ export interface Api {
   // Picking by hand overrides the blocklist. A title that is not in the library is added first.
   // A movie or episode that already has a file is only grabbed with replace.
   grab(id: string, releaseId: string, episode?: string, replace?: boolean, signal?: AbortSignal): Promise<Download>;
-  downloads(signal?: AbortSignal): Promise<Download[]>;
+  downloads(signal?: AbortSignal): Promise<DownloadQueue>;
+  // Pausing keeps the partial file; cancelling deletes it, blocklists the release and searches again. A download
+  // being verified or imported can no longer be stopped and answers 409.
+  pauseDownload(id: string, signal?: AbortSignal): Promise<Download>;
+  resumeDownload(id: string, signal?: AbortSignal): Promise<Download>;
+  cancelDownload(id: string, signal?: AbortSignal): Promise<void>;
+  // The title's downloads the call changed; empty when none could be.
+  pauseTitleDownloads(titleId: string, signal?: AbortSignal): Promise<Download[]>;
+  resumeTitleDownloads(titleId: string, signal?: AbortSignal): Promise<Download[]>;
+  cancelTitleDownloads(titleId: string, signal?: AbortSignal): Promise<void>;
+  // Pause all stops every transfer and starts nothing new; Resume all leaves what was paused one by one paused.
+  pauseAllDownloads(signal?: AbortSignal): Promise<DownloadQueue>;
+  resumeAllDownloads(signal?: AbortSignal): Promise<DownloadQueue>;
   // One page of the feed, newest first. `next` is the cursor to pass for the page after it, absent on the last.
   history(page: { limit?: number; cursor?: string }, signal?: AbortSignal): Promise<{ entries: HistoryEntry[]; next?: string }>;
   retry(historyId: string, signal?: AbortSignal): Promise<Title>;
@@ -106,6 +118,9 @@ function parse<T>(e: Event): T | null {
 }
 
 const isTitle = (d: Title) => typeof d.id === "string";
+const isDownload = (d: Download) => typeof d.id === "string";
+const isChanged = (d: { downloads: Download[] }) => Array.isArray(d.downloads);
+const isQueue = (d: DownloadQueue) => Array.isArray(d.downloads) && typeof d.paused === "boolean";
 
 export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUnauthorized, onAuthorized }: ApiOptions): Api {
   const base = baseUrl.replace(/\/+$/, "");
@@ -134,6 +149,10 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
     es.addEventListener("title", (e) => {
       const data = parse<TitleEvent>(e);
       if (data) tell({ type: "title", data });
+    });
+    es.addEventListener("downloads", (e) => {
+      const data = parse<DownloadsEvent>(e);
+      if (data) tell({ type: "downloads", data });
     });
     return es;
   }
@@ -242,9 +261,34 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
         (d) => typeof d.id === "string",
       );
     },
-    async downloads(signal) {
-      const data = await call(() => client.GET("/api/downloads", { signal }), (d) => Array.isArray(d.downloads));
+    downloads(signal) {
+      return call(() => client.GET("/api/downloads", { signal }), isQueue);
+    },
+    pauseDownload(id, signal) {
+      return call(() => client.POST("/api/downloads/{downloadId}/pause", { params: { path: { downloadId: id } }, signal }), isDownload);
+    },
+    resumeDownload(id, signal) {
+      return call(() => client.POST("/api/downloads/{downloadId}/resume", { params: { path: { downloadId: id } }, signal }), isDownload);
+    },
+    cancelDownload(id, signal) {
+      return callVoid(() => client.POST("/api/downloads/{downloadId}/cancel", { params: { path: { downloadId: id } }, signal }));
+    },
+    async pauseTitleDownloads(titleId, signal) {
+      const data = await call(() => client.POST("/api/titles/{id}/downloads/pause", { params: { path: { id: titleId } }, signal }), isChanged);
       return data.downloads;
+    },
+    async resumeTitleDownloads(titleId, signal) {
+      const data = await call(() => client.POST("/api/titles/{id}/downloads/resume", { params: { path: { id: titleId } }, signal }), isChanged);
+      return data.downloads;
+    },
+    cancelTitleDownloads(titleId, signal) {
+      return callVoid(() => client.POST("/api/titles/{id}/downloads/cancel", { params: { path: { id: titleId } }, signal }));
+    },
+    pauseAllDownloads(signal) {
+      return call(() => client.POST("/api/downloads/pause", { signal }), isQueue);
+    },
+    resumeAllDownloads(signal) {
+      return call(() => client.POST("/api/downloads/resume", { signal }), isQueue);
     },
     async history({ limit, cursor }, signal) {
       const query = { ...(limit ? { limit } : {}), ...(cursor ? { cursor } : {}) };

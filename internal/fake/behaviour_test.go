@@ -330,10 +330,31 @@ func TestDownloadsReportTheirRealState(t *testing.T) {
 			t.Errorf("a stalled download is still downloading, got %v", d["state"])
 		}
 	}
-	for _, s := range []string{"queued", "downloading", "verifying"} {
+	for _, s := range []string{"queued", "caching", "downloading", "paused", "verifying"} {
 		if !states[s] {
 			t.Errorf("no fixture download is %s: %v", s, states)
 		}
+	}
+}
+
+func TestOneLongSeasonIsMostlyQueuedAndNeverAllStartsAtOnce(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, 5*time.Millisecond)
+	season := func() map[string]int {
+		counts := map[string]int{}
+		for _, d := range downloadsByID(exchange(t, srv, router, "GET", "/api/downloads", "", 200)) {
+			if d["titleId"] == "series-1668" {
+				counts[d["state"].(string)]++
+			}
+		}
+		return counts
+	}
+	if c := season(); c["downloading"] != 2 || c["paused"] != 1 || c["queued"] != 21 {
+		t.Fatalf("the season starts as %v, want 2 downloading, 1 paused and 21 queued", c)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if c := season(); c["downloading"] > 3 || c["queued"] < 10 || c["paused"] != 1 {
+		t.Errorf("a queued season does not wait its turn: %v", c)
 	}
 }
 
