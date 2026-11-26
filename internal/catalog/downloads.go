@@ -484,7 +484,7 @@ func (s *Store) CancelDownload(ctx context.Context, id, message string) (Downloa
 	}
 	for _, n := range numbers {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule (title_id, season, number, attempts, follow_up) VALUES (?, ?, ?, 0, 1)
-			ON CONFLICT (title_id, season, number) DO UPDATE SET follow_up = 1`, d.TitleID, d.Season, n); err != nil {
+			ON CONFLICT (title_id, season, number) DO UPDATE SET follow_up = 1, next_at = NULL`, d.TitleID, d.Season, n); err != nil {
 			return Download{}, err
 		}
 	}

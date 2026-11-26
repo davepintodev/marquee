@@ -423,3 +423,34 @@ func TestCancellingACachingDownloadDeletesItsTorrentUnlessASiblingStillNeedsIt(t
 		t.Errorf("queue: %v", r.downloads())
 	}
 }
+
+func TestCancellingAManualGrabOfABackedOffEpisodeSearchesItAgainAtOnce(t *testing.T) {
+	r := newSchedRig(t, false)
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.step()
+	r.advance(time.Minute)
+	r.step()
+	if n := r.searchedID(ep1ID); n != 1 {
+		t.Fatalf("searched the episode %d times, want once and then a backoff", n)
+	}
+
+	slow := r.cdn.Add("first.mkv", debridfake.File{Data: debridfake.MKV(epSize), Pace: 10 * time.Millisecond})
+	r.aio.Answer("series", ep1ID, results(listed{name: "Dune.Prophecy.S01E01.1080p.first.mkv", size: epSize, url: slow, season: 1, ep: 1}))
+	cands, _ := r.releases("/api/titles/series-1408/releases?episode=s01e01")
+	d := r.mustCall("POST", "/api/titles/series-1408/releases/"+cands[0]["id"].(string)+"/grab", `{"episode":"s01e01"}`, 202)
+	id := d["id"].(string)
+	waitFor(t, "the grab to be downloading", 10*time.Second, func() bool {
+		got := r.download(id)
+		return got != nil && got["state"] == "downloading"
+	})
+	if resp := r.call("POST", "/api/downloads/"+id+"/cancel", ""); resp.status != 204 {
+		t.Fatalf("cancel: %d %s", resp.status, resp.body)
+	}
+
+	before := r.searchedID(ep1ID)
+	r.advance(5 * time.Second)
+	r.step()
+	if got := r.searchedID(ep1ID); got != before+1 {
+		t.Errorf("after the cancel the episode was searched %d times, want once at once, not after its backoff", got-before)
+	}
+}
