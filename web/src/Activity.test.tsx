@@ -4,12 +4,12 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Download, HistoryEntry, TitleSummary } from "./api/types";
 import { FakeEventSource, json, setupApp } from "./testkit";
 
-const dune: Download = { id: "dl-1", titleId: "movie-1", titleName: "Dune: Part Two", releaseName: "Dune.Part.Two.2024.2160p.WEB-DL", state: "downloading", percent: 43, bytesDone: 9_234_179_072, bytesTotal: 21_474_836_480, stalled: false };
-const arrival: Download = { id: "dl-2", titleId: "movie-2", titleName: "Arrival", releaseName: "Arrival.2016.1080p.BluRay", state: "downloading", percent: 12, bytesDone: 1_030_792_151, bytesTotal: 8_589_934_592, stalled: true };
-const sicario: Download = { id: "dl-3", titleId: "movie-5", titleName: "Sicario", releaseName: "Sicario.2015.1080p.WEB", state: "verifying", percent: 100, bytesDone: 5_000_000_000, bytesTotal: 5_000_000_000, stalled: false };
-const house: Download = { id: "dl-4", titleId: "series-4", titleName: "House", episode: "s04e03", releaseName: "House.S04E03.1080p", state: "queued", percent: 0, bytesDone: 0, bytesTotal: 0, stalled: false };
+const dune: Download = { id: "dl-1", titleId: "movie-1", titleName: "Dune: Part Two", releaseName: "Dune.Part.Two.2024.2160p.WEB-DL", state: "downloading", percent: 43, bytesDone: 9_234_179_072, bytesTotal: 21_474_836_480, stalled: false, bytesPerSecond: 0 };
+const arrival: Download = { id: "dl-2", titleId: "movie-2", titleName: "Arrival", releaseName: "Arrival.2016.1080p.BluRay", state: "downloading", percent: 12, bytesDone: 1_030_792_151, bytesTotal: 8_589_934_592, stalled: true, bytesPerSecond: 0 };
+const sicario: Download = { id: "dl-3", titleId: "movie-5", titleName: "Sicario", releaseName: "Sicario.2015.1080p.WEB", state: "verifying", percent: 100, bytesDone: 5_000_000_000, bytesTotal: 5_000_000_000, stalled: false, bytesPerSecond: 0 };
+const house: Download = { id: "dl-4", titleId: "series-4", titleName: "House", episode: "s04e03", releaseName: "House.S04E03.1080p", state: "queued", percent: 0, bytesDone: 0, bytesTotal: 0, stalled: false, bytesPerSecond: 0 };
 
-const caching: Download = { id: "dl-5", titleId: "movie-6", titleName: "Blade Runner 2049", releaseName: "Blade.Runner.2049.2017.720p.HDTV", state: "caching", percent: 42, bytesDone: 0, bytesTotal: 3_221_225_472, stalled: false };
+const caching: Download = { id: "dl-5", titleId: "movie-6", titleName: "Blade Runner 2049", releaseName: "Blade.Runner.2049.2017.720p.HDTV", state: "caching", percent: 42, bytesDone: 0, bytesTotal: 3_221_225_472, stalled: false, bytesPerSecond: 0 };
 
 const local = (day: number, hour: number, minute: number) => new Date(2026, 10, day, hour, minute).toISOString();
 

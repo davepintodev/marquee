@@ -301,7 +301,7 @@ func (a *api) grabRelease(w http.ResponseWriter, r *http.Request) {
 	d, err := a.Transfers.Enqueue(r.Context(), job)
 	switch {
 	case err == nil, errors.Is(err, catalog.ErrActiveDownload):
-		writeJSON(w, http.StatusAccepted, downloadOf(d, a.Catalog.Now()))
+		a.writeDownload(w, r, http.StatusAccepted, d)
 	case errors.Is(err, pipeline.ErrBadJob):
 		fail(w, http.StatusNotFound, "no such title or episode in the library")
 	default:

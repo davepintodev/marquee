@@ -62,6 +62,8 @@ var calls = map[string]call{
 	"listReleases":         {"GET", "/api/titles/series-1408/releases?episode=s04e02", "", 200},
 	"grabRelease":          {"POST", "/api/titles/movie-335984/releases/rel-movie-1/grab", "", 202},
 	"listDownloads":        {"GET", "/api/downloads", "", 200},
+	"pauseAllDownloads":    {"POST", "/api/downloads/pause", "", 200},
+	"resumeAllDownloads":   {"POST", "/api/downloads/resume", "", 200},
 	"pauseDownload":        {"POST", "/api/downloads/dl-1/pause", "", 200},
 	"resumeDownload":       {"POST", "/api/downloads/dl-1/resume", "", 200},
 	"cancelDownload":       {"POST", "/api/downloads/dl-3/cancel", "", 204},

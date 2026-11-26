@@ -37,7 +37,7 @@ ALTER TABLE downloads_old RENAME TO downloads;
 CREATE UNIQUE INDEX downloads_one_active ON downloads (title_id, season, number) WHERE state NOT IN ('done', 'failed');
 CREATE INDEX downloads_finished ON downloads (at_ms) WHERE state IN ('done', 'failed');
 CREATE INDEX downloads_finished_by_target ON downloads (title_id, season, number, at_ms) WHERE state IN ('done', 'failed');
-DROP TABLE run_mode; PRAGMA user_version = 13;
+DROP TABLE run_mode; DROP TABLE pause_all; PRAGMA user_version = 13;
 `
 
 func rawDB(t *testing.T, dir string) *sql.DB {

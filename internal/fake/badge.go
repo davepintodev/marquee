@@ -27,7 +27,7 @@ func (f *Fake) epState(t *entry, s *season, e *episode) (state string, percent i
 		if d.State == "caching" {
 			return "caching", d.Percent
 		}
-		if d.Stalled {
+		if d.Stalled && !f.pausedAll {
 			return "stalled", 0
 		}
 		return "downloading", d.Percent
@@ -66,7 +66,7 @@ func (f *Fake) badge(t *entry) *badge {
 			if d.State == "caching" {
 				return caching(d.Percent)
 			}
-			if d.Stalled {
+			if d.Stalled && !f.pausedAll {
 				return stalled()
 			}
 			return downloading(d.Percent)

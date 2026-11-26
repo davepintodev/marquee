@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -40,6 +41,9 @@ type rig struct {
 	stop func()
 	// stallTimeout is how long the downloader waits for bytes; zero is 400 ms.
 	stallTimeout time.Duration
+	// holdDispatch, when set, runs in the pipeline's dispatch pass between
+	// its read of the Pause all flag and the start of any download.
+	holdDispatch atomic.Pointer[func()]
 }
 
 func fastDownloads() download.Options {
@@ -75,6 +79,11 @@ func (r *rig) startService() {
 		Transfers: pipeline.Tuning{
 			MovieFloor: 1 << 10, EpisodeFloor: 1 << 10, Poll: 20 * time.Millisecond,
 			JellyfinTimeout: time.Second, Download: dl,
+			HoldDispatch: func() {
+				if h := r.holdDispatch.Load(); h != nil {
+					(*h)()
+				}
+			},
 		},
 		OnPipeline:  func(m *pipeline.Manager) { r.mgr = m },
 		Scheduler:   scheduler.Tuning{Tick: -1},

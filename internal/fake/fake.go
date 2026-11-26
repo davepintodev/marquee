@@ -77,14 +77,17 @@ type entry struct {
 func (e *entry) id() string { return fmt.Sprintf("%s-%d", e.Kind, e.TmdbID) }
 
 type download struct {
-	ID           string `json:"id"`
-	TitleID      string `json:"titleId"`
-	Episode      string `json:"episode,omitempty"`
-	ReleaseName  string `json:"releaseName"`
-	BytesTotal   int64  `json:"bytesTotal"`
-	Percent      int    `json:"percent"`
-	Stalled      bool   `json:"stalled"`
-	State        string `json:"state"`
+	ID          string `json:"id"`
+	TitleID     string `json:"titleId"`
+	Episode     string `json:"episode,omitempty"`
+	ReleaseName string `json:"releaseName"`
+	BytesTotal  int64  `json:"bytesTotal"`
+	Percent     int    `json:"percent"`
+	Stalled     bool   `json:"stalled"`
+	State       string `json:"state"`
+	// Rate is the bytes a second the download moves while it downloads; a
+	// download the fixtures leave without one moves at defaultRate.
+	Rate         int64 `json:"bytesPerSecond"`
 	resume       string
 	resumeStalls bool
 }
@@ -126,6 +129,7 @@ type Fake struct {
 	mu        sync.Mutex
 	titles    []*entry
 	downloads []*download
+	pausedAll bool
 	ended     map[string]bool
 	history   []*historyEntry
 	lastSeq   int
@@ -199,6 +203,9 @@ func New(opts Options) *Fake {
 	for _, d := range f.downloads {
 		if d.State == "" {
 			d.State = "downloading"
+		}
+		if d.Rate == 0 {
+			d.Rate = defaultRate
 		}
 	}
 	f.Handler = f.routes()
@@ -307,18 +314,39 @@ func (f *Fake) emitChangedBadges(before map[string]string) {
 	}
 }
 
+const defaultRate = 12 << 20
+
 type progressEvent struct {
-	DownloadID string `json:"downloadId"`
-	TitleID    string `json:"titleId"`
-	Episode    string `json:"episode,omitempty"`
-	State      string `json:"state"`
-	Percent    int    `json:"percent"`
-	BytesDone  int64  `json:"bytesDone"`
-	BytesTotal int64  `json:"bytesTotal"`
+	DownloadID     string `json:"downloadId"`
+	TitleID        string `json:"titleId"`
+	Episode        string `json:"episode,omitempty"`
+	State          string `json:"state"`
+	Percent        int    `json:"percent"`
+	BytesDone      int64  `json:"bytesDone"`
+	BytesTotal     int64  `json:"bytesTotal"`
+	BytesPerSecond int64  `json:"bytesPerSecond"`
 }
 
-func (d *download) progress(state string) progressEvent {
-	return progressEvent{d.ID, d.TitleID, d.Episode, state, d.Percent, d.BytesTotal * int64(d.Percent) / 100, d.BytesTotal}
+func (f *Fake) held(d *download) bool {
+	return f.pausedAll && (d.State == "queued" || d.State == "caching" || d.State == "downloading")
+}
+
+func (f *Fake) shownState(d *download) string {
+	if f.pausedAll && (d.State == "caching" || d.State == "downloading") {
+		return "paused"
+	}
+	return d.State
+}
+
+func (f *Fake) rate(d *download) int64 {
+	if d.State != "downloading" || d.Stalled || f.pausedAll {
+		return 0
+	}
+	return d.Rate
+}
+
+func (f *Fake) progress(d *download) progressEvent {
+	return progressEvent{d.ID, d.TitleID, d.Episode, f.shownState(d), d.Percent, d.BytesTotal * int64(d.Percent) / 100, d.BytesTotal, f.rate(d)}
 }
 
 func (f *Fake) simulate() {
@@ -340,7 +368,7 @@ func (f *Fake) advance() {
 	defer f.mu.Unlock()
 	var finished []*download
 	for _, d := range f.downloads {
-		if d.Stalled || d.State == "paused" {
+		if d.Stalled || d.State == "paused" || f.held(d) {
 			continue
 		}
 		switch d.State {
@@ -360,7 +388,7 @@ func (f *Fake) advance() {
 				d.State = "verifying"
 			}
 		}
-		f.emit("progress", d.progress(d.State))
+		f.emit("progress", f.progress(d))
 	}
 	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return slices.Contains(finished, d) })
 	for _, d := range finished {

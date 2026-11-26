@@ -86,6 +86,7 @@ export const queued = (over: Partial<Download> = {}): Download => ({
   bytesDone: 0,
   bytesTotal: 34_359_738_368,
   stalled: false,
+  bytesPerSecond: 0,
   ...over,
 });
 

@@ -96,11 +96,13 @@ type view struct {
 	marks     map[string]string
 	badges    map[string]*badgeJSON
 	downloads map[string]catalog.Download
+	pausedAll bool
+	speeds    map[string]int64
 	ok        bool
 }
 
 func (h *hub) look(ctx context.Context) view {
-	v := view{marks: map[string]string{}, badges: map[string]*badgeJSON{}, downloads: map[string]catalog.Download{}}
+	v := view{marks: map[string]string{}, badges: map[string]*badgeJSON{}, downloads: map[string]catalog.Download{}, speeds: map[string]int64{}}
 	titles, err := h.a.Catalog.List(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -115,6 +117,12 @@ func (h *hub) look(ctx context.Context) view {
 		}
 		return v
 	}
+	if v.pausedAll, err = h.a.Catalog.PausedAll(ctx); err != nil {
+		if ctx.Err() == nil {
+			h.a.Log.Warn("the event stream could not read Pause all", "err", err)
+		}
+		return v
+	}
 	for _, t := range titles {
 		b := badgeOf(t.Badge)
 		v.badges[t.ID] = b
@@ -122,6 +130,7 @@ func (h *hub) look(ctx context.Context) view {
 	}
 	for _, d := range ds {
 		v.downloads[d.ID] = d
+		v.speeds[d.ID] = h.a.rateOf(d.ID, d.APIState(v.pausedAll))
 	}
 	v.ok = true
 	return v
@@ -195,14 +204,18 @@ func diff(prev, next view) []event {
 			title(d.TitleID)
 		}
 	}
+	if prev.pausedAll != next.pausedAll {
+		send("downloads", map[string]any{"paused": next.pausedAll})
+	}
 	for id, d := range next.downloads {
 		old, had := prev.downloads[id]
-		if had && old.State == d.State && old.BytesDone == d.BytesDone && old.BytesTotal == d.BytesTotal && old.CachePercent == d.CachePercent && old.Paused == d.Paused {
+		if had && old.State == d.State && old.BytesDone == d.BytesDone && old.BytesTotal == d.BytesTotal && old.CachePercent == d.CachePercent &&
+			old.APIState(prev.pausedAll) == d.APIState(next.pausedAll) && prev.speeds[id] == next.speeds[id] {
 			continue
 		}
 		p := map[string]any{
-			"downloadId": d.ID, "titleId": d.TitleID, "state": d.APIState(),
-			"percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
+			"downloadId": d.ID, "titleId": d.TitleID, "state": d.APIState(next.pausedAll),
+			"percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal, "bytesPerSecond": next.speeds[id],
 		}
 		if ep := episodeRef(d); ep != "" {
 			p["episode"] = ep

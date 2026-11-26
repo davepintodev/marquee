@@ -228,6 +228,10 @@ type target struct {
 // inFlight returns the unfinished downloads of the titles selected by
 // where, by movie or episode.
 func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []any) (map[target]*inFlight, error) {
+	all, err := pausedAll(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, cache_percent, updated_at, covered_episodes, paused, cached FROM downloads
 		WHERE state NOT IN ('done', 'failed') AND title_id IN (SELECT id FROM titles `+where+`)`, args...)
 	if err != nil {
@@ -246,7 +250,7 @@ func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []an
 		}
 		d.Paused, d.Uncached = paused == 1, cached == 0
 		d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-		fl := &inFlight{stalled: d.Stalled(now), caching: d.State == StateCaching, percent: d.Percent()}
+		fl := &inFlight{stalled: d.Stalled(now, all), caching: d.State == StateCaching, percent: d.Percent()}
 		out[k] = fl
 		for _, n := range decodeCovered(covered) {
 			out[target{k.titleID, k.season, n}] = fl

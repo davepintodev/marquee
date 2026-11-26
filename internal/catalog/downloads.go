@@ -60,13 +60,21 @@ func (d Download) Percent() int {
 
 // Stalled reports a download whose bytes stopped moving; one still queued
 // or past downloading is not waiting on bytes.
-func (d Download) Stalled(now time.Time) bool {
-	return d.State == StateDownloading && !d.Paused && now.Sub(d.UpdatedAt) > StallAfter
+func (d Download) Stalled(now time.Time, pausedAll bool) bool {
+	return d.State == StateDownloading && !d.Held(pausedAll) && now.Sub(d.UpdatedAt) > StallAfter
+}
+
+// Held reports a download whose transfer is stopped: paused on its own, or
+// caught by Pause all while caching or downloading. A queued download is
+// not held by Pause all (it simply is not started), and one being verified
+// or imported finishes, as it spends no bandwidth.
+func (d Download) Held(pausedAll bool) bool {
+	return d.Paused || (pausedAll && (d.State == StateCaching || d.State == StateDownloading))
 }
 
 // APIState is the state the API shows: paused, or the stored state.
-func (d Download) APIState() string {
-	if d.Paused {
+func (d Download) APIState(pausedAll bool) string {
+	if d.Held(pausedAll) {
 		return StatePaused
 	}
 	return d.State
@@ -435,6 +443,53 @@ func (s *Store) ResumeDownload(ctx context.Context, id string) (Download, error)
 		return Download{}, s.whyNot(ctx, id, err)
 	}
 	return s.GetDownload(ctx, id)
+}
+
+// PausedAll reports whether Pause all is on.
+func (s *Store) PausedAll(ctx context.Context) (bool, error) {
+	return pausedAll(ctx, s.w)
+}
+
+func pausedAll(ctx context.Context, q queryer) (bool, error) {
+	rows, err := q.QueryContext(ctx, `SELECT paused FROM pause_all WHERE id = 1`)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rows.Close() }()
+	var on int
+	if rows.Next() {
+		if err := rows.Scan(&on); err != nil {
+			return false, err
+		}
+	}
+	return on == 1, rows.Err()
+}
+
+// SetPausedAll switches Pause all on or off and reports whether that
+// changed it. Each download's own paused flag is left alone, so switching
+// off gives back exactly what was paused one by one. Switching off also
+// restarts the stall clock of the downloads it releases, since their bytes
+// stood still while held.
+func (s *Store) SetPausedAll(ctx context.Context, on bool) (changed bool, err error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	was, err := pausedAll(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO pause_all (id, paused) VALUES (1, ?1)
+		ON CONFLICT (id) DO UPDATE SET paused = excluded.paused`, b2i(on)); err != nil {
+		return false, err
+	}
+	if was && !on {
+		if _, err := tx.ExecContext(ctx, `UPDATE downloads SET updated_at = ? WHERE paused = 0 AND state IN ('caching', 'downloading')`, s.stamp()); err != nil {
+			return false, err
+		}
+	}
+	return was != on, tx.Commit()
 }
 
 func (s *Store) whyNot(ctx context.Context, id string, err error) error {

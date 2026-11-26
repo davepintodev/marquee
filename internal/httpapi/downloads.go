@@ -24,24 +24,67 @@ func (a *api) listDownloads(w http.ResponseWriter, r *http.Request) {
 		a.internal(w, r, err)
 		return
 	}
+	a.writeQueue(w, r, ds)
+}
+
+func (a *api) writeQueue(w http.ResponseWriter, r *http.Request, ds []catalog.Download) {
+	all, err := a.Catalog.PausedAll(r.Context())
+	if err != nil {
+		a.internal(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"downloads": a.downloadsOf(ds, all), "paused": all})
+}
+
+func (a *api) switchPauseAll(change func(context.Context) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := change(r.Context()); err != nil {
+			a.internal(w, r, err)
+			return
+		}
+		a.listDownloads(w, r)
+	}
+}
+
+func (a *api) downloadsOf(ds []catalog.Download, pausedAll bool) []map[string]any {
 	now := a.Catalog.Now()
 	out := make([]map[string]any, 0, len(ds))
 	for _, d := range ds {
-		out = append(out, downloadOf(d, now))
+		out = append(out, a.downloadOf(d, now, pausedAll))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"downloads": out})
+	return out
 }
 
-func downloadOf(d catalog.Download, now time.Time) map[string]any {
+func (a *api) downloadOf(d catalog.Download, now time.Time, pausedAll bool) map[string]any {
+	state := d.APIState(pausedAll)
 	item := map[string]any{
 		"id": d.ID, "titleId": d.TitleID, "titleName": d.TitleName, "releaseName": d.ReleaseName,
-		"state": d.APIState(), "percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
-		"stalled": d.Stalled(now),
+		"state": state, "percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
+		"stalled": d.Stalled(now, pausedAll), "bytesPerSecond": a.rateOf(d.ID, state),
 	}
 	if ep := episodeRef(d); ep != "" {
 		item["episode"] = ep
 	}
 	return item
+}
+
+// rateOf is a download's transfer rate, which only a file that is
+// downloading has: TorBox's caching percent is not a rate, and a download
+// being verified or imported moves no bytes from the source.
+func (a *api) rateOf(id, state string) int64 {
+	if state != catalog.StateDownloading {
+		return 0
+	}
+	return a.Transfers.Speed(id)
+}
+
+func (a *api) writeDownload(w http.ResponseWriter, r *http.Request, status int, d catalog.Download) {
+	all, err := a.Catalog.PausedAll(r.Context())
+	if err != nil {
+		a.internal(w, r, err)
+		return
+	}
+	writeJSON(w, status, a.downloadOf(d, a.Catalog.Now(), all))
 }
 
 func (a *api) downloadErr(w http.ResponseWriter, r *http.Request, err error) {
@@ -64,7 +107,7 @@ func (a *api) changeDownload(change func(context.Context, string) (catalog.Downl
 			a.downloadErr(w, r, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, downloadOf(d, a.Catalog.Now()))
+		a.writeDownload(w, r, http.StatusOK, d)
 	}
 }
 
@@ -83,12 +126,12 @@ func (a *api) changeTitleDownloads(change func(context.Context, string) ([]catal
 			a.titleReply(w, r, catalog.Title{}, err)
 			return
 		}
-		now := a.Catalog.Now()
-		out := make([]map[string]any, 0, len(ds))
-		for _, d := range ds {
-			out = append(out, downloadOf(d, now))
+		all, err := a.Catalog.PausedAll(r.Context())
+		if err != nil {
+			a.internal(w, r, err)
+			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"downloads": out})
+		writeJSON(w, http.StatusOK, map[string]any{"downloads": a.downloadsOf(ds, all)})
 	}
 }
 

@@ -891,3 +891,142 @@ func TestStoppingAFinishedOrCancelledDownloadAnswers409(t *testing.T) {
 		exchange(t, still, router, "POST", "/api/downloads/dl-3/"+op, "", 409)
 	}
 }
+
+func downloadsByID(out map[string]any) map[string]map[string]any {
+	by := map[string]map[string]any{}
+	for _, d := range out["downloads"].([]any) {
+		d := d.(map[string]any)
+		by[d["id"].(string)] = d
+	}
+	return by
+}
+
+func TestPauseAllHoldsTransfersKeepsQueuedOnesQueuedAndResumeAllRestoresThemAsTheyWere(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+
+	out := exchange(t, srv, router, "GET", "/api/downloads", "", 200)
+	if out["paused"] != false {
+		t.Fatalf("the queue starts with Pause all %v", out["paused"])
+	}
+	if by := downloadsByID(out); by["dl-1"]["bytesPerSecond"].(float64) <= 0 || by["dl-3"]["bytesPerSecond"] != float64(0) || by["dl-2"]["bytesPerSecond"] != float64(0) {
+		t.Fatalf("only a moving download has a rate: dl-1 %v, dl-2 (stalled) %v, dl-3 (queued) %v", by["dl-1"], by["dl-2"], by["dl-3"])
+	}
+	exchange(t, srv, router, "POST", "/api/downloads/dl-5/pause", "", 200)
+
+	out = exchange(t, srv, router, "POST", "/api/downloads/pause", "", 200)
+	by := downloadsByID(out)
+	if out["paused"] != true {
+		t.Fatalf("Pause all answered %v", out)
+	}
+	for id, want := range map[string]string{"dl-1": "paused", "dl-2": "paused", "dl-3": "queued", "dl-4": "verifying", "dl-5": "paused"} {
+		if by[id]["state"] != want {
+			t.Errorf("%s is %v under Pause all, want %s", id, by[id]["state"], want)
+		}
+	}
+	if by["dl-1"]["bytesPerSecond"] != float64(0) || by["dl-1"]["stalled"] != false || by["dl-2"]["stalled"] != false {
+		t.Errorf("a held download has a rate or reads stalled: %v %v", by["dl-1"], by["dl-2"])
+	}
+	if again := exchange(t, srv, router, "POST", "/api/downloads/pause", "", 200); again["paused"] != true {
+		t.Errorf("a second Pause all answered %v", again)
+	}
+
+	out = exchange(t, srv, router, "POST", "/api/downloads/resume", "", 200)
+	by = downloadsByID(out)
+	if out["paused"] != false {
+		t.Fatalf("Resume all answered %v", out)
+	}
+	for id, want := range map[string]string{"dl-1": "downloading", "dl-2": "downloading", "dl-3": "queued", "dl-5": "paused"} {
+		if by[id]["state"] != want {
+			t.Errorf("%s is %v after Resume all, want %s (what was paused on its own stays paused)", id, by[id]["state"], want)
+		}
+	}
+	if by["dl-1"]["bytesPerSecond"].(float64) <= 0 || by["dl-2"]["stalled"] != true {
+		t.Errorf("Resume all did not give back the rate and the stall: %v %v", by["dl-1"], by["dl-2"])
+	}
+}
+
+func TestPauseAllStopsTheSimulatedDownloadsMovingAndAnnouncesItself(t *testing.T) {
+	doc, router := loadSpec(t)
+	progress, downloads := doc.Components.Schemas["ProgressEvent"].Value, doc.Components.Schemas["DownloadsEvent"].Value
+	srv := startFakeTick(t, 5*time.Millisecond)
+	lines := openStream(t, srv)
+
+	exchange(t, srv, router, "POST", "/api/downloads/pause", "", 200)
+	l := waitFor(t, lines, func(l streamLine) bool { return l.event == "downloads" })
+	var v map[string]any
+	if err := json.Unmarshal([]byte(l.data), &v); err != nil {
+		t.Fatal(err)
+	}
+	if err := downloads.VisitJSON(v); err != nil || v["paused"] != true {
+		t.Fatalf("downloads event %s: %v", l.data, err)
+	}
+	l = waitFor(t, lines, func(l streamLine) bool {
+		return l.event == "progress" && strings.Contains(l.data, `"dl-1"`) && strings.Contains(l.data, `"paused"`)
+	})
+	v = nil
+	if err := json.Unmarshal([]byte(l.data), &v); err != nil {
+		t.Fatal(err)
+	}
+	if err := progress.VisitJSON(v); err != nil || v["bytesPerSecond"] != float64(0) {
+		t.Fatalf("progress event %s: %v", l.data, err)
+	}
+
+	first := downloadsByID(exchange(t, srv, router, "GET", "/api/downloads", "", 200))["dl-1"]["percent"]
+	time.Sleep(100 * time.Millisecond)
+	if later := downloadsByID(exchange(t, srv, router, "GET", "/api/downloads", "", 200))["dl-1"]["percent"]; later != first {
+		t.Errorf("a download moved under Pause all: %v then %v", first, later)
+	}
+
+	exchange(t, srv, router, "POST", "/api/downloads/resume", "", 200)
+	waitFor(t, lines, func(l streamLine) bool { return l.event == "downloads" && strings.Contains(l.data, "false") })
+	l = waitFor(t, lines, func(l streamLine) bool {
+		return l.event == "progress" && strings.Contains(l.data, `"dl-1"`) && strings.Contains(l.data, `"downloading"`)
+	})
+	v = nil
+	_ = json.Unmarshal([]byte(l.data), &v)
+	if err := progress.VisitJSON(v); err != nil || v["bytesPerSecond"].(float64) <= 0 {
+		t.Fatalf("progress event %s: %v", l.data, err)
+	}
+}
+
+func TestAGrabbedDownloadReportsTheDefaultRateOnceItMoves(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, Step: 1})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+
+	exchange(t, srv, router, "POST", "/api/titles/series-1408/releases/rel-series-5/grab", `{"episode":"s04e02"}`, 202)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, d := range exchange(t, srv, router, "GET", "/api/downloads", "", 200)["downloads"].([]any) {
+			if d := d.(map[string]any); d["releaseName"] == "House.S04E02.480p.DVDRip.XviD" && d["state"] == "downloading" {
+				if d["bytesPerSecond"].(float64) <= 0 {
+					t.Errorf("a grabbed download is moving at no rate: %v", d)
+				}
+				return
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Error("the grabbed download never started")
+}
+
+func TestAStalledBadgeClearsUnderPauseAll(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	badge := func() any {
+		return exchange(t, srv, router, "GET", "/api/titles/movie-329865", "", 200)["badge"].(map[string]any)["state"]
+	}
+	if got := badge(); got != "stalled" {
+		t.Fatalf("the stalled movie's badge is %v, want stalled", got)
+	}
+	exchange(t, srv, router, "POST", "/api/downloads/pause", "", 200)
+	if got := badge(); got != "downloading" {
+		t.Errorf("under Pause all the stalled movie's badge is %v, want downloading", got)
+	}
+	exchange(t, srv, router, "POST", "/api/downloads/resume", "", 200)
+	if got := badge(); got != "stalled" {
+		t.Errorf("after Resume all the stalled movie's badge is %v, want stalled", got)
+	}
+}

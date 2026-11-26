@@ -315,6 +315,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/downloads/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause every download until resumed (Pause all).
+         * @description Stops every transfer, keeping the partial files, and starts nothing new: queued downloads stay `queued`, and a grab made meanwhile is queued too. Searching and monitoring go on. A download being verified or imported is left to finish, as no bandwidth is spent on it. A torrent TorBox is caching stays on TorBox, but no new one is started. The switch is stored and survives a restart. It does not touch any download's own pause, so Resume all gives back exactly what was paused one by one. Pausing when already paused changes nothing.
+         */
+        post: operations["pauseAllDownloads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Pause all off.
+         * @description Downloads that were not paused one by one continue from their partial files, and queued ones start in their order as places free up. A download paused on its own stays paused. Resuming when not paused changes nothing.
+         */
+        post: operations["resumeAllDownloads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/downloads/{downloadId}/pause": {
         parameters: {
             query?: never;
@@ -492,7 +532,7 @@ export interface paths {
         };
         /**
          * Live events as Server-Sent Events.
-         * @description Each message has an `event:` name and a JSON `data:` line. `progress` carries a ProgressEvent for a running download; `title` carries a TitleEvent whenever a title's badge changes, including when it is added to or removed from the library. Lines starting with `:` are keep-alive comments to ignore. The stream never ends on its own; clients reconnect when it drops.
+         * @description Each message has an `event:` name and a JSON `data:` line. `progress` carries a ProgressEvent for a running download; `title` carries a TitleEvent whenever a title's badge changes, including when it is added to or removed from the library; `downloads` carries a DownloadsEvent whenever Pause all is switched on or off. Lines starting with `:` are keep-alive comments to ignore. The stream never ends on its own; clients reconnect when it drops.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -816,7 +856,7 @@ export interface components {
             dropped: components["schemas"]["DroppedRelease"][];
         };
         /**
-         * @description An uncached release is `caching` while TorBox fetches it (its percent is TorBox's), then `downloading` once marquee transfers the file. A `paused` download keeps its partial file and its place in the queue but holds no connection or TorBox slot; its percent is how far it got.
+         * @description An uncached release is `caching` while TorBox fetches it (its percent is TorBox's), then `downloading` once marquee transfers the file. A `paused` download keeps its partial file and its place in the queue but holds no connection or TorBox slot; its percent is how far it got. While Pause all is on, a download that was caching or downloading shows `paused` too, and a queued one stays `queued`.
          * @enum {string}
          */
         DownloadState: "queued" | "caching" | "downloading" | "verifying" | "importing" | "paused";
@@ -832,7 +872,10 @@ export interface components {
             bytesTotal: number;
             /** @description No bytes have arrived recently. */
             stalled: boolean;
+            bytesPerSecond: components["schemas"]["BytesPerSecond"];
         };
+        /** @description The transfer rate, averaged over the last few seconds of progress on the server. 0 unless the file is downloading right now: a paused, queued, caching, verifying or importing download has none. Divide the bytes left by it for the time left. */
+        BytesPerSecond: number;
         LibraryRescan: {
             /** @description Titles of the library the scan reconciled with disk. */
             titlesScanned: number;
@@ -879,6 +922,11 @@ export interface components {
             percent: number;
             bytesDone: number;
             bytesTotal: number;
+            bytesPerSecond: components["schemas"]["BytesPerSecond"];
+        };
+        /** @description Data of the `downloads` event, sent when Pause all flips. */
+        DownloadsEvent: {
+            paused: boolean;
         };
         /** @description Data of the `title` event. */
         TitleEvent: {
@@ -997,6 +1045,19 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The downloads that are not finished, and whether Pause all is on. */
+        DownloadQueue: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    downloads: components["schemas"]["Download"][];
+                    /** @description Pause all is on; see pauseAllDownloads. */
+                    paused: boolean;
+                };
             };
         };
         /** @description The title's downloads this changed; empty when none could be. */
@@ -1557,17 +1618,33 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Downloads that are not finished. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        downloads: components["schemas"]["Download"][];
-                    };
-                };
-            };
+            200: components["responses"]["DownloadQueue"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    pauseAllDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DownloadQueue"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    resumeAllDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DownloadQueue"];
             401: components["responses"]["Unauthorized"];
         };
     };
