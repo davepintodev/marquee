@@ -954,13 +954,13 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 	_ = os.Remove(part + ".plan")
 	// The old file goes before the download is recorded as done, so a crash
 	// in between leaves the download importing and the next run finishes the job.
-	m.removeReplaced(ctx, d, root, old, rel)
+	replaced := m.removeReplaced(ctx, d, root, old, rel)
 	if err := m.cat.FinishDownload(ctx, d.ID, m.recordFile(t, d, dst)); err != nil {
 		m.gone(ctx, d, err)
 		return
 	}
 	m.log.Info("imported", "download", d.ID, "title", d.TitleID)
-	if old != "" {
+	if replaced {
 		m.sf.Replace(subfit.Library(t.Kind), rel, old)
 	} else {
 		m.sf.Import(subfit.Library(t.Kind), rel)
@@ -1056,22 +1056,25 @@ func (m *Manager) replaced(ctx context.Context, d catalog.Download) (string, err
 // subtitle sidecars, or, when the new file took the old one's name, only the
 // sidecars. A file another episode still records stays. A failure leaves an
 // orphan file behind, which is better than failing an import that has
-// already happened.
-func (m *Manager) removeReplaced(ctx context.Context, d catalog.Download, root, old, now string) {
+// already happened. It reports false when the old file is still some
+// episode's, so subfit is told of an import rather than a replace.
+func (m *Manager) removeReplaced(ctx context.Context, d catalog.Download, root, old, now string) bool {
 	if old == "" {
-		return
+		return false
 	}
 	var err error
+	kept := false
 	if old == now {
 		err = importer.DeleteSidecars(root, old)
 	} else if shared, serr := m.cat.SharesFile(ctx, d.TitleID, old, d.Season, episodesOf(d)); serr != nil || shared {
-		err = serr
+		err, kept = serr, true
 	} else if err = importer.DeleteMediaFile(root, old); err == nil {
 		err = importer.PruneEmptyDirs(root, old)
 	}
 	if err != nil && ctx.Err() == nil {
 		m.log.Warn("cannot delete the file a download replaced", "download", d.ID, "err", err)
 	}
+	return !kept
 }
 
 // recordFile describes the placed file for the catalog. A fingerprint that

@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -98,6 +99,29 @@ func TestAReplacementThatKeepsTheNamePostsAReplaceWithBothPathsTheSame(t *testin
 
 	got := hooks(t, f, 1)
 	if want := []string{"replace movies " + duneNew + " <- " + duneNew}; !slices.Equal(got, want) {
+		t.Errorf("webhooks %q, want %q", got, want)
+	}
+}
+
+func TestReplacingOneEpisodeOfASharedFileKeepsItAndPostsAnImportNotAReplace(t *testing.T) {
+	f := newSubfit(t)
+	r, _ := setupWith(t, withSubfit(f))
+	lay(t, r.env["MARQUEE_SERIES_PATH"], pairName)
+	r.rescan("/api/titles/series-1408/rescan")
+	if one, two := r.storedFile("series-1408", 1, 1), r.storedFile("series-1408", 1, 2); one.path != pairName || one != two {
+		t.Fatalf("both episodes share the file: %+v %+v", one, two)
+	}
+
+	j := episodeJob(r.cdn.Add("ep.mkv", debridfake.File{Data: debridfake.MKV(100 << 10)}), "ep.mkv")
+	j.Replace = true
+	r.enqueue(j)
+	r.waitHistoryKind("imported", 1)
+
+	if !present(filepath.Join(r.env["MARQUEE_SERIES_PATH"], filepath.FromSlash(pairName))) {
+		t.Error("the shared file stays: S01E02 still owns it")
+	}
+	got := hooks(t, f, 1)
+	if want := []string{"import series " + prophecyE1}; !slices.Equal(got, want) {
 		t.Errorf("webhooks %q, want %q", got, want)
 	}
 }
