@@ -96,8 +96,6 @@ type view struct {
 	marks     map[string]string
 	badges    map[string]*badgeJSON
 	downloads map[string]catalog.Download
-	// pausedAll is Pause all, and speeds the rate of each download that is
-	// moving bytes; both change what a download's progress event says.
 	pausedAll bool
 	speeds    map[string]int64
 	ok        bool

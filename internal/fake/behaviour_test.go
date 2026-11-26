@@ -989,3 +989,44 @@ func TestPauseAllStopsTheSimulatedDownloadsMovingAndAnnouncesItself(t *testing.T
 		t.Fatalf("progress event %s: %v", l.data, err)
 	}
 }
+
+func TestAGrabbedDownloadReportsTheDefaultRateOnceItMoves(t *testing.T) {
+	_, router := loadSpec(t)
+	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, Step: 1})
+	srv := httptest.NewServer(f)
+	t.Cleanup(func() { f.Close(); srv.Close() })
+
+	exchange(t, srv, router, "POST", "/api/titles/series-1408/releases/rel-series-5/grab", `{"episode":"s04e02"}`, 202)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, d := range exchange(t, srv, router, "GET", "/api/downloads", "", 200)["downloads"].([]any) {
+			if d := d.(map[string]any); d["releaseName"] == "House.S04E02.480p.DVDRip.XviD" && d["state"] == "downloading" {
+				if d["bytesPerSecond"].(float64) <= 0 {
+					t.Errorf("a grabbed download is moving at no rate: %v", d)
+				}
+				return
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Error("the grabbed download never started")
+}
+
+func TestAStalledBadgeClearsUnderPauseAll(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFakeTick(t, time.Hour)
+	badge := func() any {
+		return exchange(t, srv, router, "GET", "/api/titles/movie-329865", "", 200)["badge"].(map[string]any)["state"]
+	}
+	if got := badge(); got != "stalled" {
+		t.Fatalf("the stalled movie's badge is %v, want stalled", got)
+	}
+	exchange(t, srv, router, "POST", "/api/downloads/pause", "", 200)
+	if got := badge(); got != "downloading" {
+		t.Errorf("under Pause all the stalled movie's badge is %v, want downloading", got)
+	}
+	exchange(t, srv, router, "POST", "/api/downloads/resume", "", 200)
+	if got := badge(); got != "stalled" {
+		t.Errorf("after Resume all the stalled movie's badge is %v, want stalled", got)
+	}
+}

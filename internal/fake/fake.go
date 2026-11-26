@@ -129,8 +129,6 @@ type Fake struct {
 	mu        sync.Mutex
 	titles    []*entry
 	downloads []*download
-	// pausedAll is Pause all: it holds back every download that is queued,
-	// caching or downloading without changing any download's own state.
 	pausedAll bool
 	ended     map[string]bool
 	history   []*historyEntry
@@ -329,14 +327,10 @@ type progressEvent struct {
 	BytesPerSecond int64  `json:"bytesPerSecond"`
 }
 
-// held reports a download Pause all stops: a queued one is simply not
-// started, and one being verified or imported finishes.
 func (f *Fake) held(d *download) bool {
 	return f.pausedAll && (d.State == "queued" || d.State == "caching" || d.State == "downloading")
 }
 
-// shownState is the state the API shows: caching and downloading read paused
-// under Pause all, queued stays queued.
 func (f *Fake) shownState(d *download) string {
 	if f.pausedAll && (d.State == "caching" || d.State == "downloading") {
 		return "paused"

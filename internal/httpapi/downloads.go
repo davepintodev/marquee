@@ -36,8 +36,6 @@ func (a *api) writeQueue(w http.ResponseWriter, r *http.Request, ds []catalog.Do
 	writeJSON(w, http.StatusOK, map[string]any{"downloads": a.downloadsOf(ds, all), "paused": all})
 }
 
-// switchPauseAll turns Pause all on or off and answers with the queue, so
-// switching what is already switched changes nothing and still answers.
 func (a *api) switchPauseAll(change func(context.Context) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := change(r.Context()); err != nil {

@@ -40,8 +40,6 @@ func (m *meter) trim(now time.Time) {
 	m.samples = append(m.samples[:0], m.samples[keep:]...)
 }
 
-// rate is the bytes a second over the window ending now: zero until two
-// ticks are in it, and again once the ticks have stopped for the whole window.
 func (m *meter) rate(now time.Time) int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()

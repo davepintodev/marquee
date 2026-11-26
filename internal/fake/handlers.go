@@ -797,7 +797,7 @@ func (f *Fake) grab(w http.ResponseWriter, r *http.Request) {
 		if !rel.Cached {
 			state = "caching"
 		}
-		d = &download{ID: f.newID("dl"), TitleID: t.id(), Episode: req.Episode, ReleaseName: rel.Name, BytesTotal: rel.SizeBytes, State: state}
+		d = &download{ID: f.newID("dl"), TitleID: t.id(), Episode: req.Episode, ReleaseName: rel.Name, BytesTotal: rel.SizeBytes, State: state, Rate: defaultRate}
 		f.downloads = append(f.downloads, d)
 	}
 	write(w, http.StatusAccepted, f.downloadOut(d))
@@ -830,8 +830,6 @@ func (f *Fake) listDownloads(w http.ResponseWriter, _ *http.Request) {
 	write(w, http.StatusOK, map[string]any{"downloads": out, "paused": f.pausedAll})
 }
 
-// switchPauseAll turns Pause all on or off; each held download announces its
-// new state, and the flip itself is announced once.
 func (f *Fake) switchPauseAll(on bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if f.pausedAll != on {
