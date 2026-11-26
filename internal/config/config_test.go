@@ -385,3 +385,37 @@ func TestTheTorBoxKeyIsRedactedEverywhere(t *testing.T) {
 		}
 	}
 }
+
+func TestTheSubfitTokenIsReadFromTheEnvironmentOrFileAndRedactedEverywhere(t *testing.T) {
+	const subfitVal = "subfit-SECRETjkl"
+	env := fullEnv()
+	env["MARQUEE_SUBFIT_TOKEN"] = subfitVal
+	cfg, err := config.Load(envOf(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SubfitToken.Reveal() != subfitVal {
+		t.Errorf("from the environment: %q", cfg.SubfitToken.Reveal())
+	}
+	var buf strings.Builder
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("config", "config", cfg)
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("config", "config", cfg)
+	for _, s := range []string{buf.String(), fmt.Sprintf("%v %+v %#v", cfg, cfg, cfg)} {
+		if strings.Contains(s, "SECRETjkl") {
+			t.Errorf("leaks the subfit token: %q", s)
+		}
+	}
+	if !strings.Contains(buf.String(), "subfit_token") {
+		t.Errorf("the dump does not say whether a subfit token is set: %s", buf.String())
+	}
+
+	file := filepath.Join(t.TempDir(), "marquee.json")
+	if err := os.WriteFile(file, []byte(`{"subfit_token": "subfit-SECRETfile"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env = fullEnv()
+	env["MARQUEE_CONFIG"] = file
+	if cfg, err = config.Load(envOf(env)); err != nil || cfg.SubfitToken.Reveal() != "subfit-SECRETfile" {
+		t.Errorf("from the file: %q %v", cfg.SubfitToken.Reveal(), err)
+	}
+}

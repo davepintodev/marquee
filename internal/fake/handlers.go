@@ -108,6 +108,7 @@ func (f *Fake) routes() http.Handler {
 	h("POST /api/titles/{id}/downloads/resume", f.titleDownloadsOp(f.resume, false))
 	h("POST /api/titles/{id}/downloads/cancel", f.titleDownloadsOp(f.cancel, true))
 	h("GET /api/history", f.listHistory)
+	h("GET /api/files/identity", f.fileIdentity)
 	h("POST /api/history/{historyId}/retry", f.retry)
 	h("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

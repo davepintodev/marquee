@@ -26,9 +26,13 @@ func openClock(t *testing.T, at time.Time) (*catalog.Store, *clock) {
 	return s, c
 }
 
+// dropTitleNames turns a current database back into one before the
+// original language and alternative titles were kept.
+const dropTitleNames = `DROP INDEX titles_by_file; DROP INDEX episodes_by_file; ALTER TABLE titles DROP COLUMN original_language; ALTER TABLE titles DROP COLUMN alternative_titles; `
+
 // dropProfile turns a current database back into one before the profile
 // migration, which replaced the preferred_quality column.
-const dropProfile = `ALTER TABLE titles DROP COLUMN profile; ALTER TABLE titles ADD COLUMN preferred_quality TEXT; `
+const dropProfile = dropTitleNames + `ALTER TABLE titles DROP COLUMN profile; ALTER TABLE titles ADD COLUMN preferred_quality TEXT; `
 
 // dropFileColumns turns a current database back into one before the file
 // columns (and so before every later migration).

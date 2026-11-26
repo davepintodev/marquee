@@ -797,6 +797,49 @@ paths:
         "500": { $ref: "#/components/responses/InternalError" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/files/identity:
+    get:
+      tags: [system]
+      operationId: getFileIdentity
+      summary: What a file in the library is, for a subtitle tool that names files by library and path.
+      description: >-
+        Looks a video file up in the catalog by its library and its path
+        relative to that library's root, as subfit does to identify what it
+        fetches subtitles for. A file that holds several episodes answers
+        with its first. The original language and alternative titles are
+        asked of TMDB the first time a title is looked up and kept; when
+        TMDB cannot answer then, the lookup answers 503 and keeps nothing.
+
+
+        Never open: it needs the lookup token (MARQUEE_SUBFIT_TOKEN, which
+        opens nothing else) or the API token, and answers 401 when neither
+        is configured, even on an API with no token.
+      security:
+        - lookupAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: library
+          in: query
+          required: true
+          schema: { type: string, enum: [series, movies] }
+        - name: path
+          in: query
+          required: true
+          description: The file's path relative to the library root, with forward slashes; it may not leave the root.
+          schema: { type: string, minLength: 1 }
+          examples:
+            episode: { value: "House (2004)/Season 01/House (2004) - S01E01 - Pilot.mkv" }
+      responses:
+        "200":
+          description: The movie or episode the file is.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileIdentity" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/health:
     get:
       tags: [system]
@@ -820,7 +863,8 @@ components:
         API is open and clients send no Authorization header; with one, every
         operation answers 401 without `Authorization: Bearer <token>`, except
         that `getImage`, `getPersonImage` and `streamEvents` also accept the session cookie
-        (`cookieAuth`).
+        (`cookieAuth`). `getFileIdentity` is the one operation that is never
+        open: it needs this token or the lookup token (`lookupAuth`).
 
 
         The token is handed over once, as the bearer header: the UI asks for
@@ -829,6 +873,13 @@ components:
         `marquee_session` cookie in its response, so no call of its own is
         needed. The UI opens the event stream only after a request has been
         answered, which is when the browser holds the cookie.
+    lookupAuth:
+      type: http
+      scheme: bearer
+      description: >
+        The lookup token (MARQUEE_SUBFIT_TOKEN), sent as
+        `Authorization: Bearer <token>`. It opens `getFileIdentity` and
+        nothing else; every other operation answers 401 to it.
     cookieAuth:
       type: apiKey
       in: cookie
@@ -938,6 +989,35 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    FileIdentity:
+      type: object
+      required: [kind, imdbId, tmdbId, title, year, season, episode, episodeTitle, originalLanguage, alternativeTitles]
+      properties:
+        kind: { type: string, enum: [episode, movie] }
+        imdbId: { type: string, description: "The IMDb id such as tt0412142; empty when TMDB lists none." }
+        tmdbId: { type: integer }
+        title: { type: string, description: The movie's or the series' title. }
+        year: { type: integer, description: 0 when TMDB has no date. }
+        season: { type: [integer, "null"], description: Null for a movie. }
+        episode: { type: [integer, "null"], description: "Null for a movie; the first episode of a file that holds several." }
+        episodeTitle: { type: [string, "null"], description: Null for a movie. }
+        originalLanguage: { type: string, description: "ISO 639-1 code such as en; empty when TMDB has none." }
+        alternativeTitles:
+          type: array
+          maxItems: 15
+          items: { type: string }
+          description: Other titles TMDB knows, the original title first when it differs, without repeats or the title itself.
+      examples:
+        - kind: episode
+          imdbId: tt0412142
+          tmdbId: 1408
+          title: House
+          year: 2004
+          season: 1
+          episode: 1
+          episodeTitle: Pilot
+          originalLanguage: en
+          alternativeTitles: ["House, M.D."]
     Error:
       type: object
       required: [error]

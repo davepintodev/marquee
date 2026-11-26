@@ -95,10 +95,10 @@ func TestPauseAllSurvivesReopeningTheCatalogAndAnOlderLibraryStartsWithItOff(t *
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&have); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`DROP TABLE pause_all`); err != nil {
+	if _, err := db.Exec(dropTitleNames + `DROP TABLE pause_all`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, have-1)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, have-2)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

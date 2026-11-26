@@ -24,13 +24,50 @@ const (
 // cookie alone is enough for GET /api/events, GET /api/images/ and a
 // person's image, and for nothing else. A query-string token would end up in
 // access logs and the browser history; the cookie is HttpOnly and SameSite=Strict.
-func RequireToken(token config.Secret, next http.Handler) http.Handler {
+//
+// The file identity lookup is never open: it answers the lookup token or
+// the API token, and 401 when neither is configured. The lookup token
+// opens nothing else and earns no session.
+func RequireToken(token, lookup config.Secret, next http.Handler) http.Handler {
+	api := requireAPIToken(token, next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != IdentityPath {
+			api.ServeHTTP(w, r)
+			return
+		}
+		if given, ok := bearer(r); ok && (matches(given, lookup) || matches(given, token)) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		unauthorized(w)
+	})
+}
+
+// matches compares in constant time. Hashing first gives
+// ConstantTimeCompare equal-length inputs, which is the only way it does
+// not leak the token's length; an empty token matches nothing.
+func matches(given string, token config.Secret) bool {
+	if token == "" {
+		return false
+	}
+	got, want := sha256.Sum256([]byte(given)), sha256.Sum256([]byte(token.Reveal()))
+	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
+func bearer(r *http.Request) (string, bool) {
+	scheme, given, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	return given, ok && strings.EqualFold(scheme, "Bearer")
+}
+
+func unauthorized(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", "Bearer")
+	fail(w, http.StatusUnauthorized, "this marquee needs its API token")
+}
+
+func requireAPIToken(token config.Secret, next http.Handler) http.Handler {
 	if token == "" {
 		return next
 	}
-	// Hashing first gives ConstantTimeCompare equal-length inputs, which is
-	// the only way it does not leak the token's length.
-	want := sha256.Sum256([]byte(token.Reveal()))
 	// The cookie holds a value derived from the token, so the token itself
 	// is never written to a response, and changing the token ends every session.
 	mac := hmac.New(sha256.New, []byte(token.Reveal()))
@@ -39,10 +76,8 @@ func RequireToken(token config.Secret, next http.Handler) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hasSession := holdsSession(r, session)
-		scheme, given, ok := strings.Cut(r.Header.Get("Authorization"), " ")
-		if ok && strings.EqualFold(scheme, "Bearer") {
-			got := sha256.Sum256([]byte(given))
-			if subtle.ConstantTimeCompare(got[:], want[:]) == 1 {
+		if given, ok := bearer(r); ok {
+			if matches(given, token) {
 				if !hasSession {
 					http.SetCookie(w, &http.Cookie{
 						Name: sessionCookie, Value: session, Path: "/api/", MaxAge: sessionMaxAge,
@@ -59,8 +94,7 @@ func RequireToken(token config.Secret, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		w.Header().Set("WWW-Authenticate", "Bearer")
-		fail(w, http.StatusUnauthorized, "this marquee needs its API token")
+		unauthorized(w)
 	})
 }
 

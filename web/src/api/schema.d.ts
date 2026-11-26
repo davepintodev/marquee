@@ -627,6 +627,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a file in the library is, for a subtitle tool that names files by library and path.
+         * @description Looks a video file up in the catalog by its library and its path relative to that library's root, as subfit does to identify what it fetches subtitles for. A file that holds several episodes answers with its first. The original language and alternative titles are asked of TMDB the first time a title is looked up and kept; when TMDB cannot answer then, the lookup answers 503 and keeps nothing.
+         *
+         *     Never open: it needs the lookup token (MARQUEE_SUBFIT_TOKEN, which opens nothing else) or the API token, and answers 401 when neither is configured, even on an API with no token.
+         */
+        get: operations["getFileIdentity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -648,6 +670,43 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @example {
+         *       "kind": "episode",
+         *       "imdbId": "tt0412142",
+         *       "tmdbId": 1408,
+         *       "title": "House",
+         *       "year": 2004,
+         *       "season": 1,
+         *       "episode": 1,
+         *       "episodeTitle": "Pilot",
+         *       "originalLanguage": "en",
+         *       "alternativeTitles": [
+         *         "House, M.D."
+         *       ]
+         *     }
+         */
+        FileIdentity: {
+            /** @enum {string} */
+            kind: "episode" | "movie";
+            /** @description The IMDb id such as tt0412142; empty when TMDB lists none. */
+            imdbId: string;
+            tmdbId: number;
+            /** @description The movie's or the series' title. */
+            title: string;
+            /** @description 0 when TMDB has no date. */
+            year: number;
+            /** @description Null for a movie. */
+            season: number | null;
+            /** @description Null for a movie; the first episode of a file that holds several. */
+            episode: number | null;
+            /** @description Null for a movie. */
+            episodeTitle: string | null;
+            /** @description ISO 639-1 code such as en; empty when TMDB has none. */
+            originalLanguage: string;
+            /** @description Other titles TMDB knows, the original title first when it differs, without repeats or the title itself. */
+            alternativeTitles: string[];
+        };
         /**
          * @example {
          *       "error": "not found"
@@ -1969,6 +2028,35 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
             502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getFileIdentity: {
+        parameters: {
+            query: {
+                library: "series" | "movies";
+                /** @description The file's path relative to the library root, with forward slashes; it may not leave the root. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The movie or episode the file is. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileIdentity"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
