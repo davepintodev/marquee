@@ -9,7 +9,7 @@ const health = (...statuses: ("ok" | "warning" | "error")[]): Health => ({
   status: statuses.includes("error") ? "error" : statuses.includes("warning") ? "warning" : "ok",
   dryRun: false,
   checks: statuses.map(check),
-  libraryTotals: { movies: 0, episodes: 0 },
+  libraryTotals: { movies: { monitored: 0, onDisk: 0, total: 0 }, episodes: { monitored: 0, onDisk: 0, total: 0 } },
   libraryProblems: [],
 });
 

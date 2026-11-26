@@ -10,7 +10,7 @@
     {"id": "temp_path", "name": "Temp path", "status": "ok", "message": "On the same filesystem as the library, so imports are atomic."},
     {"id": "jellyfin", "name": "Jellyfin", "status": "error", "message": "Jellyfin is unreachable. Imports still succeed; refreshes are skipped."}
   ],
-  "libraryTotals": {"movies": 7, "episodes": 15},
+  "libraryTotals": {"movies": {"monitored": 7, "onDisk": 6, "total": 7}, "episodes": {"monitored": 15, "onDisk": 12, "total": 15}},
   "libraryProblems": [
     {"path": "Movies/Heat", "reason": "ambiguous", "message": "Matched more than one TMDB title (1995 and 1986); add the title to pick one."},
     {"path": "Series/Unknown Show", "reason": "unmatched", "message": "No TMDB title matches this folder name."},

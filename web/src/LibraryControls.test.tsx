@@ -20,7 +20,7 @@ const ok = (over: Partial<Health> = {}): Health => ({
   status: "ok",
   dryRun: false,
   checks: [{ id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." }],
-  libraryTotals: { movies: 1, episodes: 5 },
+  libraryTotals: { movies: { monitored: 1, onDisk: 1, total: 1 }, episodes: { monitored: 5, onDisk: 5, total: 5 } },
   libraryProblems: [],
   ...over,
 });

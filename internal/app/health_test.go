@@ -233,13 +233,79 @@ func TestHealthSaysWhenDryRunIsOn(t *testing.T) {
 	}
 }
 
-func libraryTotals(t *testing.T, s *realSvc) (movies, episodes float64) {
+type tally struct{ monitored, onDisk, total float64 }
+
+func libraryTotals(t *testing.T, s *realSvc) (movies, episodes tally) {
 	t.Helper()
 	totals, ok := s.mustCall("GET", "/api/health", "", 200)["libraryTotals"].(map[string]any)
 	if !ok {
 		t.Fatal("health carries no libraryTotals")
 	}
-	return totals["movies"].(float64), totals["episodes"].(float64)
+	read := func(kind string) tally {
+		m, ok := totals[kind].(map[string]any)
+		if !ok {
+			t.Fatalf("libraryTotals.%s = %v, want {monitored, onDisk, total}", kind, totals[kind])
+		}
+		return tally{m["monitored"].(float64), m["onDisk"].(float64), m["total"].(float64)}
+	}
+	return read("movies"), read("episodes")
+}
+
+func TestHealthCountsOnlyMonitoredAndOnDiskLibraryItems(t *testing.T) {
+	tm := tmdbfake.New()
+	t.Cleanup(tm.Close)
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 438631, Name: "Dune", Date: "2021-09-15", Overview: "Paul Atreides."})
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 329865, Name: "Arrival", Date: "2016-11-10", Overview: "Linguist."})
+	tm.Add(tmdbfake.Title{Kind: "series", ID: 1622, Name: "House", Date: "2004-11-16", Overview: "Diagnostics.",
+		Seasons: []tmdbfake.Season{
+			season(0, "2004-01-01"),
+			season(1, "2004-11-16", "2004-11-23", "2004-11-30"),
+			season(2, "2005-09-13", "2005-09-20", "2005-09-27"),
+			season(3, "2006-09-05", "2006-09-12", "2006-09-19"),
+		}})
+	s, err := startAdopt(t, tm, library(t,
+		[]string{"Dune (2021)/Dune (2021) [Bluray-1080p].mkv"},
+		[]string{
+			"House/Season 02/House - S02E01 - Episode 1 [Bluray-1080p].mkv",
+			"House/Season 02/House - S02E02 - Episode 2 [Bluray-1080p].mkv",
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, e := libraryTotals(t, s)
+	if m != (tally{1, 1, 1}) {
+		t.Errorf("movies = %+v, want 1 monitored and 1 on disk", m)
+	}
+	if e != (tally{3, 2, 3}) {
+		t.Errorf("episodes = %+v, want 3 monitored and 2 on disk: unmonitored seasons 1 and 3 and the special are not library", e)
+	}
+
+	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":329865}`, 201)
+	if m, _ := libraryTotals(t, s); m != (tally{2, 1, 2}) {
+		t.Errorf("a wanted movie with no file counts as monitored only: %+v", m)
+	}
+	s.mustCall("PATCH", "/api/titles/movie-329865", `{"monitored":false}`, 200)
+	if m, _ := libraryTotals(t, s); m != (tally{1, 1, 1}) {
+		t.Errorf("an unmonitored movie with no file is not library: %+v", m)
+	}
+}
+
+// tallyTotal is a tally that also reads the contract's total: items monitored or on disk.
+func TestHealthTotalCountsAnUnmonitoredMovieThatKeepsItsFile(t *testing.T) {
+	tm := tmdbfake.New()
+	t.Cleanup(tm.Close)
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 438631, Name: "Dune", Date: "2021-09-15", Overview: "Paul Atreides."})
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 329865, Name: "Arrival", Date: "2016-11-10", Overview: "Linguist."})
+	s, err := startAdopt(t, tm, library(t, []string{"Dune (2021)/Dune (2021) [Bluray-1080p].mkv"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":329865}`, 201)
+	s.mustCall("PATCH", "/api/titles/movie-438631", `{"monitored":false}`, 200)
+
+	if got, _ := libraryTotals(t, s); got != (tally{1, 1, 2}) {
+		t.Errorf("movies = %+v, want monitored 1, onDisk 1, total 2: unmonitoring Dune keeps its file, so it is still library", got)
+	}
 }
 
 func TestHealthCountsTheLibraryMoviesAndEpisodesAcrossSeries(t *testing.T) {
@@ -251,8 +317,8 @@ func TestHealthCountsTheLibraryMoviesAndEpisodesAcrossSeries(t *testing.T) {
 		}})
 	s := startReal(t, tm)
 
-	if m, e := libraryTotals(t, s); m != 0 || e != 0 {
-		t.Errorf("an empty library counts %v movies and %v episodes, want 0 and 0", m, e)
+	if m, e := libraryTotals(t, s); m != (tally{}) || e != (tally{}) {
+		t.Errorf("an empty library counts %+v movies and %+v episodes, want none", m, e)
 	}
 
 	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
@@ -260,13 +326,13 @@ func TestHealthCountsTheLibraryMoviesAndEpisodesAcrossSeries(t *testing.T) {
 	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408}`, 201)
 	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":2000}`, 201)
 
-	if m, e := libraryTotals(t, s); m != 2 || e != 6 {
-		t.Errorf("library counts %v movies and %v episodes, want 2 and 6 (3 dated episodes in each series)", m, e)
+	if m, e := libraryTotals(t, s); m != (tally{2, 0, 2}) || e != (tally{6, 0, 6}) {
+		t.Errorf("library counts %+v movies and %+v episodes, want 2 and 6 monitored, none on disk (3 dated episodes in each series)", m, e)
 	}
 
 	s.mustCall("DELETE", "/api/titles/movie-7", "", 204)
 	s.mustCall("DELETE", "/api/titles/series-1408", "", 204)
-	if m, e := libraryTotals(t, s); m != 1 || e != 3 {
-		t.Errorf("after removals the library counts %v movies and %v episodes, want 1 and 3", m, e)
+	if m, e := libraryTotals(t, s); m != (tally{1, 0, 1}) || e != (tally{3, 0, 3}) {
+		t.Errorf("after removals the library counts %+v movies and %+v episodes, want 1 and 3 monitored", m, e)
 	}
 }

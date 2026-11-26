@@ -65,6 +65,7 @@ function Path({ value }: { value: string }) {
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const held = (c: { onDisk: number; total: number }, one: string, many: string) => `${c.onDisk} of ${c.total} ${c.total === 1 ? one : many}`;
 
 // A plain-text control that folds and unfolds one region.
 function Fold({ open, onToggle, controls, children }: { open: boolean; onToggle: () => void; controls?: string; children: string }) {
@@ -202,7 +203,7 @@ function Board({ data, busy, again, onForget, api, onToast, onRescanned }: { dat
         <h2 className="bd-h">Library</h2>
         <p className="bd-stats">
           <span className="bd-tot">
-            {plural(totals.movies, "movie", "movies")} · {plural(totals.episodes, "episode", "episodes")}
+            {held(totals.movies, "movie", "movies")} · {held(totals.episodes, "episode", "episodes")} on disk
           </span>
           <span className="bd-probn">{problems.length > 0 ? plural(problems.length, "problem", "problems") : "No problems"}</span>
           {problems.length > 0 && (

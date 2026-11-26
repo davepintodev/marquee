@@ -1453,11 +1453,20 @@ components:
         message: { type: string }
     LibraryTotals:
       type: object
-      description: How much the library holds, so a client need not read every title to say so.
+      description: |
+        What the library holds, so a client need not read every title to say so. Only wanted or owned items count:
+        an episode TMDB lists that is neither monitored nor on disk is not in the library.
       required: [movies, episodes]
       properties:
-        movies: { type: integer, minimum: 0, description: Movies in the library. }
-        episodes: { type: integer, minimum: 0, description: Episodes of every series in the library. }
+        movies: { $ref: "#/components/schemas/LibraryCount" }
+        episodes: { $ref: "#/components/schemas/LibraryCount" }
+    LibraryCount:
+      type: object
+      required: [monitored, onDisk, total]
+      properties:
+        monitored: { type: integer, minimum: 0, description: "How many are monitored: wanted." }
+        onDisk: { type: integer, minimum: 0, description: "How many have a file in the library, monitored or not." }
+        total: { type: integer, minimum: 0, description: "How many are in the library: monitored, on disk, or both." }
     Health:
       type: object
       required: [status, dryRun, checks, libraryProblems, libraryTotals]
