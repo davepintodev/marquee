@@ -291,6 +291,46 @@ func TestHealthCountsOnlyMonitoredAndOnDiskLibraryItems(t *testing.T) {
 	}
 }
 
+// tallyTotal is a tally that also reads the contract's total: items monitored or on disk.
+type tallyTotal struct{ monitored, onDisk, total float64 }
+
+func libraryMovieTotals(t *testing.T, s *realSvc) tallyTotal {
+	t.Helper()
+	totals, ok := s.mustCall("GET", "/api/health", "", 200)["libraryTotals"].(map[string]any)
+	if !ok {
+		t.Fatal("health carries no libraryTotals")
+	}
+	m, ok := totals["movies"].(map[string]any)
+	if !ok {
+		t.Fatalf("libraryTotals.movies = %v, want {monitored, onDisk, total}", totals["movies"])
+	}
+	get := func(k string) float64 {
+		v, ok := m[k].(float64)
+		if !ok {
+			t.Fatalf("libraryTotals.movies has no %q: %v", k, m)
+		}
+		return v
+	}
+	return tallyTotal{get("monitored"), get("onDisk"), get("total")}
+}
+
+func TestHealthTotalCountsAnUnmonitoredMovieThatKeepsItsFile(t *testing.T) {
+	tm := tmdbfake.New()
+	t.Cleanup(tm.Close)
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 438631, Name: "Dune", Date: "2021-09-15", Overview: "Paul Atreides."})
+	tm.Add(tmdbfake.Title{Kind: "movie", ID: 329865, Name: "Arrival", Date: "2016-11-10", Overview: "Linguist."})
+	s, err := startAdopt(t, tm, library(t, []string{"Dune (2021)/Dune (2021) [Bluray-1080p].mkv"}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":329865}`, 201)
+	s.mustCall("PATCH", "/api/titles/movie-438631", `{"monitored":false}`, 200)
+
+	if got := libraryMovieTotals(t, s); got != (tallyTotal{1, 1, 2}) {
+		t.Errorf("movies = %+v, want monitored 1, onDisk 1, total 2: unmonitoring Dune keeps its file, so it is still library", got)
+	}
+}
+
 func TestHealthCountsTheLibraryMoviesAndEpisodesAcrossSeries(t *testing.T) {
 	tm := newTMDB(t)
 	tm.Add(tmdbfake.Title{Kind: "series", ID: 2000, Name: "Second Show", Date: "2020-01-01", Overview: "More.", IMDb: "tt2000000",
