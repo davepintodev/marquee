@@ -850,6 +850,7 @@ func (f *Fake) cancel(d *download) bool {
 		return false
 	}
 	f.downloads = slices.DeleteFunc(f.downloads, func(x *download) bool { return x == d })
+	f.ended[d.ID] = true
 	if t := f.find(d.TitleID); t != nil {
 		f.addHistory("cancelled", t, d.Episode, "Cancelled; this release will not be tried again.", "", false)
 		if d.Episode != "" {
@@ -868,6 +869,10 @@ func (f *Fake) downloadOp(op func(*download) bool) func(http.ResponseWriter, *ht
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("downloadId")
 		i := slices.IndexFunc(f.downloads, func(d *download) bool { return d.ID == id })
+		if i < 0 && f.ended[id] {
+			fail(w, http.StatusConflict, "this download has already finished")
+			return
+		}
 		if i < 0 {
 			fail(w, http.StatusNotFound, "no such download")
 			return

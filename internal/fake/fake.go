@@ -77,14 +77,14 @@ type entry struct {
 func (e *entry) id() string { return fmt.Sprintf("%s-%d", e.Kind, e.TmdbID) }
 
 type download struct {
-	ID          string `json:"id"`
-	TitleID     string `json:"titleId"`
-	Episode     string `json:"episode,omitempty"`
-	ReleaseName string `json:"releaseName"`
-	BytesTotal  int64  `json:"bytesTotal"`
-	Percent     int    `json:"percent"`
-	Stalled     bool   `json:"stalled"`
-	State       string `json:"state"`
+	ID           string `json:"id"`
+	TitleID      string `json:"titleId"`
+	Episode      string `json:"episode,omitempty"`
+	ReleaseName  string `json:"releaseName"`
+	BytesTotal   int64  `json:"bytesTotal"`
+	Percent      int    `json:"percent"`
+	Stalled      bool   `json:"stalled"`
+	State        string `json:"state"`
 	resume       string
 	resumeStalls bool
 }
@@ -126,6 +126,7 @@ type Fake struct {
 	mu        sync.Mutex
 	titles    []*entry
 	downloads []*download
+	ended     map[string]bool
 	history   []*historyEntry
 	lastSeq   int
 	releases  map[string][]release
@@ -164,7 +165,7 @@ func New(opts Options) *Fake {
 		opts.SearchFor = 4 * time.Second
 	}
 	f := &Fake{
-		opts: opts, subs: map[chan event]struct{}{},
+		opts: opts, subs: map[chan event]struct{}{}, ended: map[string]bool{},
 		stop: make(chan struct{}), done: make(chan struct{}),
 	}
 	load("catalog.json", &f.titles)
@@ -363,6 +364,7 @@ func (f *Fake) advance() {
 	}
 	f.downloads = slices.DeleteFunc(f.downloads, func(d *download) bool { return slices.Contains(finished, d) })
 	for _, d := range finished {
+		f.ended[d.ID] = true
 		f.finish(d)
 	}
 	f.endSearches()
