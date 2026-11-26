@@ -293,6 +293,11 @@ CREATE TABLE run_mode (
 );
 `, `
 ALTER TABLE downloads ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+`, `
+CREATE TABLE pause_all (
+  id     INTEGER PRIMARY KEY CHECK (id = 1),
+  paused INTEGER NOT NULL
+);
 `}
 
 func migrate(ctx context.Context, db *sql.DB) error {

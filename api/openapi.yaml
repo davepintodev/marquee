@@ -456,17 +456,37 @@ paths:
       operationId: listDownloads
       summary: The download queue.
       responses:
-        "200":
-          description: Downloads that are not finished.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [downloads]
-                properties:
-                  downloads:
-                    type: array
-                    items: { $ref: "#/components/schemas/Download" }
+        "200": { $ref: "#/components/responses/DownloadQueue" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/downloads/pause:
+    post:
+      tags: [activity]
+      operationId: pauseAllDownloads
+      summary: Pause every download until resumed (Pause all).
+      description: >
+        Stops every transfer, keeping the partial files, and starts nothing
+        new: queued downloads stay `queued`, and a grab made meanwhile is
+        queued too. Searching and monitoring go on. A download being
+        verified or imported is left to finish, as no bandwidth is spent on
+        it. A torrent TorBox is caching stays on TorBox, but no new one is
+        started. The switch is stored and survives a restart. It does not
+        touch any download's own pause, so Resume all gives back exactly
+        what was paused one by one. Pausing when already paused changes nothing.
+      responses:
+        "200": { $ref: "#/components/responses/DownloadQueue" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/downloads/resume:
+    post:
+      tags: [activity]
+      operationId: resumeAllDownloads
+      summary: Switch Pause all off.
+      description: >
+        Downloads that were not paused one by one continue from their partial
+        files, and queued ones start in their order as places free up. A
+        download paused on its own stays paused. Resuming when not paused
+        changes nothing.
+      responses:
+        "200": { $ref: "#/components/responses/DownloadQueue" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/downloads/{downloadId}/pause:
     parameters:
@@ -655,7 +675,8 @@ paths:
         Each message has an `event:` name and a JSON `data:` line. `progress`
         carries a ProgressEvent for a running download; `title` carries a
         TitleEvent whenever a title's badge changes, including when it is
-        added to or removed from the library. Lines starting with `:` are
+        added to or removed from the library; `downloads` carries a
+        DownloadsEvent whenever Pause all is switched on or off. Lines starting with `:` are
         keep-alive comments to ignore. The stream never ends on its own;
         clients reconnect when it drops.
       responses:
@@ -886,6 +907,20 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    DownloadQueue:
+      description: The downloads that are not finished, and whether Pause all is on.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [downloads, paused]
+            properties:
+              downloads:
+                type: array
+                items: { $ref: "#/components/schemas/Download" }
+              paused:
+                type: boolean
+                description: Pause all is on; see pauseAllDownloads.
     ChangedDownloads:
       description: The title's downloads this changed; empty when none could be.
       content:
@@ -1224,10 +1259,12 @@ components:
         TorBox's), then `downloading` once marquee transfers the file. A
         `paused` download keeps its partial file and its place in the queue
         but holds no connection or TorBox slot; its percent is how far it got.
+        While Pause all is on, a download that was caching or downloading
+        shows `paused` too, and a queued one stays `queued`.
       enum: [queued, caching, downloading, verifying, importing, paused]
     Download:
       type: object
-      required: [id, titleId, titleName, releaseName, state, percent, bytesDone, bytesTotal, stalled]
+      required: [id, titleId, titleName, releaseName, state, percent, bytesDone, bytesTotal, stalled, bytesPerSecond]
       properties:
         id: { type: string }
         titleId: { $ref: "#/components/schemas/TitleId" }
@@ -1239,6 +1276,15 @@ components:
         bytesDone: { type: integer, minimum: 0 }
         bytesTotal: { type: integer, minimum: 0 }
         stalled: { type: boolean, description: No bytes have arrived recently. }
+        bytesPerSecond: { $ref: "#/components/schemas/BytesPerSecond" }
+    BytesPerSecond:
+      type: integer
+      minimum: 0
+      description: >
+        The transfer rate, averaged over the last few seconds of progress on
+        the server. 0 unless the file is downloading right now: a paused,
+        queued, caching, verifying or importing download has none. Divide the
+        bytes left by it for the time left.
     LibraryRescan:
       type: object
       required: [titlesScanned, adopted, foundOnDisk, missingOnDisk, problems]
@@ -1278,7 +1324,7 @@ components:
     ProgressEvent:
       type: object
       description: Data of the `progress` event.
-      required: [downloadId, titleId, state, percent, bytesDone, bytesTotal]
+      required: [downloadId, titleId, state, percent, bytesDone, bytesTotal, bytesPerSecond]
       properties:
         downloadId: { type: string }
         titleId: { $ref: "#/components/schemas/TitleId" }
@@ -1287,6 +1333,13 @@ components:
         percent: { type: integer, minimum: 0, maximum: 100 }
         bytesDone: { type: integer, minimum: 0 }
         bytesTotal: { type: integer, minimum: 0 }
+        bytesPerSecond: { $ref: "#/components/schemas/BytesPerSecond" }
+    DownloadsEvent:
+      type: object
+      description: Data of the `downloads` event, sent when Pause all flips.
+      required: [paused]
+      properties:
+        paused: { type: boolean }
     TitleEvent:
       type: object
       description: Data of the `title` event.

@@ -142,6 +142,8 @@ type Manager struct {
 	// runs are the running downloads' handles, by id, under mu.
 	runs     map[string]*run
 	idSource func() string
+	// meters are the rates of the downloads moving bytes, by id, under mu.
+	meters map[string]*meter
 
 	torboxMax int
 	cleanup   TorrentDeleter
@@ -215,8 +217,8 @@ func (m *Manager) onPresent(ctx context.Context, d *catalog.Download) func(int, 
 }
 
 type run struct {
-	cancel context.CancelFunc
-	done   chan struct{}
+	cancel  context.CancelFunc
+	done    chan struct{}
 	discard bool
 }
 
@@ -260,7 +262,7 @@ func New(o Options) *Manager {
 	m := &Manager{
 		cat: o.Catalog, dl: dl, movies: o.MoviesPath, series: o.SeriesPath,
 		tempDir: filepath.Join(o.TempPath, "marquee"), log: log, tune: t,
-		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{}, runs: map[string]*run{},
+		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{}, runs: map[string]*run{}, meters: map[string]*meter{},
 		claims: map[string]claim{}, leaving: map[string]bool{}, deleted: map[int]bool{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
 	}
 	if o.JellyfinURL != "" {
@@ -349,9 +351,16 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 		}
 		return
 	}
+	all, err := m.cat.PausedAll(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			m.log.Error("cannot read whether Pause all is on", "err", err)
+		}
+		return
+	}
 	slots := m.cachingSlotsUsed(active)
 	for _, d := range active {
-		if d.Paused {
+		if d.Paused || (all && transferable(d)) {
 			continue
 		}
 		waiting := d.Uncached && (d.State == catalog.StateQueued || d.State == catalog.StateCaching)
@@ -391,6 +400,7 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 				delete(m.running, d.ID)
 				delete(m.caching, d.ID)
 				delete(m.runs, d.ID)
+				delete(m.meters, d.ID)
 				discard := r.discard
 				m.mu.Unlock()
 				m.leaveMu.Lock()
@@ -416,6 +426,17 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 			m.process(dctx, fresh)
 		}()
 	}
+}
+
+// transferable reports a download Pause all holds back: one that has not
+// got all its bytes yet. Verifying and importing spend no bandwidth, so they
+// finish.
+func transferable(d catalog.Download) bool {
+	switch d.State {
+	case catalog.StateQueued, catalog.StateCaching, catalog.StateDownloading:
+		return true
+	}
+	return false
 }
 
 // cachingSlotsUsed counts the uncached downloads that hold one of TorBox's
@@ -457,6 +478,50 @@ func (m *Manager) Resume(ctx context.Context, id string) (catalog.Download, erro
 	return d, nil
 }
 
+// PauseAll holds every download back until ResumeAll: transfers stop with
+// their partial files kept, and nothing queued starts. It returns once the
+// transfers have stopped or ctx ends. A download's own pause is untouched,
+// and so is a torrent TorBox is caching, which carries on on TorBox's side
+// but is watched again only after ResumeAll.
+func (m *Manager) PauseAll(ctx context.Context) error {
+	if _, err := m.cat.SetPausedAll(ctx, true); err != nil {
+		return err
+	}
+	active, err := m.cat.ActiveDownloads(ctx)
+	if err != nil {
+		return err
+	}
+	for _, d := range active {
+		if transferable(d) {
+			m.halt(ctx, d.ID, false)
+		}
+	}
+	m.kick()
+	return nil
+}
+
+// ResumeAll lets the downloads that were not paused on their own run again,
+// from their partial files and in their queue order.
+func (m *Manager) ResumeAll(ctx context.Context) error {
+	if _, err := m.cat.SetPausedAll(ctx, false); err != nil {
+		return err
+	}
+	m.kick()
+	return nil
+}
+
+// Speed is the bytes a second a download is moving, averaged over the last
+// SpeedWindow of its progress; zero when it is not moving bytes.
+func (m *Manager) Speed(id string) int64 {
+	m.mu.Lock()
+	mt := m.meters[id]
+	m.mu.Unlock()
+	if mt == nil {
+		return 0
+	}
+	return mt.rate(time.Now())
+}
+
 const cancelMessage = "Cancelled; this release will not be tried again."
 
 // Cancel stops a download, deletes what it fetched and its TorBox torrent
@@ -471,6 +536,17 @@ func (m *Manager) Cancel(ctx context.Context, id string) error {
 	}
 	m.kick()
 	return nil
+}
+
+func (m *Manager) meterOf(id string) *meter {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mt := m.meters[id]
+	if mt == nil {
+		mt = &meter{}
+		m.meters[id] = mt
+	}
+	return mt
 }
 
 func (m *Manager) halt(ctx context.Context, id string, discard bool) bool {
@@ -668,6 +744,9 @@ func (m *Manager) fetch(ctx context.Context, d *catalog.Download) bool {
 			return err
 		},
 		Progress: func(done, total int64) {
+			if transferring {
+				m.meterOf(d.ID).add(time.Now(), done)
+			}
 			if !transferring {
 				if err := m.cat.SetDownloadState(fctx, d.ID, catalog.StateDownloading); err == nil {
 					transferring = true

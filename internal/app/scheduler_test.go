@@ -912,7 +912,7 @@ func TestAnAdoptedSeriesFromBeforeTheFixIsRefreshedAfterARestart(t *testing.T) {
 		DROP INDEX episodes_by_fingerprint;
 		ALTER TABLE titles DROP COLUMN file_path; ALTER TABLE titles DROP COLUMN file_size; ALTER TABLE titles DROP COLUMN file_fingerprint;
 		ALTER TABLE episodes DROP COLUMN file_path; ALTER TABLE episodes DROP COLUMN file_size; ALTER TABLE episodes DROP COLUMN file_fingerprint;
-		DELETE FROM series_refresh; DROP TABLE run_mode; PRAGMA user_version = 7`); err != nil {
+		DELETE FROM series_refresh; DROP TABLE run_mode; DROP TABLE pause_all; PRAGMA user_version = 7`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

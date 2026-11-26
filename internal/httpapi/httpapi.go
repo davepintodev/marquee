@@ -46,6 +46,11 @@ type Transfers interface {
 	PauseTitle(ctx context.Context, titleID string) ([]catalog.Download, error)
 	ResumeTitle(ctx context.Context, titleID string) ([]catalog.Download, error)
 	CancelTitle(ctx context.Context, titleID string) error
+	// PauseAll and ResumeAll switch Pause all on and off.
+	PauseAll(ctx context.Context) error
+	ResumeAll(ctx context.Context) error
+	// Speed is the bytes a second a download is moving, zero when it is not.
+	Speed(id string) int64
 }
 
 type Deps struct {
@@ -109,6 +114,8 @@ func New(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", a.health)
 	mux.HandleFunc("GET /api/downloads", a.listDownloads)
+	mux.HandleFunc("POST /api/downloads/pause", a.switchPauseAll(func(ctx context.Context) error { return a.Transfers.PauseAll(ctx) }))
+	mux.HandleFunc("POST /api/downloads/resume", a.switchPauseAll(func(ctx context.Context) error { return a.Transfers.ResumeAll(ctx) }))
 	mux.HandleFunc("POST /api/downloads/{downloadId}/pause", a.changeDownload(func(ctx context.Context, id string) (catalog.Download, error) {
 		return a.Transfers.Pause(ctx, id)
 	}))

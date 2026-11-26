@@ -61,6 +61,11 @@ type downloadOut struct {
 	*download
 	TitleName string `json:"titleName"`
 	BytesDone int64  `json:"bytesDone"`
+	// State, Stalled and BytesPerSecond shadow the stored ones with what
+	// the API shows, which Pause all changes.
+	State          string `json:"state"`
+	Stalled        bool   `json:"stalled"`
+	BytesPerSecond int64  `json:"bytesPerSecond"`
 }
 
 func (f *Fake) routes() http.Handler {
@@ -94,6 +99,8 @@ func (f *Fake) routes() http.Handler {
 	h("GET /api/titles/{id}/about", f.about)
 	h("POST /api/titles/{id}/releases/{releaseId}/grab", f.grab)
 	h("GET /api/downloads", f.listDownloads)
+	h("POST /api/downloads/pause", f.switchPauseAll(true))
+	h("POST /api/downloads/resume", f.switchPauseAll(false))
 	h("POST /api/downloads/{downloadId}/pause", f.downloadOp(f.pause))
 	h("POST /api/downloads/{downloadId}/resume", f.downloadOp(f.resume))
 	h("POST /api/downloads/{downloadId}/cancel", f.downloadOp(f.cancel))
@@ -809,7 +816,10 @@ func (f *Fake) downloadOut(d *download) downloadOut {
 	if t := f.find(d.TitleID); t != nil {
 		name = t.Title
 	}
-	return downloadOut{download: d, TitleName: name, BytesDone: d.BytesTotal * int64(d.Percent) / 100}
+	return downloadOut{
+		download: d, TitleName: name, BytesDone: d.BytesTotal * int64(d.Percent) / 100,
+		State: f.shownState(d), Stalled: d.Stalled && !f.pausedAll, BytesPerSecond: f.rate(d),
+	}
 }
 
 func (f *Fake) listDownloads(w http.ResponseWriter, _ *http.Request) {
@@ -817,7 +827,24 @@ func (f *Fake) listDownloads(w http.ResponseWriter, _ *http.Request) {
 	for _, d := range f.downloads {
 		out = append(out, f.downloadOut(d))
 	}
-	write(w, http.StatusOK, map[string]any{"downloads": out})
+	write(w, http.StatusOK, map[string]any{"downloads": out, "paused": f.pausedAll})
+}
+
+// switchPauseAll turns Pause all on or off; each held download announces its
+// new state, and the flip itself is announced once.
+func (f *Fake) switchPauseAll(on bool) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if f.pausedAll != on {
+			f.pausedAll = on
+			f.emit("downloads", map[string]any{"paused": on})
+			for _, d := range f.downloads {
+				if d.State == "caching" || d.State == "downloading" {
+					f.emit("progress", f.progress(d))
+				}
+			}
+		}
+		f.listDownloads(w, r)
+	}
 }
 
 func settling(d *download) bool { return d.State == "verifying" || d.State == "importing" }
@@ -832,7 +859,7 @@ func (f *Fake) pause(d *download) bool {
 			d.resume = "queued"
 		}
 		d.State, d.Stalled = "paused", false
-		f.emit("progress", d.progress(d.State))
+		f.emit("progress", f.progress(d))
 	}
 	return true
 }
@@ -840,7 +867,7 @@ func (f *Fake) pause(d *download) bool {
 func (f *Fake) resume(d *download) bool {
 	if d.State == "paused" {
 		d.State, d.Stalled = d.resume, d.resumeStalls
-		f.emit("progress", d.progress(d.State))
+		f.emit("progress", f.progress(d))
 	}
 	return true
 }

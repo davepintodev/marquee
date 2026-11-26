@@ -25,7 +25,7 @@ func TestTheAboutCacheMigrationLeavesEarlierRowsAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`DROP TABLE about_cache; DROP TABLE people; ALTER TABLE titles DROP COLUMN monitor_new; ` + dropFileColumns + `DROP TABLE run_mode; PRAGMA user_version = 9`); err != nil {
+	if _, err := db.Exec(`DROP TABLE about_cache; DROP TABLE people; ALTER TABLE titles DROP COLUMN monitor_new; ` + dropFileColumns + `DROP TABLE run_mode; DROP TABLE pause_all; PRAGMA user_version = 9`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {

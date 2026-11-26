@@ -320,7 +320,7 @@ func TestTheAtMsMigrationOrdersOldRowsByTheirInstants(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.Exec(dropAtMs + `DROP TABLE run_mode; PRAGMA user_version = 8`); err != nil {
+	if _, err := db.Exec(dropAtMs + `DROP TABLE run_mode; DROP TABLE pause_all; PRAGMA user_version = 8`); err != nil {
 		t.Fatal(err)
 	}
 	insert("whole", "2026-11-19T10:00:01Z")

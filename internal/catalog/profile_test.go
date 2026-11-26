@@ -92,7 +92,7 @@ func TestTheProfileMigrationKeepsEveryExistingTitleAndEpisodeAndDropsThePreferre
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(dropProfile + `UPDATE titles SET preferred_quality = '2160p' WHERE id = 'movie-1'; DROP TABLE run_mode; PRAGMA user_version = 12`); err != nil {
+	if _, err := db.Exec(dropProfile + `UPDATE titles SET preferred_quality = '2160p' WHERE id = 'movie-1'; DROP TABLE run_mode; DROP TABLE pause_all; PRAGMA user_version = 12`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
