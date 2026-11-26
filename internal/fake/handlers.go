@@ -820,7 +820,6 @@ func (f *Fake) listDownloads(w http.ResponseWriter, _ *http.Request) {
 	write(w, http.StatusOK, map[string]any{"downloads": out})
 }
 
-// settling are the states a download can no longer be stopped in.
 func settling(d *download) bool { return d.State == "verifying" || d.State == "importing" }
 
 func (f *Fake) pause(d *download) bool {
@@ -886,8 +885,6 @@ func (f *Fake) downloadOp(op func(*download) bool) func(http.ResponseWriter, *ht
 	}
 }
 
-// titleDownloadsOp answers the downloads a pause left paused or a resume
-// took out of pause; a cancel answers nothing.
 func (f *Fake) titleDownloadsOp(op func(*download) bool, cancel bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t := f.find(r.PathValue("id"))

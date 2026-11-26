@@ -44,7 +44,6 @@ func downloadOf(d catalog.Download, now time.Time) map[string]any {
 	return item
 }
 
-// downloadErr answers a pause, resume or cancel the download refused.
 func (a *api) downloadErr(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, catalog.ErrNotFound):

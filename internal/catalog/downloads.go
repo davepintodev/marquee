@@ -396,7 +396,6 @@ func (s *Store) SetDownloadState(ctx context.Context, id, state string) error {
 	return ErrNotFound
 }
 
-// settledErr is why a download in state cannot be paused or cancelled.
 func settledErr(state string) error {
 	switch state {
 	case StateDone, StateFailed:
@@ -438,7 +437,6 @@ func (s *Store) ResumeDownload(ctx context.Context, id string) (Download, error)
 	return s.GetDownload(ctx, id)
 }
 
-// whyNot turns an update that matched no row into the reason.
 func (s *Store) whyNot(ctx context.Context, id string, err error) error {
 	if !errors.Is(err, ErrNotFound) {
 		return err

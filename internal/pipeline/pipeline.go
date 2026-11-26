@@ -214,11 +214,9 @@ func (m *Manager) onPresent(ctx context.Context, d *catalog.Download) func(int, 
 	}
 }
 
-// run is how a running download is stopped from outside.
 type run struct {
 	cancel context.CancelFunc
 	done   chan struct{}
-	// discard makes the run delete what it fetched once it has stopped.
 	discard bool
 }
 
@@ -475,9 +473,6 @@ func (m *Manager) Cancel(ctx context.Context, id string) error {
 	return nil
 }
 
-// halt stops the run of a download, if it has one, and waits for it to end
-// or for ctx; a discarding run deletes what it fetched as it ends. It
-// reports whether there was a run.
 func (m *Manager) halt(ctx context.Context, id string, discard bool) bool {
 	m.mu.Lock()
 	r, ok := m.runs[id]
@@ -496,8 +491,6 @@ func (m *Manager) halt(ctx context.Context, id string, discard bool) bool {
 	return true
 }
 
-// discard deletes what a cancelled download fetched, and the torrent TorBox
-// fetched for it unless another download still reads from it.
 func (m *Manager) discard(ctx context.Context, id string) {
 	m.removeTemp(id)
 	ctx = context.WithoutCancel(ctx)
@@ -531,8 +524,6 @@ func (m *Manager) CancelTitle(ctx context.Context, titleID string) error {
 	return err
 }
 
-// eachOf applies change to the title's unfinished downloads that pick
-// selects, skipping any that finished or reached verifying meanwhile.
 func (m *Manager) eachOf(ctx context.Context, titleID string, pick func(catalog.Download) bool, change func(context.Context, string) (catalog.Download, error)) ([]catalog.Download, error) {
 	if _, err := m.cat.Get(ctx, titleID); err != nil {
 		return nil, err

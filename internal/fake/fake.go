@@ -85,7 +85,6 @@ type download struct {
 	Percent     int    `json:"percent"`
 	Stalled     bool   `json:"stalled"`
 	State       string `json:"state"`
-	// resume is what a paused download goes back to.
 	resume       string
 	resumeStalls bool
 }
