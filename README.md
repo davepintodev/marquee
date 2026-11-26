@@ -64,6 +64,7 @@ Settings come from environment variables, or from a JSON file named by `MARQUEE_
 | `MARQUEE_DATA_DIR` | yes | Where the database lives. Created if missing. |
 | `MARQUEE_DRY_RUN` | no | `true` searches and chooses but never downloads, never writes to the library or temp folder and never calls Jellyfin. Activity shows "would grab" for each decision. Default `false`; the example sets it to `true`. |
 | `MARQUEE_JELLYFIN_URL`, `MARQUEE_JELLYFIN_KEY` | no | Refresh Jellyfin after an import. |
+| `MARQUEE_SUBFIT_URL` | no | The address of a [subfit](#subfit) service, such as `http://<subfit-host>:<port>`. Treated as a secret. |
 | `MARQUEE_RESCAN_INTERVAL` | no | How often marquee reads the library folders again, as a duration such as `30m` or `2h`; `0` turns the timer off. Default `30m`. See [Your library](#your-library). |
 | `MARQUEE_TORBOX_API_KEY` | no | TorBox API key. Turns on the [TorBox fallback](#torbox). Treated as a secret. |
 | `MARQUEE_TORBOX_MAX_ACTIVE` | no | How many torrents TorBox may be fetching for marquee at once. Default `2`. |
@@ -147,6 +148,16 @@ On a title's page:
 - One file can hold several episodes (`S01E01E02`). It is named and tracked as all of them, and **Wrong file** warns that they go missing together.
 
 marquee also refuses a download whose size differs from what the release was listed with, and an episode file that is a byte-for-byte copy of another episode it already has.
+
+## subfit
+
+If you run subfit, the service that manages subtitles for your library, set `MARQUEE_SUBFIT_URL` and marquee tells it when files change, so it does not have to wait for its own scan. marquee posts a small JSON message to `<MARQUEE_SUBFIT_URL>/hook/marquee`:
+
+- `import` when a download has been moved into the library;
+- `replace` when **Replace file** swaps a file, naming the new and the old file;
+- `delete` when **Wrong file** deletes a file, and once per deleted video when you remove a title with **Also delete files from disk**.
+
+Each message names the library (`movies` or `series`) and the file's path inside that library's folder. A message is sent once, in the background, and never delays the import or the delete. If subfit is down, slow (marquee waits five seconds) or answers an error, marquee logs one warning with the event and the path, and subfit catches up at its next scan. Nothing is sent in dry-run mode, or while `MARQUEE_SUBFIT_URL` is unset.
 
 ## Trying it next to Sonarr and Radarr
 

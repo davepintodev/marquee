@@ -21,6 +21,7 @@ import (
 	"github.com/davepintodev/marquee/internal/download"
 	"github.com/davepintodev/marquee/internal/importer"
 	"github.com/davepintodev/marquee/internal/naming"
+	"github.com/davepintodev/marquee/internal/subfit"
 	"github.com/davepintodev/marquee/internal/torbox"
 )
 
@@ -85,6 +86,9 @@ type Options struct {
 	// JellyfinURL and JellyfinKey are optional; without a URL nothing is refreshed.
 	JellyfinURL string
 	JellyfinKey config.Secret
+	// Subfit is optional: when set, an import or replace is told to subfit
+	// once it is final.
+	Subfit *subfit.Client
 	// MoviesPath, SeriesPath and TempPath come from the configuration; the
 	// temp path must be on the libraries' filesystem.
 	MoviesPath, SeriesPath, TempPath string
@@ -132,6 +136,7 @@ type Manager struct {
 	cat     *catalog.Store
 	dl      download.Downloader
 	jf      *importer.Jellyfin
+	sf      *subfit.Client
 	movies  string
 	series  string
 	tempDir string
@@ -264,7 +269,7 @@ func New(o Options) *Manager {
 		dl = download.NewHTTP(t.Download)
 	}
 	m := &Manager{
-		cat: o.Catalog, dl: dl, movies: o.MoviesPath, series: o.SeriesPath,
+		cat: o.Catalog, dl: dl, sf: o.Subfit, movies: o.MoviesPath, series: o.SeriesPath,
 		tempDir: filepath.Join(o.TempPath, "marquee"), log: log, tune: t,
 		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{}, runs: map[string]*run{}, meters: map[string]*meter{},
 		claims: map[string]claim{}, leaving: map[string]bool{}, deleted: map[int]bool{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
@@ -949,12 +954,17 @@ func (m *Manager) place(ctx context.Context, d catalog.Download) {
 	_ = os.Remove(part + ".plan")
 	// The old file goes before the download is recorded as done, so a crash
 	// in between leaves the download importing and the next run finishes the job.
-	m.removeReplaced(ctx, d, root, old, rel)
+	replaced := m.removeReplaced(ctx, d, root, old, rel)
 	if err := m.cat.FinishDownload(ctx, d.ID, m.recordFile(t, d, dst)); err != nil {
 		m.gone(ctx, d, err)
 		return
 	}
 	m.log.Info("imported", "download", d.ID, "title", d.TitleID)
+	if replaced {
+		m.sf.Replace(subfit.Library(t.Kind), rel, old)
+	} else {
+		m.sf.Import(subfit.Library(t.Kind), rel)
+	}
 	m.deleteTorrent(ctx, d)
 	m.refreshJellyfin(ctx)
 }
@@ -1046,22 +1056,25 @@ func (m *Manager) replaced(ctx context.Context, d catalog.Download) (string, err
 // subtitle sidecars, or, when the new file took the old one's name, only the
 // sidecars. A file another episode still records stays. A failure leaves an
 // orphan file behind, which is better than failing an import that has
-// already happened.
-func (m *Manager) removeReplaced(ctx context.Context, d catalog.Download, root, old, now string) {
+// already happened. It reports false when the old file is still some
+// episode's, so subfit is told of an import rather than a replace.
+func (m *Manager) removeReplaced(ctx context.Context, d catalog.Download, root, old, now string) bool {
 	if old == "" {
-		return
+		return false
 	}
 	var err error
+	kept := false
 	if old == now {
 		err = importer.DeleteSidecars(root, old)
 	} else if shared, serr := m.cat.SharesFile(ctx, d.TitleID, old, d.Season, episodesOf(d)); serr != nil || shared {
-		err = serr
+		err, kept = serr, true
 	} else if err = importer.DeleteMediaFile(root, old); err == nil {
 		err = importer.PruneEmptyDirs(root, old)
 	}
 	if err != nil && ctx.Err() == nil {
 		m.log.Warn("cannot delete the file a download replaced", "download", d.ID, "err", err)
 	}
+	return !kept
 }
 
 // recordFile describes the placed file for the catalog. A fingerprint that

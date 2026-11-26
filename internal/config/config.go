@@ -52,8 +52,11 @@ type Config struct {
 	DataDir     string
 	JellyfinURL string
 	JellyfinKey Secret
-	Listen      string
-	APIToken    Secret
+	// SubfitURL is optional: set, marquee tells subfit when files change. It
+	// is a Secret because an address can carry credentials.
+	SubfitURL Secret
+	Listen    string
+	APIToken  Secret
 	// SubfitToken opens the file identity lookup and nothing else; empty
 	// leaves the lookup to the API token alone.
 	SubfitToken Secret
@@ -91,6 +94,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("data_dir", c.DataDir),
 		slog.String("jellyfin_url", c.JellyfinURL),
 		slog.Any("jellyfin_key", c.JellyfinKey),
+		slog.Any("subfit_url", c.SubfitURL),
 		slog.String("listen", c.Listen),
 		slog.Any("api_token", c.APIToken),
 		slog.Any("subfit_token", c.SubfitToken),
@@ -117,6 +121,7 @@ type fileConfig struct {
 	DataDir               string `json:"data_dir"`
 	JellyfinURL           string `json:"jellyfin_url"`
 	JellyfinKey           string `json:"jellyfin_key"`
+	SubfitURL             string `json:"subfit_url"`
 	Listen                string `json:"listen"`
 	APIToken              string `json:"api_token"`
 	SubfitToken           string `json:"subfit_token"`
@@ -173,6 +178,7 @@ func Load(getenv func(string) string) (Config, error) {
 		DataDir:               pick("MARQUEE_DATA_DIR", f.DataDir),
 		JellyfinURL:           pick("MARQUEE_JELLYFIN_URL", f.JellyfinURL),
 		JellyfinKey:           Secret(pick("MARQUEE_JELLYFIN_KEY", f.JellyfinKey)),
+		SubfitURL:             Secret(pick("MARQUEE_SUBFIT_URL", f.SubfitURL)),
 		Listen:                pick("MARQUEE_LISTEN", f.Listen),
 		APIToken:              Secret(pick("MARQUEE_API_TOKEN", f.APIToken)),
 		SubfitToken:           Secret(pick("MARQUEE_SUBFIT_TOKEN", f.SubfitToken)),
@@ -228,6 +234,12 @@ func Load(getenv func(string) string) (Config, error) {
 	u, err := url.Parse(c.AIOStreamsManifestURL.Reveal())
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return Config{}, errors.New("MARQUEE_AIOSTREAMS_MANIFEST_URL is not a valid http(s) URL")
+	}
+	if c.SubfitURL != "" {
+		su, err := url.Parse(c.SubfitURL.Reveal())
+		if err != nil || (su.Scheme != "http" && su.Scheme != "https") || su.Host == "" {
+			return Config{}, errors.New("MARQUEE_SUBFIT_URL (subfit_url in the config file) is not a valid http(s) URL")
+		}
 	}
 	if err := resolveProfiles(&c,
 		pick("MARQUEE_DEFAULT_MOVIE_PROFILE", f.DefaultMovieProfile),

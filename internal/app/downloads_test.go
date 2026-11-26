@@ -136,6 +136,12 @@ func quietAIOStreams(t *testing.T) string {
 
 func setup(t *testing.T) (*rig, string) {
 	t.Helper()
+	return setupWith(t, nil)
+}
+
+// setupWith is setup with prep run on the environment before the service starts.
+func setupWith(t *testing.T, prep func(env map[string]string)) (*rig, string) {
+	t.Helper()
 	cdn := debridfake.New()
 	t.Cleanup(cdn.Close)
 	jf := jellyfinfake.New()
@@ -145,6 +151,9 @@ func setup(t *testing.T) (*rig, string) {
 	env["MARQUEE_AIOSTREAMS_MANIFEST_URL"] = quietAIOStreams(t)
 	env["MARQUEE_JELLYFIN_URL"] = jf.URL
 	env["MARQUEE_JELLYFIN_KEY"] = jellyfinfake.Key
+	if prep != nil {
+		prep(env)
+	}
 	r := newRig(t, env, cdn, jf, newTMDB(t))
 	r.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":438631}`, 201)
 	r.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408}`, 201)

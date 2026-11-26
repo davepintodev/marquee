@@ -17,6 +17,7 @@ import (
 	"github.com/davepintodev/marquee/internal/keylock"
 	"github.com/davepintodev/marquee/internal/metadata"
 	"github.com/davepintodev/marquee/internal/pipeline"
+	"github.com/davepintodev/marquee/internal/subfit"
 )
 
 // TMDB is the part of the metadata client the API uses.
@@ -75,6 +76,8 @@ type Deps struct {
 	// Profiles are the quality profiles a title can use; the zero value
 	// has only the built-in default.
 	Profiles config.ProfileSet
+	// Subfit is nil when subfit is not set up; deleting files then tells nobody.
+	Subfit *subfit.Client
 	// Jellyfin is nil when Jellyfin is not set up, which leaves it off Health.
 	Jellyfin Pinger
 	// TorBox is nil when no TorBox key is set: releases the debrid service

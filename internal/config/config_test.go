@@ -386,6 +386,57 @@ func TestTheTorBoxKeyIsRedactedEverywhere(t *testing.T) {
 	}
 }
 
+func TestTheSubfitURLIsOptionalAndComesFromEnvironmentOrFile(t *testing.T) {
+	cfg, err := config.Load(envOf(fullEnv()))
+	if err != nil || cfg.SubfitURL != "" {
+		t.Fatalf("subfit is off by default: %q, %v", cfg.SubfitURL, err)
+	}
+
+	env := fullEnv()
+	env["MARQUEE_SUBFIT_URL"] = "http://subfit.example.test:8099"
+	if cfg, err = config.Load(envOf(env)); err != nil || cfg.SubfitURL.Reveal() != "http://subfit.example.test:8099" {
+		t.Errorf("env: %q, %v", cfg.SubfitURL, err)
+	}
+
+	file := filepath.Join(t.TempDir(), "marquee.json")
+	body := `{"aiostreams_manifest_url":"` + manifestVal + `","tmdb_key":"` + tmdbVal + `",
+		"movies_path":"/m","series_path":"/s","temp_path":"/t","data_dir":"/d","subfit_url":"http://from-file.example.test"}`
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file})); err != nil || cfg.SubfitURL.Reveal() != "http://from-file.example.test" {
+		t.Errorf("file: %q, %v", cfg.SubfitURL, err)
+	}
+	if cfg, err = config.Load(envOf(map[string]string{"MARQUEE_CONFIG": file, "MARQUEE_SUBFIT_URL": "http://env.example.test"})); err != nil || cfg.SubfitURL.Reveal() != "http://env.example.test" {
+		t.Errorf("the environment overrides the file: %q, %v", cfg.SubfitURL, err)
+	}
+}
+
+func TestABadSubfitURLStopsStartupNamingTheSettingWithoutQuotingIt(t *testing.T) {
+	for _, bad := range []string{"subfit-SECRETbad", "ftp://user:SECRETbad@host", "http://"} {
+		env := fullEnv()
+		env["MARQUEE_SUBFIT_URL"] = bad
+		_, err := config.Load(envOf(env))
+		if err == nil || !strings.Contains(err.Error(), "MARQUEE_SUBFIT_URL") || strings.Contains(err.Error(), "SECRETbad") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}
+
+func TestTheSubfitURLIsRedactedEverywhere(t *testing.T) {
+	env := fullEnv()
+	env["MARQUEE_SUBFIT_URL"] = "http://user:SECRETsub@subfit.example.test"
+	cfg, err := config.Load(envOf(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{fmt.Sprintf("%v", cfg), fmt.Sprintf("%+v", cfg), fmt.Sprintf("%#v", cfg)} {
+		if strings.Contains(s, "SECRETsub") {
+			t.Errorf("leaks the subfit URL: %q", s)
+		}
+	}
+}
+
 func TestTheSubfitTokenIsReadFromTheEnvironmentOrFileAndRedactedEverywhere(t *testing.T) {
 	const subfitVal = "subfit-SECRETjkl"
 	env := fullEnv()

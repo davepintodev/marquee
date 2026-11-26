@@ -27,6 +27,7 @@ import (
 	"github.com/davepintodev/marquee/internal/pipeline"
 	"github.com/davepintodev/marquee/internal/scheduler"
 	"github.com/davepintodev/marquee/internal/server"
+	"github.com/davepintodev/marquee/internal/subfit"
 	"github.com/davepintodev/marquee/internal/torbox"
 )
 
@@ -53,6 +54,11 @@ type Options struct {
 	// TorBoxNow is the clock the TorBox stall and lifetime limits are judged
 	// by; nil is the system clock.
 	TorBoxNow func() time.Time
+	// SubfitTimeout bounds one webhook to subfit; zero is five seconds.
+	SubfitTimeout time.Duration
+	// SubfitCloseGrace is how long shutdown lets a webhook in flight finish;
+	// zero is two seconds.
+	SubfitCloseGrace time.Duration
 	// Sleep waits out a TMDB rate limit; nil really sleeps.
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Transfers tunes the download pipeline; the zero value is production.
@@ -136,9 +142,19 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		if reset {
 			log.Info("left dry-run: search backoffs and the daily search budget were reset")
 		}
+		// Dry-run never changes the library, so subfit has nothing to be told.
+		var subfitHooks *subfit.Client
+		if cfg.SubfitURL != "" && !cfg.DryRun {
+			subfitHooks, err = subfit.New(subfit.Options{URL: cfg.SubfitURL, Timeout: opts.SubfitTimeout, CloseGrace: opts.SubfitCloseGrace, Log: log})
+			if err != nil {
+				return fmt.Errorf("MARQUEE_SUBFIT_URL %w", err)
+			}
+			// Closed last of what can send, so an event from a download that finishes while stopping still goes out.
+			defer subfitHooks.Close()
+		}
 		var tbClient *torbox.Client
 		popts := pipeline.Options{
-			Catalog: store, JellyfinURL: cfg.JellyfinURL, JellyfinKey: cfg.JellyfinKey,
+			Catalog: store, JellyfinURL: cfg.JellyfinURL, JellyfinKey: cfg.JellyfinKey, Subfit: subfitHooks,
 			MoviesPath: cfg.MoviesPath, SeriesPath: cfg.SeriesPath, TempPath: cfg.TempPath,
 			Log: log, Tuning: opts.Transfers,
 		}
@@ -257,7 +273,7 @@ func RunWith(ctx context.Context, opts Options, getenv func(string) string, logO
 		}
 		api = httpapi.New(httpapi.Deps{
 			Catalog: store, Transfers: transfers, TMDB: tmdb, OMDb: scores, Source: source, Scanner: scanner, Now: opts.Now, Log: log, DryRun: cfg.DryRun, Wake: sched.Wake,
-			Paths: cfg.Paths(), Profiles: cfg.ProfileSet(), Jellyfin: jellyfin, TorBox: tbPing, HealthTimeout: opts.HealthTimeout,
+			Paths: cfg.Paths(), Profiles: cfg.ProfileSet(), Subfit: subfitHooks, Jellyfin: jellyfin, TorBox: tbPing, HealthTimeout: opts.HealthTimeout,
 			Images:      metadata.NewImages(filepath.Join(cfg.DataDir, "images"), metadata.DefaultCacheBytes, tmdb),
 			EventsEvery: opts.EventsEvery, Stop: streamsStop,
 		})
