@@ -138,7 +138,9 @@ type Manager struct {
 	running map[string]bool
 	// caching holds the running downloads that are waiting for TorBox rather
 	// than moving bytes; they do not take one of the Concurrency places.
-	caching  map[string]bool
+	caching map[string]bool
+	// runs are the running downloads' handles, by id, under mu.
+	runs     map[string]*run
 	idSource func() string
 
 	torboxMax int
@@ -212,6 +214,12 @@ func (m *Manager) onPresent(ctx context.Context, d *catalog.Download) func(int, 
 	}
 }
 
+type run struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	discard bool
+}
+
 // claim is a verified download's place in its series until it has been
 // imported or dropped.
 type claim struct {
@@ -252,7 +260,7 @@ func New(o Options) *Manager {
 	m := &Manager{
 		cat: o.Catalog, dl: dl, movies: o.MoviesPath, series: o.SeriesPath,
 		tempDir: filepath.Join(o.TempPath, "marquee"), log: log, tune: t,
-		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{},
+		wake: make(chan struct{}, 1), running: map[string]bool{}, caching: map[string]bool{}, runs: map[string]*run{},
 		claims: map[string]claim{}, leaving: map[string]bool{}, deleted: map[int]bool{}, idSource: newID, torboxMax: o.TorBoxMaxActive, cleanup: o.TorBoxCleanup,
 	}
 	if o.JellyfinURL != "" {
@@ -343,6 +351,9 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 	}
 	slots := m.cachingSlotsUsed(active)
 	for _, d := range active {
+		if d.Paused {
+			continue
+		}
 		waiting := d.Uncached && (d.State == catalog.StateQueued || d.State == catalog.StateCaching)
 		m.mu.Lock()
 		skip := m.running[d.ID]
@@ -353,6 +364,8 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 		case !waiting && len(m.running)-len(m.caching) >= m.tune.Concurrency:
 			skip = true
 		}
+		var r *run
+		dctx := ctx
 		if !skip {
 			m.running[d.ID] = true
 			if waiting {
@@ -361,6 +374,10 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 					slots++
 				}
 			}
+			var cancel context.CancelFunc
+			dctx, cancel = context.WithCancel(ctx)
+			r = &run{cancel: cancel, done: make(chan struct{})}
+			m.runs[d.ID] = r
 		}
 		m.mu.Unlock()
 		if skip {
@@ -373,6 +390,8 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 				m.mu.Lock()
 				delete(m.running, d.ID)
 				delete(m.caching, d.ID)
+				delete(m.runs, d.ID)
+				discard := r.discard
 				m.mu.Unlock()
 				m.leaveMu.Lock()
 				delete(m.leaving, d.ID)
@@ -380,9 +399,21 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 				m.claimMu.Lock()
 				delete(m.claims, d.ID)
 				m.claimMu.Unlock()
+				if discard {
+					m.discard(ctx, d.ID)
+				}
+				r.cancel()
+				close(r.done)
 				m.kick()
 			}()
-			m.process(ctx, d)
+			// The handle is registered before this read, so a pause or cancel
+			// that lands after the queue was read is either seen here or
+			// cancels dctx.
+			fresh, err := m.cat.GetDownload(dctx, d.ID)
+			if err != nil || fresh.Paused || fresh.State == catalog.StateDone || fresh.State == catalog.StateFailed {
+				return
+			}
+			m.process(dctx, fresh)
 		}()
 	}
 }
@@ -394,11 +425,128 @@ func (m *Manager) cachingSlotsUsed(active []catalog.Download) int {
 	defer m.mu.Unlock()
 	n := 0
 	for _, d := range active {
+		if d.Paused {
+			continue
+		}
 		if d.Uncached && (d.State == catalog.StateCaching || (d.State == catalog.StateQueued && m.running[d.ID])) {
 			n++
 		}
 	}
 	return n
+}
+
+// Pause stops a download and keeps what it fetched, and returns once its
+// transfer has stopped or ctx ends. See catalog.PauseDownload for the errors.
+func (m *Manager) Pause(ctx context.Context, id string) (catalog.Download, error) {
+	d, err := m.cat.PauseDownload(ctx, id)
+	if err != nil {
+		return catalog.Download{}, err
+	}
+	m.halt(ctx, id, false)
+	m.kick()
+	return d, nil
+}
+
+// Resume lets a paused download continue from what it fetched.
+func (m *Manager) Resume(ctx context.Context, id string) (catalog.Download, error) {
+	d, err := m.cat.ResumeDownload(ctx, id)
+	if err != nil {
+		return catalog.Download{}, err
+	}
+	m.kick()
+	return d, nil
+}
+
+const cancelMessage = "Cancelled; this release will not be tried again."
+
+// Cancel stops a download, deletes what it fetched and its TorBox torrent
+// unless another download needs it, and blocklists the release, so that the
+// next search finds another. It returns once that is done or ctx ends.
+func (m *Manager) Cancel(ctx context.Context, id string) error {
+	if _, err := m.cat.CancelDownload(ctx, id, cancelMessage); err != nil {
+		return err
+	}
+	if !m.halt(ctx, id, true) {
+		m.discard(ctx, id)
+	}
+	m.kick()
+	return nil
+}
+
+func (m *Manager) halt(ctx context.Context, id string, discard bool) bool {
+	m.mu.Lock()
+	r, ok := m.runs[id]
+	if ok {
+		r.discard = r.discard || discard
+		r.cancel()
+	}
+	m.mu.Unlock()
+	if !ok {
+		return false
+	}
+	select {
+	case <-r.done:
+	case <-ctx.Done():
+	}
+	return true
+}
+
+func (m *Manager) discard(ctx context.Context, id string) {
+	m.removeTemp(id)
+	ctx = context.WithoutCancel(ctx)
+	d, err := m.cat.GetDownload(ctx, id)
+	if err != nil {
+		if !errors.Is(err, catalog.ErrNotFound) {
+			m.log.Warn("cannot read a cancelled download", "download", id, "err", err)
+		}
+		return
+	}
+	m.deleteTorrent(ctx, d)
+}
+
+// PauseTitle pauses every download of a title that can still be paused
+// and returns them. A title that is not in the library answers
+// catalog.ErrNotFound.
+func (m *Manager) PauseTitle(ctx context.Context, titleID string) ([]catalog.Download, error) {
+	return m.eachOf(ctx, titleID, func(catalog.Download) bool { return true }, m.Pause)
+}
+
+// ResumeTitle resumes every paused download of a title and returns them.
+func (m *Manager) ResumeTitle(ctx context.Context, titleID string) ([]catalog.Download, error) {
+	return m.eachOf(ctx, titleID, func(d catalog.Download) bool { return d.Paused }, m.Resume)
+}
+
+// CancelTitle cancels every download of a title that can still be cancelled.
+func (m *Manager) CancelTitle(ctx context.Context, titleID string) error {
+	_, err := m.eachOf(ctx, titleID, func(catalog.Download) bool { return true }, func(ctx context.Context, id string) (catalog.Download, error) {
+		return catalog.Download{}, m.Cancel(ctx, id)
+	})
+	return err
+}
+
+func (m *Manager) eachOf(ctx context.Context, titleID string, pick func(catalog.Download) bool, change func(context.Context, string) (catalog.Download, error)) ([]catalog.Download, error) {
+	if _, err := m.cat.Get(ctx, titleID); err != nil {
+		return nil, err
+	}
+	active, err := m.cat.ActiveDownloads(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []catalog.Download{}
+	for _, d := range active {
+		if d.TitleID != titleID || !pick(d) {
+			continue
+		}
+		got, err := change(ctx, d.ID)
+		switch {
+		case errors.Is(err, catalog.ErrNotFound), errors.Is(err, catalog.ErrFinished), errors.Is(err, catalog.ErrSettling):
+		case err != nil:
+			return out, err
+		default:
+			out = append(out, got)
+		}
+	}
+	return out, nil
 }
 
 func (m *Manager) partPath(id string) string { return filepath.Join(m.tempDir, id+".part") }
@@ -563,11 +711,14 @@ func (m *Manager) fetch(ctx context.Context, d *catalog.Download) bool {
 	return true
 }
 
-// gone handles a download whose row vanished (its title was removed) or a
-// database error.
+// gone handles a download whose row vanished (its title was removed), was
+// paused, or a database error. A paused download keeps what it fetched.
 func (m *Manager) gone(ctx context.Context, d catalog.Download, err error) {
 	if errors.Is(err, catalog.ErrNotFound) {
 		m.removeTemp(d.ID)
+		return
+	}
+	if errors.Is(err, catalog.ErrPaused) {
 		return
 	}
 	if ctx.Err() == nil {

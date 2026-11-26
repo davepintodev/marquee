@@ -14,7 +14,9 @@ import (
 
 // States of a download. A download moves queued, downloading, verifying,
 // importing, done, or ends failed with a reason. One TorBox has to fetch
-// first spends its time between queued and downloading caching.
+// first spends its time between queued and downloading caching. Paused is
+// not a stored state but the API's name for a download whose Paused flag
+// is set, which keeps its stored state for when it resumes.
 const (
 	StateQueued      = "queued"
 	StateCaching     = "caching"
@@ -23,7 +25,21 @@ const (
 	StateImporting   = "importing"
 	StateDone        = "done"
 	StateFailed      = "failed"
+	StatePaused      = "paused"
 )
+
+// ReasonCancelled ends a download the owner cancelled; it is no failure.
+const ReasonCancelled = "cancelled"
+
+// ErrFinished means the download is done or failed already.
+var ErrFinished = errors.New("catalog: the download has finished")
+
+// ErrSettling means the download is being verified or imported, which can
+// no longer be paused or cancelled.
+var ErrSettling = errors.New("catalog: the download is being verified or imported")
+
+// ErrPaused means the download was paused, so it may not move on.
+var ErrPaused = errors.New("catalog: the download is paused")
 
 // StallAfter is how long a download's bytes may stand still before the
 // queue and the badges show it as stalled; the downloader itself fails it
@@ -33,7 +49,7 @@ const StallAfter = 15 * time.Second
 // Percent is how much of the file has arrived, or of the torrent TorBox has
 // cached; 0 until the size is known.
 func (d Download) Percent() int {
-	if d.State == StateCaching {
+	if d.State == StateCaching || (d.State == StateQueued && d.Uncached) {
 		return min(d.CachePercent, 100)
 	}
 	if d.BytesTotal <= 0 {
@@ -45,7 +61,15 @@ func (d Download) Percent() int {
 // Stalled reports a download whose bytes stopped moving; one still queued
 // or past downloading is not waiting on bytes.
 func (d Download) Stalled(now time.Time) bool {
-	return d.State == StateDownloading && now.Sub(d.UpdatedAt) > StallAfter
+	return d.State == StateDownloading && !d.Paused && now.Sub(d.UpdatedAt) > StallAfter
+}
+
+// APIState is the state the API shows: paused, or the stored state.
+func (d Download) APIState() string {
+	if d.Paused {
+		return StatePaused
+	}
+	return d.State
 }
 
 // ErrActiveDownload means the title or episode already has a download
@@ -97,34 +121,36 @@ type Download struct {
 	// CachingStartedAt is when the torrent was first recorded, which is when
 	// caching began; zero until then.
 	CachingStartedAt time.Time
-	State            string
-	BytesDone        int64
-	BytesTotal       int64
-	Reason           string
-	Message          string
-	LibraryPath      string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	TitleName        string
+	// Paused holds the download where it is until it is resumed.
+	Paused      bool
+	State       string
+	BytesDone   int64
+	BytesTotal  int64
+	Reason      string
+	Message     string
+	LibraryPath string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	TitleName   string
 }
 
 const downloadColumns = `d.id, d.title_id, t.title, d.season, d.number, d.state, d.info_hash, d.file_name, d.size,
 	d.release_name, d.resolution, d.quality, d.url, d.bytes_done, d.bytes_total, d.reason, d.message,
 	d.library_path, d.created_at, d.updated_at, d.replace_existing, d.covered_episodes,
-	d.cached, d.cache_percent, d.torbox_torrent_id, d.torbox_file_id, d.caching_started_at`
+	d.cached, d.cache_percent, d.torbox_torrent_id, d.torbox_file_id, d.caching_started_at, d.paused`
 
 func scanDownload(sc interface{ Scan(...any) error }, extra ...any) (Download, error) {
 	var d Download
 	var url, created, updated, covered, cachingStarted string
-	var replace, cached int
+	var replace, cached, paused int
 	dest := append([]any{&d.ID, &d.TitleID, &d.TitleName, &d.Season, &d.Number, &d.State, &d.Release.InfoHash,
 		&d.Release.FileName, &d.Release.Size, &d.ReleaseName, &d.Resolution, &d.Quality, &url, &d.BytesDone,
 		&d.BytesTotal, &d.Reason, &d.Message, &d.LibraryPath, &created, &updated, &replace, &covered,
-		&cached, &d.CachePercent, &d.TorBoxTorrentID, &d.TorBoxFileID, &cachingStarted}, extra...)
+		&cached, &d.CachePercent, &d.TorBoxTorrentID, &d.TorBoxFileID, &cachingStarted, &paused}, extra...)
 	if err := sc.Scan(dest...); err != nil {
 		return Download{}, err
 	}
-	d.URL, d.ReplaceExisting, d.Uncached = config.Secret(url), replace == 1, cached == 0
+	d.URL, d.ReplaceExisting, d.Uncached, d.Paused = config.Secret(url), replace == 1, cached == 0, paused == 1
 	d.Covered = decodeCovered(covered)
 	d.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
@@ -350,37 +376,149 @@ func (s *Store) pruneDownloads(ctx context.Context, tx *sql.Tx) error {
 }
 
 // SetDownloadState moves an unfinished download to state. A download that
-// is gone (its title was removed) or already finished answers ErrNotFound.
+// is gone (its title was removed) or already finished answers ErrNotFound,
+// one that was paused ErrPaused.
 func (s *Store) SetDownloadState(ctx context.Context, id, state string) error {
-	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET state = ?, updated_at = ? WHERE id = ? AND state NOT IN ('done', 'failed')`, state, s.stamp(), id)
-	return affected(res, err)
+	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET state = ?, updated_at = ? WHERE id = ? AND state NOT IN ('done', 'failed') AND paused = 0`, state, s.stamp(), id)
+	if err := affected(res, err); !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	var paused int
+	err = s.w.QueryRowContext(ctx, `SELECT paused FROM downloads WHERE id = ? AND state NOT IN ('done', 'failed')`, id).Scan(&paused)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return ErrNotFound
+	case err != nil:
+		return err
+	case paused == 1:
+		return ErrPaused
+	}
+	return ErrNotFound
+}
+
+func settledErr(state string) error {
+	switch state {
+	case StateDone, StateFailed:
+		return ErrFinished
+	case StateVerifying, StateImporting:
+		return ErrSettling
+	}
+	return nil
+}
+
+// stoppable is the SQL test for a download that can still be paused or
+// cancelled: it has not got all its bytes yet.
+const stoppable = `state IN ('queued', 'caching', 'downloading')`
+
+// PauseDownload holds a download where it is until ResumeDownload. One
+// TorBox is caching goes back to queued, so it waits for a free TorBox
+// place when it resumes; its torrent stays recorded and is watched again.
+// It answers ErrNotFound for no such download, ErrFinished or ErrSettling
+// for one that can no longer be paused.
+func (s *Store) PauseDownload(ctx context.Context, id string) (Download, error) {
+	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET paused = 1,
+		state = CASE WHEN state = 'caching' THEN 'queued' ELSE state END
+		WHERE id = ? AND `+stoppable, id)
+	if err := affected(res, err); err != nil {
+		return Download{}, s.whyNot(ctx, id, err)
+	}
+	return s.GetDownload(ctx, id)
+}
+
+// ResumeDownload lets a paused download run again from where it stopped.
+// A download that is not paused is left as it is.
+func (s *Store) ResumeDownload(ctx context.Context, id string) (Download, error) {
+	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET paused = 0,
+		updated_at = CASE WHEN paused = 1 THEN ? ELSE updated_at END
+		WHERE id = ? AND state NOT IN ('done', 'failed')`, s.stamp(), id)
+	if err := affected(res, err); err != nil {
+		return Download{}, s.whyNot(ctx, id, err)
+	}
+	return s.GetDownload(ctx, id)
+}
+
+func (s *Store) whyNot(ctx context.Context, id string, err error) error {
+	if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	var state string
+	if err := s.w.QueryRowContext(ctx, `SELECT state FROM downloads WHERE id = ?`, id).Scan(&state); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if e := settledErr(state); e != nil {
+		return e
+	}
+	return ErrNotFound
+}
+
+// CancelDownload ends a download the owner gave up on: its release is
+// blocklisted, and the movie or the episodes its file covers are searched
+// again at once, so another release is found. It answers ErrNotFound for no
+// such download, ErrFinished or ErrSettling for one that can no longer be
+// cancelled.
+func (s *Store) CancelDownload(ctx context.Context, id, message string) (Download, error) {
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		return Download{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	d, err := scanDownload(tx.QueryRowContext(ctx, `SELECT `+downloadColumns+` FROM downloads d JOIN titles t ON t.id = d.title_id WHERE d.id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Download{}, ErrNotFound
+	}
+	if err != nil {
+		return Download{}, err
+	}
+	if e := settledErr(d.State); e != nil {
+		return Download{}, e
+	}
+	if err := s.endTx(ctx, tx, d.ID, d.Release, ReasonCancelled, message, true); err != nil {
+		return Download{}, err
+	}
+	numbers := []int{d.Number}
+	if len(d.Covered) > 0 {
+		numbers = d.Covered
+	}
+	for _, n := range numbers {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schedule (title_id, season, number, attempts, follow_up) VALUES (?, ?, ?, 0, 1)
+			ON CONFLICT (title_id, season, number) DO UPDATE SET follow_up = 1, next_at = NULL`, d.TitleID, d.Season, n); err != nil {
+			return Download{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Download{}, err
+	}
+	return d, nil
 }
 
 // SetDownloadCaching records how far TorBox has fetched a download's torrent,
 // and which torrent and file that is. A download already transferring or
-// further on keeps its state, so a late report never moves it back. A
-// download that is gone or finished answers ErrNotFound.
+// further on keeps its state and torrent, so a late report never moves it
+// back. A paused one keeps its state but records the torrent, so a cancel
+// can delete it and a resume reuses it. A download that is gone or finished
+// answers ErrNotFound.
 func (s *Store) SetDownloadCaching(ctx context.Context, id string, percent, torrentID, fileID int) error {
 	stamp := s.stamp()
-	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET state = 'caching', cache_percent = ?, torbox_torrent_id = ?, torbox_file_id = ?, updated_at = ?,
-		caching_started_at = CASE WHEN caching_started_at = '' THEN ? ELSE caching_started_at END
-		WHERE id = ? AND state IN ('queued', 'caching')`, percent, torrentID, fileID, stamp, stamp, id)
-	if err := affected(res, err); !errors.Is(err, ErrNotFound) {
-		return err
-	}
-	var live int
-	err = s.w.QueryRowContext(ctx, `SELECT 1 FROM downloads WHERE id = ? AND state NOT IN ('done', 'failed')`, id).Scan(&live)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	}
-	return err
+	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET
+		torbox_torrent_id = CASE WHEN state IN ('queued', 'caching') THEN ?1 ELSE torbox_torrent_id END,
+		torbox_file_id = CASE WHEN state IN ('queued', 'caching') THEN ?2 ELSE torbox_file_id END,
+		caching_started_at = CASE WHEN state IN ('queued', 'caching') AND paused = 0 AND caching_started_at = '' THEN ?3 ELSE caching_started_at END,
+		cache_percent = CASE WHEN state IN ('queued', 'caching') AND paused = 0 THEN ?4 ELSE cache_percent END,
+		updated_at = CASE WHEN state IN ('queued', 'caching') AND paused = 0 THEN ?3 ELSE updated_at END,
+		state = CASE WHEN state IN ('queued', 'caching') AND paused = 0 THEN 'caching' ELSE state END
+		WHERE id = ?5 AND state NOT IN ('done', 'failed')`, torrentID, fileID, stamp, percent, id)
+	return affected(res, err)
 }
 
 // UncachedActive counts the downloads waiting for TorBox or being fetched by
 // it, which is what the number of torrents TorBox may cache at once limits.
+// A paused one holds no place.
 func (s *Store) UncachedActive(ctx context.Context) (int, error) {
 	var n int
-	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE cached = 0 AND state IN ('queued', 'caching')`).Scan(&n)
+	err := s.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM downloads WHERE cached = 0 AND state IN ('queued', 'caching') AND paused = 0`).Scan(&n)
 	return n, err
 }
 
@@ -522,6 +660,13 @@ func (s *Store) FailDownload(ctx context.Context, id, reason, message string, bl
 		}
 		return err
 	}
+	if err := s.endTx(ctx, tx, id, r, reason, message, blocklist); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) endTx(ctx context.Context, tx *sql.Tx, id string, r ReleaseID, reason, message string, blocklist bool) error {
 	now := s.now()
 	if _, err := tx.ExecContext(ctx, `UPDATE downloads SET state = 'failed', url = '', reason = ?, message = ?, updated_at = ?, at_ms = ? WHERE id = ?`,
 		reason, message, now.UTC().Format(time.RFC3339Nano), now.UnixMilli(), id); err != nil {
@@ -534,10 +679,7 @@ func (s *Store) FailDownload(ctx context.Context, id, reason, message string, bl
 			return err
 		}
 	}
-	if err := s.pruneDownloads(ctx, tx); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return s.pruneDownloads(ctx, tx)
 }
 
 // ComponentStatus is the last known outcome of calling an outside service.

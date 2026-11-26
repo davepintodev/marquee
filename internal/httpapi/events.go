@@ -197,11 +197,11 @@ func diff(prev, next view) []event {
 	}
 	for id, d := range next.downloads {
 		old, had := prev.downloads[id]
-		if had && old.State == d.State && old.BytesDone == d.BytesDone && old.BytesTotal == d.BytesTotal && old.CachePercent == d.CachePercent {
+		if had && old.State == d.State && old.BytesDone == d.BytesDone && old.BytesTotal == d.BytesTotal && old.CachePercent == d.CachePercent && old.Paused == d.Paused {
 			continue
 		}
 		p := map[string]any{
-			"downloadId": d.ID, "titleId": d.TitleID, "state": d.State,
+			"downloadId": d.ID, "titleId": d.TitleID, "state": d.APIState(),
 			"percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
 		}
 		if ep := episodeRef(d); ep != "" {

@@ -12,6 +12,7 @@ const stateWords: Record<Download["state"], string> = {
   downloading: "Downloading",
   verifying: "Verifying",
   importing: "Importing",
+  paused: "Paused",
 };
 
 export function DownloadCard({ api, d }: { api: Api; d: Download }) {

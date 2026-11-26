@@ -468,6 +468,106 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Download" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/downloads/{downloadId}/pause:
+    parameters:
+      - { $ref: "#/components/parameters/DownloadId" }
+    post:
+      tags: [activity]
+      operationId: pauseDownload
+      summary: Pause a download, keeping what it has fetched.
+      description: >
+        Stops the transfer and keeps the partial file, or keeps a queued
+        download from starting. A paused download keeps its place in the
+        queue but holds no connection and no TorBox caching slot; a torrent
+        TorBox is caching for it stays on TorBox. It stays paused across a
+        restart until it is resumed. Pausing a paused download changes nothing.
+      responses:
+        "200":
+          description: The download, now `paused`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Download" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DownloadSettled" }
+  /api/downloads/{downloadId}/resume:
+    parameters:
+      - { $ref: "#/components/parameters/DownloadId" }
+    post:
+      tags: [activity]
+      operationId: resumeDownload
+      summary: Resume a paused download from the bytes it already has.
+      description: >
+        The download goes back into the queue at its old place and continues
+        from its partial file when a place is free. Resuming a download that
+        is not paused changes nothing.
+      responses:
+        "200":
+          description: The download, no longer paused.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Download" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DownloadSettled" }
+  /api/downloads/{downloadId}/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/DownloadId" }
+    post:
+      tags: [activity]
+      operationId: cancelDownload
+      summary: Cancel a download and look for a different release.
+      description: >
+        Stops the transfer, deletes the partial file and blocklists the
+        release. A torrent TorBox fetched for it is deleted unless another
+        download still needs it. The movie or episode stays monitored, so it
+        is wanted again and searched for at once. The cancel is a `cancelled`
+        history entry, which cannot be retried. A queued or paused download
+        can be cancelled too.
+      responses:
+        "204": { description: The download is cancelled. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DownloadSettled" }
+  /api/titles/{id}/downloads/pause:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    post:
+      tags: [activity]
+      operationId: pauseTitleDownloads
+      summary: Pause every download of a title.
+      description: >
+        Pauses each of the title's downloads as pauseDownload does. One that
+        is being verified or imported is left to finish.
+      responses:
+        "200": { $ref: "#/components/responses/ChangedDownloads" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/downloads/resume:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    post:
+      tags: [activity]
+      operationId: resumeTitleDownloads
+      summary: Resume every paused download of a title.
+      responses:
+        "200": { $ref: "#/components/responses/ChangedDownloads" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/titles/{id}/downloads/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/TitleId" }
+    post:
+      tags: [activity]
+      operationId: cancelTitleDownloads
+      summary: Cancel every download of a title.
+      description: >
+        Cancels each of the title's downloads as cancelDownload does. One
+        that is being verified or imported is left to finish.
+      responses:
+        "204": { description: The title's downloads are cancelled. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/history:
     get:
       tags: [activity]
@@ -735,6 +835,11 @@ components:
       in: path
       required: true
       schema: { $ref: "#/components/schemas/EpisodeId" }
+    DownloadId:
+      name: downloadId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
   responses:
     BadRequest:
       description: The request is malformed.
@@ -776,8 +881,24 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    DownloadSettled:
+      description: The download has already finished, or it is being verified or imported and can no longer be stopped; the error says which.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ChangedDownloads:
+      description: The title's downloads this changed; empty when none could be.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [downloads]
+            properties:
+              downloads:
+                type: array
+                items: { $ref: "#/components/schemas/Download" }
     NotFound:
-      description: No such title, episode, release or entry.
+      description: No such title, episode, release, download or entry.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1100,8 +1221,10 @@ components:
       type: string
       description: >
         An uncached release is `caching` while TorBox fetches it (its percent is
-        TorBox's), then `downloading` once marquee transfers the file.
-      enum: [queued, caching, downloading, verifying, importing]
+        TorBox's), then `downloading` once marquee transfers the file. A
+        `paused` download keeps its partial file and its place in the queue
+        but holds no connection or TorBox slot; its percent is how far it got.
+      enum: [queued, caching, downloading, verifying, importing, paused]
     Download:
       type: object
       required: [id, titleId, titleName, releaseName, state, percent, bytesDone, bytesTotal, stalled]
@@ -1135,7 +1258,7 @@ components:
           description: Search for another release at once. False leaves the choice to Interactive Search.
     HistoryKind:
       type: string
-      enum: [added, searched, would_grab, imported, failed, removed, wrong_file]
+      enum: [added, searched, would_grab, imported, failed, removed, wrong_file, cancelled]
     FailureReason:
       type: string
       enum: [stalled, not_video, wrong_episode, too_small, size_mismatch, source_down, local_error, duplicate_episode, caching_timeout]

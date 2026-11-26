@@ -35,13 +35,69 @@ func (a *api) listDownloads(w http.ResponseWriter, r *http.Request) {
 func downloadOf(d catalog.Download, now time.Time) map[string]any {
 	item := map[string]any{
 		"id": d.ID, "titleId": d.TitleID, "titleName": d.TitleName, "releaseName": d.ReleaseName,
-		"state": d.State, "percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
+		"state": d.APIState(), "percent": d.Percent(), "bytesDone": d.BytesDone, "bytesTotal": d.BytesTotal,
 		"stalled": d.Stalled(now),
 	}
 	if ep := episodeRef(d); ep != "" {
 		item["episode"] = ep
 	}
 	return item
+}
+
+func (a *api) downloadErr(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, catalog.ErrNotFound):
+		fail(w, http.StatusNotFound, "no such download")
+	case errors.Is(err, catalog.ErrFinished):
+		fail(w, http.StatusConflict, "this download has already finished")
+	case errors.Is(err, catalog.ErrSettling):
+		fail(w, http.StatusConflict, "this download is being verified or imported and can no longer be stopped")
+	default:
+		a.internal(w, r, err)
+	}
+}
+
+func (a *api) changeDownload(change func(context.Context, string) (catalog.Download, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		d, err := change(r.Context(), r.PathValue("downloadId"))
+		if err != nil {
+			a.downloadErr(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, downloadOf(d, a.Catalog.Now()))
+	}
+}
+
+func (a *api) cancelDownload(w http.ResponseWriter, r *http.Request) {
+	if err := a.Transfers.Cancel(r.Context(), r.PathValue("downloadId")); err != nil {
+		a.downloadErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) changeTitleDownloads(change func(context.Context, string) ([]catalog.Download, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ds, err := change(r.Context(), r.PathValue("id"))
+		if err != nil {
+			a.titleReply(w, r, catalog.Title{}, err)
+			return
+		}
+		now := a.Catalog.Now()
+		out := make([]map[string]any, 0, len(ds))
+		for _, d := range ds {
+			out = append(out, downloadOf(d, now))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"downloads": out})
+	}
+}
+
+func (a *api) cancelTitleDownloads(w http.ResponseWriter, r *http.Request) {
+	if err := a.Transfers.CancelTitle(r.Context(), r.PathValue("id")); err != nil {
+		a.titleReply(w, r, catalog.Title{}, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type historyJSON struct {
@@ -130,9 +186,12 @@ func (a *api) historyPage(ctx context.Context, titleID, cursor string, limit int
 	for _, it := range page.Items {
 		if d := it.Download; d != nil {
 			item := historyJSON{ID: d.ID, At: d.UpdatedAt.UTC().Format(time.RFC3339), TitleID: d.TitleID, TitleName: d.TitleName, Episode: episodeRef(*d)}
-			if d.State == catalog.StateDone {
+			switch {
+			case d.State == catalog.StateDone:
 				item.Kind, item.Message = "imported", "Imported "+filepath.Base(d.LibraryPath)
-			} else {
+			case d.Reason == catalog.ReasonCancelled:
+				item.Kind, item.Message = "cancelled", d.Message
+			default:
 				item.Kind, item.Message, item.Reason, item.Retryable = "failed", d.Message, d.Reason, it.Retryable
 			}
 			out = append(out, item)

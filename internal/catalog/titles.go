@@ -228,7 +228,7 @@ type target struct {
 // inFlight returns the unfinished downloads of the titles selected by
 // where, by movie or episode.
 func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []any) (map[target]*inFlight, error) {
-	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, cache_percent, updated_at, covered_episodes FROM downloads
+	rows, err := q.QueryContext(ctx, `SELECT title_id, season, number, state, bytes_done, bytes_total, cache_percent, updated_at, covered_episodes, paused, cached FROM downloads
 		WHERE state NOT IN ('done', 'failed') AND title_id IN (SELECT id FROM titles `+where+`)`, args...)
 	if err != nil {
 		return nil, err
@@ -240,9 +240,11 @@ func (s *Store) inFlight(ctx context.Context, q queryer, where string, args []an
 		var k target
 		var d Download
 		var updated, covered string
-		if err := rows.Scan(&k.titleID, &k.season, &k.number, &d.State, &d.BytesDone, &d.BytesTotal, &d.CachePercent, &updated, &covered); err != nil {
+		var paused, cached int
+		if err := rows.Scan(&k.titleID, &k.season, &k.number, &d.State, &d.BytesDone, &d.BytesTotal, &d.CachePercent, &updated, &covered, &paused, &cached); err != nil {
 			return nil, err
 		}
+		d.Paused, d.Uncached = paused == 1, cached == 0
 		d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 		fl := &inFlight{stalled: d.Stalled(now), caching: d.State == StateCaching, percent: d.Percent()}
 		out[k] = fl

@@ -62,6 +62,12 @@ var calls = map[string]call{
 	"listReleases":         {"GET", "/api/titles/series-1408/releases?episode=s04e02", "", 200},
 	"grabRelease":          {"POST", "/api/titles/movie-335984/releases/rel-movie-1/grab", "", 202},
 	"listDownloads":        {"GET", "/api/downloads", "", 200},
+	"pauseDownload":        {"POST", "/api/downloads/dl-1/pause", "", 200},
+	"resumeDownload":       {"POST", "/api/downloads/dl-1/resume", "", 200},
+	"cancelDownload":       {"POST", "/api/downloads/dl-3/cancel", "", 204},
+	"pauseTitleDownloads":  {"POST", "/api/titles/movie-693134/downloads/pause", "", 200},
+	"resumeTitleDownloads": {"POST", "/api/titles/movie-693134/downloads/resume", "", 200},
+	"cancelTitleDownloads": {"POST", "/api/titles/series-1408/downloads/cancel", "", 204},
 	"listHistory":          {"GET", "/api/history", "", 200},
 	"retryHistoryEntry":    {"POST", "/api/history/h-failed-stalled/retry", "", 200},
 	"streamEvents":         {"GET", "/api/events", "", 200},
@@ -93,9 +99,13 @@ func validate(t *testing.T, router routers.Router, c call, path string, resp *ht
 	apitest.Validate(t, router, c.method, path, c.body, resp, status)
 }
 
+// stillTick keeps the fixture downloads where they are, so the cases that
+// pause or cancel one never find it finished.
+const stillTick = time.Hour
+
 func TestEveryOperationIsCoveredAndMatchesItsSchema(t *testing.T) {
 	doc, router := loadSpec(t)
-	srv := startFake(t)
+	srv := startFakeTick(t, stillTick)
 
 	seen := map[string]bool{}
 	for path, item := range doc.Paths.Map() {
@@ -135,7 +145,7 @@ func TestEveryOperationIsCoveredAndMatchesItsSchema(t *testing.T) {
 // A token-protected fake, as `marquee --fake` serves it with MARQUEE_API_TOKEN set.
 func TestEveryOperationAnswers401WithoutTheTokenAndNormallyWithIt(t *testing.T) {
 	_, router := loadSpec(t)
-	f := fake.New(fake.Options{Tick: 5 * time.Millisecond, Step: 10})
+	f := fake.New(fake.Options{Tick: stillTick, Step: 10})
 	srv := httptest.NewServer(httpapi.RequireToken(config.Secret("fake-token"), f))
 	t.Cleanup(func() { f.Close(); srv.Close() })
 
@@ -218,6 +228,7 @@ func TestMissingResourcesAnswerWithTheContractsError(t *testing.T) {
 		"series-1408", "series-1", "movie-693134", "movie-1", "movie-13187", "movie-1",
 		"movie-329865", "movie-1", "movie-335984", "movie-1", "movie-438631", "movie-1", "movie-687163", "movie-1",
 		"h-failed-stalled", "h-none", "rel-movie-1", "rel-none", "series-95396", "series-1", "people/9", "people/8",
+		"dl-1", "dl-none", "dl-3", "dl-none",
 	)
 	for path, item := range doc.Paths.Map() {
 		for _, op := range item.Operations() {

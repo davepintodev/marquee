@@ -865,3 +865,29 @@ func TestSearchNowOnASeriesSearchesOneEpisodeAtATimeAndTheRestReadWanted(t *test
 		t.Errorf("the second episode searches after the first, never both at once: %v", seen)
 	}
 }
+
+func TestStoppingAFinishedOrCancelledDownloadAnswers409(t *testing.T) {
+	_, router := loadSpec(t)
+	srv := startFake(t)
+	grabbed := exchange(t, srv, router, "POST", "/api/titles/movie-335984/releases/rel-movie-1/grab", "", 202)
+	done := grabbed["id"].(string)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var title struct{ Badge struct{ State string } }
+		getJSON(t, srv, "/api/titles/movie-335984", &title)
+		if title.Badge.State == "downloaded" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the grab never finished")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	still := startFakeTick(t, time.Hour)
+	exchange(t, still, router, "POST", "/api/downloads/dl-3/cancel", "", 204)
+	for _, op := range []string{"pause", "resume", "cancel"} {
+		exchange(t, srv, router, "POST", "/api/downloads/"+done+"/"+op, "", 409)
+		exchange(t, still, router, "POST", "/api/downloads/dl-3/"+op, "", 409)
+	}
+}
