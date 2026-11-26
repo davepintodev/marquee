@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"path"
@@ -68,8 +69,6 @@ func (a *api) fileIdentity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// insideLibrary cleans a library-relative path and refuses one that is
-// empty, absolute, the root itself or climbs out of it.
 func insideLibrary(p string) (string, bool) {
 	if p == "" || strings.ContainsAny(p, "\\\x00") || strings.HasPrefix(p, "/") {
 		return "", false
@@ -81,8 +80,6 @@ func insideLibrary(p string) (string, bool) {
 	return c, true
 }
 
-// fetchNames asks TMDB for the title's names once, however many lookups of
-// its files arrive together, and keeps them.
 func (a *api) fetchNames(r *http.Request, f catalog.FileIdentity) (*catalog.TitleNames, error) {
 	unlock := a.names.Lock(f.TitleID)
 	defer unlock()
@@ -107,7 +104,8 @@ func (a *api) namesFailed(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, metadata.ErrRejected):
 		a.Log.Error("tmdb refused the API key", "path", r.URL.Path)
 		fail(w, http.StatusServiceUnavailable, "TMDB refused marquee's API key; check the TMDB key setting")
-	case errors.Is(err, metadata.ErrNotFound), errors.Is(err, metadata.ErrUnavailable), r.Context().Err() != nil:
+	case errors.Is(err, metadata.ErrNotFound), errors.Is(err, metadata.ErrUnavailable),
+		errors.Is(err, context.DeadlineExceeded), r.Context().Err() != nil:
 		a.Log.Warn("tmdb did not give a title's names", "path", r.URL.Path, "err", err)
 		fail(w, http.StatusServiceUnavailable, "TMDB is not answering; try again shortly")
 	default:

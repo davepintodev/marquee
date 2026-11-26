@@ -31,7 +31,7 @@ const (
 func RequireToken(token, lookup config.Secret, next http.Handler) http.Handler {
 	api := requireAPIToken(token, next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != IdentityPath || r.Method != http.MethodGet {
+		if r.URL.Path != IdentityPath {
 			api.ServeHTTP(w, r)
 			return
 		}

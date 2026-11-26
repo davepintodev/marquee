@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/davepintodev/marquee/internal/apitest"
+	"github.com/davepintodev/marquee/internal/app"
 	"github.com/davepintodev/marquee/internal/debridfake"
 	"github.com/davepintodev/marquee/internal/tmdbfake"
 )
@@ -324,5 +326,71 @@ func TestLookupsOfATitleArrivingTogetherAskTMDBOnce(t *testing.T) {
 	}
 	if n := tm.Hits("/3/tv/1622") - before; n != 1 {
 		t.Errorf("TMDB asked %d times, want 1", n)
+	}
+}
+
+func TestAnUnauthenticatedHEADOfTheLookupAnswers401AndAsksTMDBNothing(t *testing.T) {
+	for name, env := range map[string]func(map[string]string){
+		"an open API with a lookup token": func(e map[string]string) { delete(e, "MARQUEE_API_TOKEN") },
+		"an open API with no lookup token": func(e map[string]string) {
+			delete(e, "MARQUEE_API_TOKEN")
+			delete(e, "MARQUEE_SUBFIT_TOKEN")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tm := identityTMDB(t)
+			s := startIdentity(t, tm, env)
+			before := tm.Hits("/3")
+			req, err := http.NewRequest(http.MethodHead, s.base+identityPath("movies", duneFile), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Errorf("HEAD without a token: %d, want 401", resp.StatusCode)
+			}
+			if n := tm.Hits("/3") - before; n != 0 {
+				t.Errorf("an unauthenticated HEAD made marquee ask TMDB %d times", n)
+			}
+		})
+	}
+}
+
+func TestATMDBClientTimeoutWhileWaitingOutARateLimitAnswers503AndKeepsNothing(t *testing.T) {
+	tm := identityTMDB(t)
+	// A real sleeper gives up when the client's own deadline fires, and
+	// the request's context is still fine then.
+	s, err := startAdoptWith(t, tm, func(e map[string]string) {
+		library(t, []string{duneFile}, nil)(e)
+		e["MARQUEE_SUBFIT_TOKEN"] = lookupToken
+	}, func(o *app.Options) {
+		o.TMDBTimeout = 200 * time.Millisecond
+		o.Sleep = func(ctx context.Context, d time.Duration) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(d):
+				return nil
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := tm.Hits("/3/movie/438631")
+	tm.Script("/3/movie/438631", tmdbfake.Step{Status: 429, RetryAfter: "30"})
+	r := s.lookup(identityPath("movies", duneFile), lookupToken)
+	if r.status != 503 {
+		t.Fatalf("TMDB timing out: %d %s, want 503", r.status, r.body)
+	}
+	tm.Heal()
+	mid := tm.Hits("/3/movie/438631")
+	got := s.identity("movies", duneFile)
+	if tm.Hits("/3/movie/438631") != mid+1 || got["originalLanguage"] != "en" {
+		t.Errorf("after TMDB is back the lookup asks it again: %d hits (%d before the failure), %v", tm.Hits("/3/movie/438631")-mid, mid-before, got)
 	}
 }
