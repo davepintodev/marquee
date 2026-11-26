@@ -496,22 +496,21 @@ func (s *Store) CancelDownload(ctx context.Context, id, message string) (Downloa
 
 // SetDownloadCaching records how far TorBox has fetched a download's torrent,
 // and which torrent and file that is. A download already transferring or
-// further on, or paused, keeps its state, so a late report never moves it
-// back. A download that is gone or finished answers ErrNotFound.
+// further on keeps its state and torrent, so a late report never moves it
+// back. A paused one keeps its state but records the torrent, so a cancel
+// can delete it and a resume reuses it. A download that is gone or finished
+// answers ErrNotFound.
 func (s *Store) SetDownloadCaching(ctx context.Context, id string, percent, torrentID, fileID int) error {
 	stamp := s.stamp()
-	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET state = 'caching', cache_percent = ?, torbox_torrent_id = ?, torbox_file_id = ?, updated_at = ?,
-		caching_started_at = CASE WHEN caching_started_at = '' THEN ? ELSE caching_started_at END
-		WHERE id = ? AND state IN ('queued', 'caching') AND paused = 0`, percent, torrentID, fileID, stamp, stamp, id)
-	if err := affected(res, err); !errors.Is(err, ErrNotFound) {
-		return err
-	}
-	var live int
-	err = s.w.QueryRowContext(ctx, `SELECT 1 FROM downloads WHERE id = ? AND state NOT IN ('done', 'failed')`, id).Scan(&live)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	}
-	return err
+	res, err := s.w.ExecContext(ctx, `UPDATE downloads SET
+		torbox_torrent_id = CASE WHEN state IN ('queued', 'caching') THEN ?1 ELSE torbox_torrent_id END,
+		torbox_file_id = CASE WHEN state IN ('queued', 'caching') THEN ?2 ELSE torbox_file_id END,
+		caching_started_at = CASE WHEN state IN ('queued', 'caching') AND paused = 0 AND caching_started_at = '' THEN ?3 ELSE caching_started_at END,
+		cache_percent = CASE WHEN state IN ('queued', 'caching') AND paused = 0 THEN ?4 ELSE cache_percent END,
+		updated_at = CASE WHEN state IN ('queued', 'caching') AND paused = 0 THEN ?3 ELSE updated_at END,
+		state = CASE WHEN state IN ('queued', 'caching') AND paused = 0 THEN 'caching' ELSE state END
+		WHERE id = ?5 AND state NOT IN ('done', 'failed')`, torrentID, fileID, stamp, percent, id)
+	return affected(res, err)
 }
 
 // UncachedActive counts the downloads waiting for TorBox or being fetched by

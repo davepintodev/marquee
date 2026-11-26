@@ -12,6 +12,7 @@ import (
 
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/debridfake"
+	"github.com/davepintodev/marquee/internal/torboxfake"
 )
 
 func (r *realSvc) download(id string) map[string]any {
@@ -452,5 +453,48 @@ func TestCancellingAManualGrabOfABackedOffEpisodeSearchesItAgainAtOnce(t *testin
 	r.step()
 	if got := r.searchedID(ep1ID); got != before+1 {
 		t.Errorf("after the cancel the episode was searched %d times, want once at once, not after its backoff", got-before)
+	}
+}
+
+// pausedWhileCreating grabs one uncached episode and lands a pause's write
+// while TorBox is still creating its torrent, before the pause stops the
+// transfer: the window between the two is what is tested.
+func pausedWhileCreating(t *testing.T) (*tbRig, string) {
+	r := newTBRig(t, nil)
+	r.episodeFile(hashA, ep1Name)
+	r.aio.Answer("series", ep1ID, results(listed{name: ep1Name, size: epSize, uncached: true, hash: hashA, season: 1, ep: 1}))
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	created := make(chan struct{})
+	r.tb.Script("/torrents/createtorrent", torboxfake.Step{Until: created})
+	r.grabEpisodes("s01e01")
+	waitFor(t, "the torrent to be asked for", 10*time.Second, func() bool { return r.tb.Hits("/torrents/createtorrent") == 1 })
+	id := r.downloads()[0].(map[string]any)["id"].(string)
+
+	if _, err := r.db().Exec(`UPDATE downloads SET paused = 1 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	close(created)
+	waitFor(t, "TorBox to be polled for the new torrent", 10*time.Second, func() bool { return r.tb.Hits("/torrents/mylist") > 0 })
+	r.mustCall("POST", "/api/downloads/"+id+"/pause", "", 200)
+	return r, id
+}
+
+func TestCancellingADownloadPausedWhileItsTorrentWasCreatedDeletesTheTorrent(t *testing.T) {
+	r, id := pausedWhileCreating(t)
+	if resp := r.call("POST", "/api/downloads/"+id+"/cancel", ""); resp.status != 204 {
+		t.Fatalf("cancel: %d %s", resp.status, resp.body)
+	}
+	if got := r.tb.Deleted(); !slices.Equal(got, []int{1}) {
+		t.Errorf("deleted %v, want the torrent the paused download had made", got)
+	}
+}
+
+func TestResumingADownloadPausedWhileItsTorrentWasCreatedKeepsThatTorrent(t *testing.T) {
+	r, id := pausedWhileCreating(t)
+	polled := r.tb.Hits("/torrents/mylist")
+	r.mustCall("POST", "/api/downloads/"+id+"/resume", "", 200)
+	waitFor(t, "the resumed download to poll TorBox", 10*time.Second, func() bool { return r.tb.Hits("/torrents/mylist") > polled })
+	if n := len(r.tb.Magnets()); n != 1 {
+		t.Errorf("the resumed download asked TorBox for %d torrents, want the one it had", n)
 	}
 }
