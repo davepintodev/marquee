@@ -24,7 +24,6 @@ const episode = (n: number, over: Partial<Download> = {}): Download => ({
 const running = (n: number, percent: number, over: Partial<Download> = {}) =>
   episode(n, { state: "downloading", percent, bytesDone: Math.round((3.6 * GB * percent) / 100), bytesPerSecond: 48 * 1024 ** 2, ...over });
 
-// Friends: two downloading and twenty-two queued episodes.
 const season = (): Download[] => [running(1, 86), running(2, 82), ...Array.from({ length: 22 }, (_, i) => episode(i + 3))];
 
 const dune: Download = { id: "dl-dune", titleId: "movie-1", titleName: "Dune", releaseName: "Dune.2021.2160p", state: "downloading", percent: 43, bytesDone: 4 * GB, bytesTotal: 9 * GB, stalled: false, bytesPerSecond: 0 };
@@ -33,6 +32,8 @@ interface World {
   downloads: Download[];
   paused: boolean;
   titles: TitleSummary[];
+  // Reads fail, so a queue can only come back from what the page itself restores.
+  down?: boolean;
 }
 
 type Post = (url: URL, world: World) => Response | Promise<Response> | undefined;
@@ -40,6 +41,7 @@ type Post = (url: URL, world: World) => Response | Promise<Response> | undefined
 function serve(world: World, post: Post = () => undefined) {
   return (url: URL, init: Request) => {
     if (init.method === "POST") return post(url, world) ?? json({ error: "nope" }, 404);
+    if (world.down && url.pathname !== "/api/wall") return json({ error: "gone" }, 500);
     if (url.pathname === "/api/wall") return json({ items: [] });
     if (url.pathname === "/api/downloads") return json({ downloads: world.downloads, paused: world.paused });
     if (url.pathname === "/api/history") return json({ history: [] });
@@ -182,7 +184,7 @@ test("Pause all on a group pauses every episode of that title and leaves other t
 
   fireEvent.click(within(friends()).getByRole("button", { name: "Pause all downloads of Friends" }));
 
-  await waitFor(() => expect(within(friends()).getByText("S01E01 paused · S01E02 paused · S01E03 paused · +21 more")).toBeTruthy());
+  await waitFor(() => expect(within(friends()).getByText("24 paused")).toBeTruthy());
   expect(rows().every((r) => within(r).queryByText("Paused"))).toBe(true);
   expect(within(friends()).queryByRole("button", { name: "Pause all downloads of Friends" })).toBeNull();
   expect(within(friends()).getByRole("button", { name: "Resume downloads of Friends" })).toBeTruthy();
@@ -368,25 +370,53 @@ test("a pause the server refuses puts the row back and a toast says why with Try
     "#/activity",
   );
   await open();
+  world.down = true;
 
   fireEvent.click(within(rowOf("S01E01")).getByRole("button", { name: "Pause S01E01 of Friends" }));
 
   expect((await screen.findByRole("alert")).textContent).toContain("this download has already finished");
   expect(within(rowOf("S01E01")).getByText("Downloading")).toBeTruthy();
+  world.down = false;
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   await waitFor(() => expect(asked).toBe(2));
   await waitFor(() => expect(within(rowOf("S01E01")).getByText("Paused")).toBeTruthy());
+});
+
+test("a refused pause restores only its own row: a live update to another row stays", async () => {
+  const world: World = { downloads: season(), paused: false, titles: [] };
+  let refuse: () => void = () => {};
+  setupApp(
+    serve(world, (url) => {
+      if (url.pathname === "/api/downloads/dl-1/pause") return new Promise<Response>((r) => (refuse = () => r(json({ error: "marquee did not answer" }, 502))));
+    }),
+    "#/activity",
+  );
+  await open();
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  world.down = true;
+
+  fireEvent.click(within(rowOf("S01E01")).getByRole("button", { name: "Pause S01E01 of Friends" }));
+  expect(within(rowOf("S01E01")).getByText("Paused")).toBeTruthy();
+  FakeEventSource.open()[0].emit("progress", { downloadId: "dl-2", titleId: "series-1", episode: "s01e02", state: "downloading", percent: 95, bytesDone: Math.round(3.6 * GB * 0.95), bytesTotal: Math.round(3.6 * GB), bytesPerSecond: 48 * 1024 ** 2 });
+  await within(rowOf("S01E02")).findByText("95%");
+  refuse();
+
+  await screen.findByRole("alert");
+  expect(within(rowOf("S01E01")).getByText("Downloading")).toBeTruthy();
+  expect(within(rowOf("S01E02")).getByText("95%")).toBeTruthy();
 });
 
 test("a refused Cancel all brings the downloads back with a toast to try again; a refused Pause all unsays it", async () => {
   const world: World = { downloads: [...season(), dune], paused: false, titles: [] };
   setupApp(
     serve(world, (url) => {
-      if (url.pathname.endsWith("/cancel") || url.pathname === "/api/downloads/pause") return json({ error: "marquee did not answer" }, 502);
+      if (url.pathname.endsWith("/cancel")) return json({ error: "marquee did not answer" }, 502);
+      if (url.pathname === "/api/downloads/pause") return json({ error: "the pause was refused" }, 502);
     }),
     "#/activity",
   );
   await screen.findByRole("list", { name: "Downloads" });
+  world.down = true;
 
   fireEvent.click(within(friends()).getByRole("button", { name: "Cancel all downloads of Friends" }));
   fireEvent.click(screen.getByRole("button", { name: "Yes, cancel all downloads of Friends" }));
@@ -395,9 +425,38 @@ test("a refused Cancel all brings the downloads back with a toast to try again; 
   expect(within(friends()).getByText("S01E01 86% · S01E02 82% · 22 waiting")).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Pause all downloads" }));
-  await waitFor(() => expect(screen.getAllByRole("alert").length).toBeGreaterThan(0));
-  await waitFor(() => expect(screen.queryByText("Downloads paused")).toBeNull());
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("the pause was refused"));
+  expect(screen.queryByText("Downloads paused")).toBeNull();
   expect(screen.getByRole("button", { name: "Pause all downloads" })).toBeTruthy();
+  expect(within(friends()).getByText("S01E01 86% · S01E02 82% · 22 waiting")).toBeTruthy();
+});
+
+test("Try again on a refused group pause asks for the group as it is now, not as it was", async () => {
+  const world: World = { downloads: [running(1, 50), running(2, 40), episode(3)], paused: false, titles: [] };
+  let asked = 0;
+  let answer: (r: Response) => void = () => {};
+  setupApp(
+    serve(world, (url) => {
+      if (url.pathname !== "/api/titles/series-1/downloads/pause") return undefined;
+      asked += 1;
+      return asked === 1 ? json({ error: "marquee did not answer" }, 502) : new Promise<Response>((r) => (answer = r));
+    }),
+    "#/activity",
+  );
+  await screen.findByRole("list", { name: "Downloads" });
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  world.down = true;
+
+  fireEvent.click(within(friends()).getByRole("button", { name: "Pause all downloads of Friends" }));
+  await screen.findByRole("alert");
+  FakeEventSource.open()[0].emit("progress", { downloadId: "dl-1", titleId: "series-1", episode: "s01e01", state: "verifying", percent: 100, bytesDone: Math.round(3.6 * GB), bytesTotal: Math.round(3.6 * GB), bytesPerSecond: 0 });
+  await within(friends()).findByText(/S01E01 verifying/);
+
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+  await waitFor(() => expect(asked).toBe(2));
+  expect(within(friends()).getByText("S01E01 verifying · 2 paused")).toBeTruthy();
+  answer(json({ downloads: [] }));
 });
 
 test("a title waiting on its own episodes folds into its group as N waiting, and a title that only waits keeps one compact row", async () => {
@@ -435,4 +494,187 @@ test("progress events keep a row's speed and time left current", async () => {
   FakeEventSource.open()[0].emit("progress", { downloadId: "dl-1", titleId: "series-1", episode: "s01e01", state: "downloading", percent: 90, bytesDone: Math.round(3.6 * GB * 0.9), bytesTotal: Math.round(3.6 * GB), bytesPerSecond: 10 * 1024 ** 2 });
 
   expect(await within(rowOf("S01E01")).findByText("3.2 of 3.6 GB · 10 MB/s · 37 s left")).toBeTruthy();
+});
+
+const progress = (d: Download, state: Download["state"], percent: number) => ({ downloadId: d.id, titleId: d.titleId, episode: d.episode, state, percent, bytesDone: Math.round((3.6 * GB * percent) / 100), bytesTotal: Math.round(3.6 * GB), bytesPerSecond: 0 });
+
+test("Esc pressed on the Cancel button while its question is open closes only the question", async () => {
+  setupApp(serve({ downloads: [...season(), dune], paused: false, titles: [] }), "#/activity");
+  await screen.findByRole("list", { name: "Downloads" });
+  const trigger = within(friends()).getByRole("button", { name: "Cancel all downloads of Friends" });
+  fireEvent.click(trigger);
+  expect(within(friends()).getByRole("group", { name: "Cancel all downloads of Friends" })).toBeTruthy();
+
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "Escape" });
+
+  expect(within(friends()).queryByRole("group")).toBeNull();
+  expect(screen.getByRole("heading", { level: 1, name: "Activity" })).toBeTruthy();
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.keyDown(trigger, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("heading", { level: 1, name: "Activity" })).toBeNull());
+});
+
+test("Esc from outside an open row question closes the question, not the page", async () => {
+  setupApp(serve({ downloads: season(), paused: false, titles: [] }), "#/activity");
+  await open();
+  fireEvent.click(within(rowOf("S01E02")).getByRole("button", { name: "Cancel S01E02 of Friends" }));
+  expect(within(rowOf("S01E02")).getByRole("group")).toBeTruthy();
+
+  fireEvent.keyDown(within(rowOf("S01E01")).getByRole("button", { name: "Pause S01E01 of Friends" }), { key: "Escape" });
+
+  expect(within(rowOf("S01E02")).queryByRole("group")).toBeNull();
+  expect(screen.getByRole("heading", { level: 1, name: "Activity" })).toBeTruthy();
+  expect(document.activeElement).toBe(within(rowOf("S01E02")).getByRole("button", { name: "Cancel S01E02 of Friends" }));
+});
+
+test("a row's question closes when live progress makes the download unstoppable", async () => {
+  const world: World = { downloads: season(), paused: false, titles: [] };
+  setupApp(serve(world), "#/activity");
+  await open();
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  fireEvent.click(within(rowOf("S01E01")).getByRole("button", { name: "Cancel S01E01 of Friends" }));
+  expect(within(rowOf("S01E01")).getByRole("group")).toBeTruthy();
+
+  FakeEventSource.open()[0].emit("progress", progress(world.downloads[0], "verifying", 100));
+
+  await waitFor(() => expect(within(rowOf("S01E01")).getByText("Verifying")).toBeTruthy());
+  expect(within(rowOf("S01E01")).queryByRole("group")).toBeNull();
+});
+
+test("a group's question closes when every download it would cancel is already finishing", async () => {
+  const world: World = { downloads: [running(1, 90), running(2, 95)], paused: false, titles: [] };
+  setupApp(serve(world), "#/activity");
+  await screen.findByRole("list", { name: "Downloads" });
+  await waitFor(() => expect(FakeEventSource.open().length).toBe(1));
+  fireEvent.click(within(friends()).getByRole("button", { name: "Cancel all downloads of Friends" }));
+  expect(within(friends()).getByRole("group").textContent).toContain("Cancel all 2 downloads");
+
+  FakeEventSource.open()[0].emit("progress", progress(world.downloads[0], "verifying", 100));
+  await waitFor(() => expect(within(friends()).getByRole("group").textContent).toContain("Cancel the download of Friends"));
+  FakeEventSource.open()[0].emit("progress", progress(world.downloads[1], "importing", 100));
+
+  await waitFor(() => expect(within(friends()).queryByRole("group")).toBeNull());
+  expect(within(friends()).queryByRole("button", { name: /Cancel all/ })).toBeNull();
+  expect(friends().textContent).not.toMatch(/Cancel all 0/);
+});
+
+test("Pause all on a group shows at once, before the server has answered", async () => {
+  const world: World = { downloads: [...season(), dune], paused: false, titles: [] };
+  let answer: (r: Response) => void = () => {};
+  const { writes } = setupApp(
+    serve(world, (url) => {
+      if (url.pathname === "/api/titles/series-1/downloads/pause") return new Promise<Response>((r) => (answer = r));
+    }),
+    "#/activity",
+  );
+  await screen.findByRole("list", { name: "Downloads" });
+
+  fireEvent.click(within(friends()).getByRole("button", { name: "Pause all downloads of Friends" }));
+
+  expect(within(friends()).getByText("24 paused")).toBeTruthy();
+  expect(within(friends()).getByRole("button", { name: "Resume downloads of Friends" })).toBeTruthy();
+  expect(within(screen.getByRole("heading", { name: "Dune" }).closest("li") as HTMLElement).getByText("Downloading")).toBeTruthy();
+  await waitFor(() => expect(writes).toHaveLength(1));
+  answer(json({ downloads: [] }));
+});
+
+test("Cancel all removes the group at once, before the server has answered", async () => {
+  const world: World = { downloads: [...season(), dune], paused: false, titles: [] };
+  let answer: (r: Response) => void = () => {};
+  const { writes } = setupApp(
+    serve(world, (url) => {
+      if (url.pathname === "/api/titles/series-1/downloads/cancel") return new Promise<Response>((r) => (answer = r));
+    }),
+    "#/activity",
+  );
+  await screen.findByRole("list", { name: "Downloads" });
+
+  fireEvent.click(within(friends()).getByRole("button", { name: "Cancel all downloads of Friends" }));
+  fireEvent.click(screen.getByRole("button", { name: "Yes, cancel all downloads of Friends" }));
+
+  expect(screen.queryByRole("heading", { level: 3, name: "Friends" })).toBeNull();
+  expect(screen.getByRole("heading", { level: 3, name: "Dune" })).toBeTruthy();
+  expect(screen.queryByRole("status")).toBeNull();
+  await waitFor(() => expect(writes).toHaveLength(1));
+  world.downloads = [dune];
+  answer(new Response(null, { status: 204 }));
+  expect((await screen.findByRole("status")).textContent).toContain("Cancelled 24 downloads of Friends");
+});
+
+test("the global Pause all shows at once, before the server has answered", async () => {
+  const world: World = { downloads: [...season(), dune], paused: false, titles: [] };
+  let answer: (r: Response) => void = () => {};
+  const { writes } = setupApp(
+    serve(world, (url) => {
+      if (url.pathname === "/api/downloads/pause") return new Promise<Response>((r) => (answer = r));
+    }),
+    "#/activity",
+  );
+  await open();
+
+  fireEvent.click(screen.getByRole("button", { name: "Pause all downloads" }));
+
+  expect(screen.getByRole("status").textContent).toContain("Downloads paused");
+  expect(screen.getByRole("button", { name: "Resume all downloads" })).toBeTruthy();
+  expect(within(rowOf("S01E01")).getByText("Paused")).toBeTruthy();
+  expect(within(screen.getByRole("heading", { name: "Dune" }).closest("li") as HTMLElement).getByText("Paused")).toBeTruthy();
+  await waitFor(() => expect(writes).toHaveLength(1));
+  answer(json({ downloads: world.downloads, paused: true }));
+});
+
+test("the summary counts paused downloads as paused, not as downloading", async () => {
+  const world: World = { downloads: [running(1, 86), running(2, 82), episode(3, { state: "paused", percent: 40 }), episode(4, { state: "paused", percent: 10 }), episode(5, { state: "paused" }), episode(6)], paused: false, titles: [] };
+  setupApp(serve(world), "#/activity");
+
+  expect(await screen.findByText("2 downloading · 3 paused · 1 waiting")).toBeTruthy();
+  expect(within(friends()).getByText("S01E01 86% · S01E02 82% · 3 paused · 1 waiting")).toBeTruthy();
+});
+
+test("pausing a group of queued episodes reads as paused, not downloading", async () => {
+  const world: World = { downloads: [...season(), dune], paused: false, titles: [] };
+  setupApp(
+    serve(world, (url) => {
+      if (url.pathname === "/api/titles/series-1/downloads/pause") return json({ downloads: [] });
+    }),
+    "#/activity",
+  );
+  await screen.findByRole("list", { name: "Downloads" });
+
+  fireEvent.click(within(friends()).getByRole("button", { name: "Pause all downloads of Friends" }));
+
+  expect(screen.getByText("1 downloading · 24 paused")).toBeTruthy();
+});
+
+test("while every download is paused the summary says so, with what waits behind it", async () => {
+  const world: World = { downloads: [running(1, 86), episode(2, { state: "paused", percent: 10 }), ...Array.from({ length: 3 }, (_, i) => episode(i + 3))], paused: true, titles: [] };
+  world.downloads[0] = { ...world.downloads[0], state: "paused" };
+  setupApp(serve(world), "#/activity");
+
+  expect(await screen.findByText("Downloads paused · 3 waiting")).toBeTruthy();
+  expect(screen.queryByText(/downloading ·/)).toBeNull();
+});
+
+test("after a row is cancelled, focus moves to the next row's first button, or to the group's name when it was the last", async () => {
+  const world: World = { downloads: [running(1, 50), running(2, 40), running(3, 30)], paused: false, titles: [] };
+  setupApp(
+    serve(world, (url) => {
+      const id = /\/api\/downloads\/(dl-\d)\/cancel/.exec(url.pathname)?.[1];
+      if (!id) return undefined;
+      world.downloads = world.downloads.filter((d) => d.id !== id);
+      return new Response(null, { status: 204 });
+    }),
+    "#/activity",
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Show 3 downloads of Friends" }));
+
+  fireEvent.click(within(rowOf("S01E02")).getByRole("button", { name: "Cancel S01E02 of Friends" }));
+  fireEvent.click(within(rowOf("S01E02")).getByRole("button", { name: "Yes, cancel S01E02 of Friends" }));
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  expect(document.activeElement).toBe(within(rowOf("S01E03")).getByRole("button", { name: "Pause S01E03 of Friends" }));
+
+  fireEvent.click(within(rowOf("S01E03")).getByRole("button", { name: "Cancel S01E03 of Friends" }));
+  fireEvent.click(within(rowOf("S01E03")).getByRole("button", { name: "Yes, cancel S01E03 of Friends" }));
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(document.activeElement).toBe(within(friends()).getByRole("link", { name: "Friends" }));
 });

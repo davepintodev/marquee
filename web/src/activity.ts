@@ -30,8 +30,13 @@ export function byDay(entries: HistoryEntry[], now = new Date()): Day[] {
   return days;
 }
 
-export function summaryOf(c: { downloading: number; waiting: number; retryable: number }) {
-  const parts = [c.downloading > 0 && `${c.downloading} downloading`, c.waiting > 0 && `${c.waiting} waiting`, c.retryable > 0 && `${c.retryable} can be retried`].filter(Boolean);
+export function summaryOf(c: { downloading: number; paused: number; waiting: number; retryable: number; allPaused?: boolean }) {
+  const parts = [
+    c.allPaused ? "Downloads paused" : c.downloading > 0 && `${c.downloading} downloading`,
+    !c.allPaused && c.paused > 0 && `${c.paused} paused`,
+    c.waiting > 0 && `${c.waiting} waiting`,
+    c.retryable > 0 && `${c.retryable} can be retried`,
+  ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : "All quiet.";
 }
 
@@ -88,7 +93,7 @@ const SHOWN = 3;
 const sayOf = (d: Download) => (d.stalled ? "stalled" : d.state === "downloading" ? `${d.percent}%` : d.state);
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// "S01E01 86% · S01E02 82% · 22 waiting": what runs, then how many wait behind it.
+// "S01E01 86% · S01E02 82% · 3 paused · 22 waiting": what runs, then how many are held, then how many wait behind it.
 export function groupSummary(g: Group): string {
   if (g.downloads.length === 0 && g.wait) {
     const eps = g.wait.episodes;
@@ -103,11 +108,14 @@ export function groupSummary(g: Group): string {
     const head = queued === 1 ? (first.episode ? `${first.episode.toUpperCase()} queued` : "Queued") : `${queued} queued`;
     return extra > 0 ? `${head} · ${extra} waiting` : head;
   }
-  const parts = running.slice(0, SHOWN).map((d) => {
+  const held = running.filter((d) => d.state === "paused");
+  const active = running.filter((d) => d.state !== "paused");
+  const parts = active.slice(0, SHOWN).map((d) => {
     if (!d.episode) return d.state === "downloading" && !d.stalled ? `Downloading ${d.percent}%` : upper(sayOf(d));
     return `${d.episode.toUpperCase()} ${sayOf(d)}`;
   });
-  if (running.length > SHOWN) parts.push(`+${running.length - SHOWN} more`);
+  if (active.length > SHOWN) parts.push(`+${active.length - SHOWN} more`);
+  if (held.length > 0) parts.push(`${held.length} paused`);
   if (g.waiting > 0) parts.push(`${g.waiting} waiting`);
   return parts.join(" · ");
 }

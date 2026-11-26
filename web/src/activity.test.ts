@@ -45,10 +45,14 @@ test("byDay of nothing is nothing", () => {
 });
 
 test.each([
-  [{ downloading: 0, waiting: 0, retryable: 0 }, "All quiet."],
-  [{ downloading: 2, waiting: 3, retryable: 1 }, "2 downloading · 3 waiting · 1 can be retried"],
-  [{ downloading: 0, waiting: 1, retryable: 0 }, "1 waiting"],
-  [{ downloading: 1, waiting: 0, retryable: 4 }, "1 downloading · 4 can be retried"],
+  [{ downloading: 0, paused: 0, waiting: 0, retryable: 0 }, "All quiet."],
+  [{ downloading: 2, paused: 0, waiting: 3, retryable: 1 }, "2 downloading · 3 waiting · 1 can be retried"],
+  [{ downloading: 0, paused: 0, waiting: 1, retryable: 0 }, "1 waiting"],
+  [{ downloading: 1, paused: 0, waiting: 0, retryable: 4 }, "1 downloading · 4 can be retried"],
+  [{ downloading: 2, paused: 3, waiting: 112, retryable: 0 }, "2 downloading · 3 paused · 112 waiting"],
+  [{ downloading: 0, paused: 5, waiting: 0, retryable: 0 }, "5 paused"],
+  [{ downloading: 0, paused: 5, waiting: 7, retryable: 1, allPaused: true }, "Downloads paused · 7 waiting · 1 can be retried"],
+  [{ downloading: 0, paused: 0, waiting: 0, retryable: 0, allPaused: true }, "Downloads paused"],
 ])("summaryOf %j", (counts, want) => {
   expect(summaryOf(counts)).toBe(want);
 });
@@ -105,11 +109,12 @@ test("a title that only waits is a group without downloads, counted by its episo
 
 test.each([
   ["a running season", [dl("s01e01", { percent: 86 }), dl("s01e02", { percent: 82 }), dl("s01e03", { state: "queued" }), dl("s01e04", { state: "queued" })], 2, "S01E01 86% · S01E02 82% · 4 waiting"],
-  ["a paused and a caching episode", [dl("s01e01", { state: "paused", percent: 40 }), dl("s01e02", { state: "caching", percent: 10 })], 0, "S01E01 paused · S01E02 caching"],
+  ["a paused and a caching episode", [dl("s01e01", { state: "paused", percent: 40 }), dl("s01e02", { state: "caching", percent: 10 })], 0, "S01E02 caching · 1 paused"],
   ["a stalled and a verifying episode", [dl("s01e01", { stalled: true, percent: 12 }), dl("s01e02", { state: "verifying", percent: 100 })], 0, "S01E01 stalled · S01E02 verifying"],
   ["more running than fit", ["s01e01", "s01e02", "s01e03", "s01e04", "s01e05"].map((id) => dl(id, { percent: 50 })), 0, "S01E01 50% · S01E02 50% · S01E03 50% · +2 more"],
   ["a movie", [dl("m", { episode: undefined, percent: 43, titleId: "movie-1", titleName: "Dune" })], 0, "Downloading 43%"],
-  ["a paused movie", [dl("m", { episode: undefined, state: "paused", percent: 43, titleId: "movie-1", titleName: "Dune" })], 0, "Paused"],
+  ["a paused movie", [dl("m", { episode: undefined, state: "paused", percent: 43, titleId: "movie-1", titleName: "Dune" })], 0, "1 paused"],
+  ["a season with some paused", [dl("s01e01", { percent: 86 }), dl("s01e02", { state: "paused", percent: 10 }), dl("s01e03", { state: "paused" }), dl("s01e04", { state: "queued" })], 0, "S01E01 86% · 2 paused · 1 waiting"],
   ["only queued episodes", [dl("s01e01", { state: "queued" }), dl("s01e02", { state: "queued" })], 0, "2 queued"],
   ["one queued episode", [dl("s01e04", { state: "queued" })], 0, "S01E04 queued"],
   ["a queued movie", [dl("m", { episode: undefined, state: "queued", titleId: "movie-1", titleName: "Dune" })], 0, "Queued"],

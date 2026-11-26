@@ -17,7 +17,6 @@ export type Releases = Schemas["Releases"];
 export type Download = Schemas["Download"];
 export type DownloadState = Schemas["DownloadState"];
 export type DownloadsEvent = Schemas["DownloadsEvent"];
-// What listing the downloads answers: the unfinished ones and whether Pause all is on.
 export interface DownloadQueue {
   downloads: Download[];
   paused: boolean;

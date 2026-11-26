@@ -5,6 +5,7 @@ import { groupPercent, groupState, groupSummary, pausable, runningOf, settling, 
 import { Art } from "./Art";
 import { IconChevron } from "./icons";
 import { hrefOf } from "./route";
+import { useEscape } from "./useEscape";
 import { leftOf, rateOf, sizeOf } from "./words";
 import "./downloads.css";
 
@@ -35,21 +36,12 @@ interface ConfirmProps {
   onYes: () => void;
 }
 
-// Keep takes focus when the question opens, so a stray Enter cannot cancel anything; Esc closes only the question.
+// Keep takes focus when the question opens, so a stray Enter cannot cancel anything.
 function Confirm({ label, say, no, yes, onNo, onYes }: ConfirmProps) {
   const keep = useRef<HTMLButtonElement>(null);
   useEffect(() => keep.current?.focus({ preventScroll: true }), []);
   return (
-    <div
-      className="dl-confirm"
-      role="group"
-      aria-label={label}
-      onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
-        e.stopPropagation();
-        onNo();
-      }}
-    >
+    <div className="dl-confirm" role="group" aria-label={label}>
       <p>{say}</p>
       <button ref={keep} type="button" className="dl-btn" aria-label={no.name} onClick={onNo}>
         {no.text}
@@ -61,20 +53,32 @@ function Confirm({ label, say, no, yes, onNo, onYes }: ConfirmProps) {
   );
 }
 
-// The question's trigger gets focus back when the question closes without an answer.
-function useAsk() {
-  const [asking, setAsking] = useState(false);
+// The question closes by itself when nothing is left to stop: a download that moved on to verifying
+// meanwhile would make the server answer 409.
+function useAsk(stoppable: boolean) {
+  const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  const was = useRef(false);
-  useEffect(() => {
-    if (was.current && !asking) trigger.current?.focus({ preventScroll: true });
-    was.current = asking;
-  }, [asking]);
-  return { asking, ask: setAsking, trigger };
+  if (open && !stoppable) setOpen(false);
+  const asking = open && stoppable;
+  const dismiss = () => {
+    setOpen(false);
+    trigger.current?.focus({ preventScroll: true });
+  };
+  useEscape(asking, dismiss);
+  return { asking, ask: () => setOpen(true), dismiss, answer: () => setOpen(false), trigger };
+}
+
+function successor(row: HTMLElement | null): HTMLElement | null {
+  for (let n = row?.nextElementSibling; n; n = n.nextElementSibling) {
+    const button = n.querySelector<HTMLElement>(".drow-act button");
+    if (button) return button;
+  }
+  return row?.closest(".grp")?.querySelector<HTMLElement>(".grp-name a") ?? null;
 }
 
 function Row({ d, name, paused, alone, ops }: { d: Download; name: string; paused: boolean; alone: boolean; ops: Ops }) {
-  const { asking, ask, trigger } = useAsk();
+  const { asking, ask, dismiss, answer, trigger } = useAsk(!settling(d));
+  const li = useRef<HTMLLIElement>(null);
   const label = d.episode ? `${d.episode.toUpperCase()} of ${name}` : name;
   const state = d.stalled ? "stalled" : d.state;
   const facts: string[] = [];
@@ -85,7 +89,7 @@ function Row({ d, name, paused, alone, ops }: { d: Download; name: string; pause
     if (left) facts.push(left);
   }
   return (
-    <li className="drow" data-state={state}>
+    <li ref={li} className="drow" data-state={state}>
       <p className="drow-line">
         <b className={d.episode ? "drow-ep" : "drow-ep drow-rel"} title={d.releaseName}>
           {d.episode ? d.episode.toUpperCase() : d.releaseName}
@@ -114,7 +118,7 @@ function Row({ d, name, paused, alone, ops }: { d: Download; name: string; pause
           </button>
         )}
         {!settling(d) && (
-          <button ref={trigger} type="button" className="dl-btn" data-tone="bad" aria-label={`Cancel ${label}`} aria-expanded={asking} onClick={() => ask(true)}>
+          <button ref={trigger} type="button" className="dl-btn" data-tone="bad" aria-label={`Cancel ${label}`} aria-expanded={asking} onClick={ask}>
             Cancel
           </button>
         )}
@@ -125,9 +129,10 @@ function Row({ d, name, paused, alone, ops }: { d: Download; name: string; pause
           say="This blocks the release and searches for another."
           no={{ text: "Keep", name: `Keep ${label}` }}
           yes={{ text: "Yes, cancel", name: `Yes, cancel ${label}` }}
-          onNo={() => ask(false)}
+          onNo={dismiss}
           onYes={() => {
-            ask(false);
+            answer();
+            successor(li.current)?.focus({ preventScroll: true });
             ops.cancel(d);
           }}
         />
@@ -146,11 +151,11 @@ interface CardProps {
 }
 
 export function GroupCard({ api, g, paused, open, onToggle, ops }: CardProps) {
-  const { asking, ask, trigger } = useAsk();
   const rowsId = useId();
   const running = runningOf(g);
   const alone = g.downloads.length === 1 && g.waiting === 0;
   const stoppable = g.downloads.filter((d) => !settling(d));
+  const { asking, ask, dismiss, answer, trigger } = useAsk(stoppable.length > 0);
   const rows = g.downloads.length > 0 && (alone || open);
   const percent = groupPercent(g);
   const state = g.downloads.length === 0 ? (g.wait?.state ?? "queued") : groupState(g);
@@ -187,7 +192,7 @@ export function GroupCard({ api, g, paused, open, onToggle, ops }: CardProps) {
               </button>
             )}
             {stoppable.length > 0 && (
-              <button ref={trigger} type="button" className="dl-btn" data-tone="bad" aria-label={`Cancel all downloads of ${g.name}`} aria-expanded={asking} onClick={() => ask(true)}>
+              <button ref={trigger} type="button" className="dl-btn" data-tone="bad" aria-label={`Cancel all downloads of ${g.name}`} aria-expanded={asking} onClick={ask}>
                 Cancel all
               </button>
             )}
@@ -204,9 +209,9 @@ export function GroupCard({ api, g, paused, open, onToggle, ops }: CardProps) {
           say={`Cancel ${stoppable.length === 1 ? "the download" : `all ${stoppable.length} downloads`} of ${g.name}? Their releases are blocked and marquee searches again.`}
           no={{ text: "Keep", name: `Keep downloads of ${g.name}` }}
           yes={{ text: "Yes, cancel all", name: `Yes, cancel all downloads of ${g.name}` }}
-          onNo={() => ask(false)}
+          onNo={dismiss}
           onYes={() => {
-            ask(false);
+            answer();
             ops.cancelGroup(g);
           }}
         />

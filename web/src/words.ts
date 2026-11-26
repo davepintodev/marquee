@@ -99,7 +99,6 @@ export function bytesOf(n: number) {
   return `${text} ${units[i]}`;
 }
 
-// "3.1 of 3.6 GB": the unit is said once when both sides share it.
 export function sizeOf(done: number, total: number) {
   const a = bytesOf(done);
   const b = bytesOf(total);
@@ -109,7 +108,6 @@ export function sizeOf(done: number, total: number) {
 
 export const rateOf = (bytesPerSecond: number) => `${bytesOf(bytesPerSecond)}/s`;
 
-// The bytes left over the rate; nothing to say when the file is not moving.
 export function leftOf(d: { bytesDone: number; bytesTotal: number; bytesPerSecond: number }) {
   const left = d.bytesTotal - d.bytesDone;
   if (d.bytesPerSecond <= 0 || left <= 0) return null;

@@ -352,9 +352,17 @@ func TestOneLongSeasonIsMostlyQueuedAndNeverAllStartsAtOnce(t *testing.T) {
 	if c := season(); c["downloading"] != 2 || c["paused"] != 1 || c["queued"] != 21 {
 		t.Fatalf("the season starts as %v, want 2 downloading, 1 paused and 21 queued", c)
 	}
-	time.Sleep(150 * time.Millisecond)
-	if c := season(); c["downloading"] > 3 || c["queued"] < 10 || c["paused"] != 1 {
-		t.Errorf("a queued season does not wait its turn: %v", c)
+	deadline := time.Now().Add(3 * time.Second)
+	c := season()
+	for c["queued"] == 21 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+		c = season()
+	}
+	if c["queued"] == 21 {
+		t.Fatalf("no queued episode started within the deadline: %v", c)
+	}
+	if c["downloading"] > 3 || c["queued"] < 10 || c["paused"] != 1 {
+		t.Errorf("a queued season does not wait its turn: %v, want at most 3 downloading, 1 paused and at least 10 queued", c)
 	}
 }
 

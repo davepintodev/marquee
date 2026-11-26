@@ -20,7 +20,6 @@ interface Props {
 
 interface Data {
   downloads: Download[];
-  // Pause all is on.
   paused: boolean;
   history: HistoryEntry[];
   // The cursor of the page after the loaded history; absent when it is all loaded.
@@ -48,6 +47,20 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : "Something w
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 
 const BURST = 250;
+
+interface Touch {
+  ids: Set<string>;
+  flag?: boolean;
+}
+
+function restored(now: Data, before: Data, touch: Touch): Data {
+  const known = new Set(before.downloads.map((d) => d.id));
+  const downloads = [
+    ...before.downloads.flatMap((b) => (touch.ids.has(b.id) ? [b] : now.downloads.filter((d) => d.id === b.id))),
+    ...now.downloads.filter((d) => !known.has(d.id)),
+  ];
+  return { ...now, downloads, paused: touch.flag ? before.paused : now.paused };
+}
 
 export function Activity({ api, onClose, onChanged, onToast }: Props) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -124,14 +137,15 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
   const edit = (change: (d: Data) => Data) => setLoad((l) => (l.status === "ok" ? { status: "ok", data: change(l.data) } : l));
   const replace = (changed: Download[]) => edit((d) => ({ ...d, downloads: d.downloads.map((x) => changed.find((c) => c.id === x.id) ?? x) }));
 
-  // The change shows at once; when the server refuses it the old queue comes back and a toast says why.
-  const act = async (optimistic: (d: Data) => Data, call: () => Promise<void>, again: () => void) => {
+  // A refusal puts back only the downloads the action touched (and the Pause all flag when it did), so a
+  // live update to another row, or another action in flight, survives it.
+  const act = async (touch: Touch, optimistic: (d: Data) => Data, call: () => Promise<void>, again: () => void) => {
     const before = data.current;
     edit(optimistic);
     try {
       await call();
     } catch (e) {
-      if (before) edit((d) => ({ ...d, downloads: before.downloads, paused: before.paused }));
+      if (before) edit((d) => restored(d, before, touch));
       refetch();
       onToast(messageOf(e), { kind: "error", action: { label: "Try again", onClick: again } });
     }
@@ -143,16 +157,25 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
   const freed = (d: Download): Download => ({ ...d, state: d.percent > 0 ? "downloading" : "queued" });
   const mapIds = (ids: Set<string>, to: (d: Download) => Download) => (d: Data): Data => ({ ...d, downloads: d.downloads.map((x) => (ids.has(x.id) ? to(x) : x)) });
 
+  const current = (id: string) => {
+    const d = data.current;
+    return d ? groupsOf(d.downloads, d.waiting).find((g) => g.id === id) : undefined;
+  };
+
   const ops: Ops = {
     pause: function pause(d) {
-      return void act(mapIds(new Set([d.id]), held), async () => replace([await api.pauseDownload(d.id)]), () => pause(d));
+      const ids = new Set([d.id]);
+      return void act({ ids }, mapIds(ids, held), async () => replace([await api.pauseDownload(d.id)]), () => pause(d));
     },
     resume: function resume(d) {
-      return void act(mapIds(new Set([d.id]), freed), async () => replace([await api.resumeDownload(d.id)]), () => resume(d));
+      const ids = new Set([d.id]);
+      return void act({ ids }, mapIds(ids, freed), async () => replace([await api.resumeDownload(d.id)]), () => resume(d));
     },
     cancel: function cancel(d) {
+      const ids = new Set([d.id]);
       return void act(
-        gone(new Set([d.id])),
+        { ids },
+        gone(ids),
         async () => {
           await api.cancelDownload(d.id);
           onToast(`Cancelled ${labelOf(d)}. Looking for another release.`);
@@ -163,36 +186,46 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
     },
     pauseGroup: function pauseGroup(g) {
       const ids = new Set(g.downloads.filter((d) => !settling(d) && pausable(d)).map((d) => d.id));
-      return void act(mapIds(ids, held), async () => replace(await api.pauseTitleDownloads(g.id)), () => pauseGroup(g));
+      const again = () => {
+        const now = current(g.id);
+        if (now) pauseGroup(now);
+      };
+      return void act({ ids }, mapIds(ids, held), async () => replace(await api.pauseTitleDownloads(g.id)), again);
     },
     resumeGroup: function resumeGroup(g) {
       const ids = new Set(g.downloads.filter((d) => d.state === "paused").map((d) => d.id));
-      return void act(mapIds(ids, freed), async () => replace(await api.resumeTitleDownloads(g.id)), () => resumeGroup(g));
+      const again = () => {
+        const now = current(g.id);
+        if (now) resumeGroup(now);
+      };
+      return void act({ ids }, mapIds(ids, freed), async () => replace(await api.resumeTitleDownloads(g.id)), again);
     },
     cancelGroup: function cancelGroup(g) {
       const ids = new Set(g.downloads.filter((d) => !settling(d)).map((d) => d.id));
+      const again = () => {
+        const now = current(g.id);
+        if (now) cancelGroup(now);
+      };
       return void act(
+        { ids },
         gone(ids),
         async () => {
           await api.cancelTitleDownloads(g.id);
           onToast(`Cancelled ${ids.size === 1 ? "the download" : `${ids.size} downloads`} of ${g.name}. Looking for other releases.`);
           refetch();
         },
-        () => cancelGroup(g),
+        again,
       );
     },
   };
 
   const settle = (queue: DownloadQueue) => edit((d) => ({ ...d, downloads: queue.downloads, paused: queue.paused }));
   const pauseAll = function pauseAll(): void {
-    void act(
-      (d) => ({ ...d, paused: true, downloads: d.downloads.map((x) => (x.state === "downloading" || x.state === "caching" ? held(x) : x)) }),
-      async () => settle(await api.pauseAllDownloads()),
-      pauseAll,
-    );
+    const ids = new Set((data.current?.downloads ?? []).filter((d) => d.state === "downloading" || d.state === "caching").map((d) => d.id));
+    void act({ ids, flag: true }, (d) => ({ ...d, paused: true, downloads: mapIds(ids, held)(d).downloads }), async () => settle(await api.pauseAllDownloads()), pauseAll);
   };
   const resumeAll = function resumeAll(): void {
-    void act((d) => ({ ...d, paused: false }), async () => settle(await api.resumeAllDownloads()), resumeAll);
+    void act({ ids: new Set(), flag: true }, (d) => ({ ...d, paused: false }), async () => settle(await api.resumeAllDownloads()), resumeAll);
   };
 
   const retry = async (h: HistoryEntry) => {
@@ -266,7 +299,13 @@ export function Activity({ api, onClose, onChanged, onToast }: Props) {
       </Page>
     );
   }
-  const summary = summaryOf({ downloading: downloads.filter((d) => d.state !== "queued").length, waiting: groups.reduce((n, g) => n + g.waiting, 0), retryable: history.filter((h) => h.retryable).length });
+  const summary = summaryOf({
+    downloading: downloads.filter((d) => d.state !== "queued" && d.state !== "paused").length,
+    paused: downloads.filter((d) => d.state === "paused").length,
+    allPaused: paused,
+    waiting: groups.reduce((n, g) => n + g.waiting, 0),
+    retryable: history.filter((h) => h.retryable).length,
+  });
   const card = (g: Group) => <GroupCard key={g.id} api={api} g={g} paused={paused} open={open.has(g.id)} onToggle={() => toggle(g.id)} ops={ops} />;
   return (
     <Page heading="Activity" onClose={onClose} className="page-activity">
