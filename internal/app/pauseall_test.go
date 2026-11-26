@@ -2,6 +2,9 @@ package app_test
 
 import (
 	"path/filepath"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -216,5 +219,115 @@ func TestPauseAllStartsNoNewTorBoxCacheAndLeavesTheTorrentsAlone(t *testing.T) {
 	waitFor(t, "both episodes to import", 30*time.Second, func() bool { return len(r.entries("imported")) == 2 })
 	if n := len(r.tb.Magnets()); n != 2 {
 		t.Errorf("Resume all asked TorBox for a torrent it already had: %d magnets", n)
+	}
+}
+
+func TestPauseAllLandingBetweenADispatchPassReadingItAndStartingTheDownloadStopsThatDownload(t *testing.T) {
+	r, _ := setup(t)
+	r.noStall()
+	reached, release := make(chan struct{}), make(chan struct{})
+	var once atomic.Bool
+	hold := func() {
+		if once.CompareAndSwap(false, true) {
+			close(reached)
+			<-release
+		}
+	}
+	r.holdDispatch.Store(&hold)
+	var free sync.Once
+	t.Cleanup(func() { free.Do(func() { close(release) }) })
+
+	url := r.cdn.Add("slow.mkv", debridfake.File{Data: debridfake.MKV(4 << 20), Pace: 30 * time.Millisecond})
+	d := r.enqueue(movieJob(url, "slow.mkv"))
+	waitFor(t, "a dispatch pass to hold with the flag read as off", 10*time.Second, func() bool {
+		select {
+		case <-reached:
+			return true
+		default:
+			return false
+		}
+	})
+	r.mustCall("POST", "/api/downloads/pause", "", 200)
+	free.Do(func() { close(release) })
+
+	time.Sleep(500 * time.Millisecond)
+	if n := len(r.cdn.Requests()); n != 0 {
+		t.Errorf("%d requests were made by a download that started after Pause all", n)
+	}
+	if s := r.stateOf(d.ID); s != "queued" {
+		t.Errorf("the download is %q, want it held back as queued", s)
+	}
+}
+
+func TestResumingOneDownloadWhilePauseAllIsOnDoesNotStartIt(t *testing.T) {
+	r, _ := setup(t)
+	r.noStall()
+	a, _, _ := r.threeDownloads()
+	r.mustCall("POST", "/api/downloads/pause", "", 200)
+	r.mustCall("POST", "/api/downloads/"+a+"/pause", "", 200)
+	seen := len(r.cdn.Requests())
+
+	r.mustCall("POST", "/api/downloads/"+a+"/resume", "", 200)
+	time.Sleep(300 * time.Millisecond)
+	if s := r.stateOf(a); s != "paused" {
+		t.Errorf("a download resumed under Pause all is %q, want paused", s)
+	}
+	if n := len(r.cdn.Requests()); n != seen {
+		t.Errorf("%d requests were made under Pause all: %+v", n-seen, r.cdn.Requests()[seen:])
+	}
+	r.mustCall("POST", "/api/downloads/resume", "", 200)
+	waitFor(t, "the download to run once Pause all ended", 10*time.Second, func() bool { return r.stateOf(a) == "downloading" })
+}
+
+func TestCancellingADownloadWhilePauseAllIsOnDeletesItsPartialAndRecordsTheCancel(t *testing.T) {
+	r, root := setup(t)
+	r.noStall()
+	a, b, c := r.threeDownloads()
+	r.mustCall("POST", "/api/downloads/pause", "", 200)
+
+	if resp := r.call("POST", "/api/downloads/"+a+"/cancel", ""); resp.status != 204 {
+		t.Fatalf("cancel: %d %s", resp.status, resp.body)
+	}
+	if r.download(a) != nil {
+		t.Error("the cancelled download is still queued")
+	}
+	h := r.waitHistoryKind("cancelled", 1)
+	if h[0].(map[string]any)["id"] != a {
+		t.Errorf("history of the cancel = %v", h)
+	}
+	if got := len(tree(t, filepath.Join(root, "tmp"))); got == 0 {
+		t.Error("the cancel threw away the other paused download's partial too")
+	}
+	if s := r.stateOf(b) + "/" + r.stateOf(c); s != "paused/queued" {
+		t.Errorf("the others are %s, want paused/queued", s)
+	}
+}
+
+func TestCancellingADownloadWhilePauseAllIsOnDeletesItsTorrentUnlessASiblingNeedsIt(t *testing.T) {
+	r := newTBRig(t, nil)
+	r.seasonPack()
+	r.mustCall("POST", "/api/titles", seriesBody, 201)
+	r.grabEpisodes("s01e01", "s01e02")
+	id := r.torrentIDs(1)[0]
+	r.tb.Step(id, 0.3, 100)
+	r.waitStates("caching", 2)
+	ds := r.downloads()
+	one, two := ds[0].(map[string]any)["id"].(string), ds[1].(map[string]any)["id"].(string)
+	r.mustCall("POST", "/api/downloads/pause", "", 200)
+
+	if resp := r.call("POST", "/api/downloads/"+one+"/cancel", ""); resp.status != 204 {
+		t.Fatalf("cancel: %d %s", resp.status, resp.body)
+	}
+	if got := r.tb.Deleted(); len(got) != 0 {
+		t.Fatalf("the torrent went while the other episode still needs it: %v", got)
+	}
+	if resp := r.call("POST", "/api/downloads/"+two+"/cancel", ""); resp.status != 204 {
+		t.Fatalf("cancel: %d %s", resp.status, resp.body)
+	}
+	if got := r.tb.Deleted(); !slices.Equal(got, []int{id}) {
+		t.Errorf("deleted %v, want the pack once its last download was cancelled", got)
+	}
+	if n := len(r.entries("cancelled")); n != 2 {
+		t.Errorf("%d cancelled entries in the history, want 2", n)
 	}
 }

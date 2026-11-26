@@ -51,6 +51,10 @@ type Tuning struct {
 	JellyfinTimeout time.Duration
 	// Download tunes the HTTP downloader.
 	Download download.Options
+	// HoldDispatch, when set, is called by a dispatch pass that found
+	// downloads, after it read the Pause all flag and before it starts any,
+	// so a test can land a pause in that window.
+	HoldDispatch func()
 }
 
 // PackExpander resolves a season pack whose torrent TorBox has just finished
@@ -358,6 +362,9 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 		}
 		return
 	}
+	if len(active) > 0 && m.tune.HoldDispatch != nil {
+		m.tune.HoldDispatch()
+	}
 	slots := m.cachingSlotsUsed(active)
 	for _, d := range active {
 		if d.Paused || (all && transferable(d)) {
@@ -416,11 +423,14 @@ func (m *Manager) dispatch(ctx context.Context, wg *sync.WaitGroup) {
 				close(r.done)
 				m.kick()
 			}()
-			// The handle is registered before this read, so a pause or cancel
-			// that lands after the queue was read is either seen here or
-			// cancels dctx.
+			// The handle is registered before these reads, so a pause, a
+			// Pause all or a cancel that lands after the queue was read is
+			// either seen here or cancels dctx.
 			fresh, err := m.cat.GetDownload(dctx, d.ID)
 			if err != nil || fresh.Paused || fresh.State == catalog.StateDone || fresh.State == catalog.StateFailed {
+				return
+			}
+			if now, err := m.cat.PausedAll(dctx); err != nil || (now && transferable(fresh)) {
 				return
 			}
 			m.process(dctx, fresh)
