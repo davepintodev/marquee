@@ -202,7 +202,7 @@ func TestTheCachingStartMigrationDatesAnInFlightTorrentFromItsDownloadAndLeavesQ
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`ALTER TABLE downloads DROP COLUMN caching_started_at; ALTER TABLE downloads DROP COLUMN paused; DROP TABLE run_mode; DROP TABLE pause_all; PRAGMA user_version = 15`); err != nil {
+	if _, err := db.Exec(dropTitleNames + `ALTER TABLE downloads DROP COLUMN caching_started_at; ALTER TABLE downloads DROP COLUMN paused; DROP TABLE run_mode; DROP TABLE pause_all; PRAGMA user_version = 15`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
