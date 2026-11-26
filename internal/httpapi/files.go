@@ -10,6 +10,7 @@ import (
 
 	"github.com/davepintodev/marquee/internal/catalog"
 	"github.com/davepintodev/marquee/internal/importer"
+	"github.com/davepintodev/marquee/internal/subfit"
 )
 
 func (a *api) libraryRoot(kind string) string {
@@ -81,6 +82,9 @@ func (a *api) deleteTitleFiles(w http.ResponseWriter, r *http.Request, id string
 		}
 	}
 	for _, p := range paths {
+		a.Subfit.Delete(subfit.Library(kind), p)
+	}
+	for _, p := range paths {
 		if err := importer.PruneEmptyDirs(root, p); err != nil {
 			a.Log.Warn("cannot remove an empty folder", "err", err)
 		}
@@ -149,6 +153,7 @@ func (a *api) wrongFile(w http.ResponseWriter, r *http.Request) {
 		a.internal(w, r, err)
 		return
 	}
+	a.Subfit.Delete(subfit.Library(kind), f.Path)
 	_, err = a.Catalog.ResetWrongFile(r.Context(), catalog.WrongFile{TitleID: id, Season: season, Number: number, Path: f.Path, ReSearch: reSearch})
 	switch {
 	case errors.Is(err, catalog.ErrFileChanged), errors.Is(err, catalog.ErrNotFound):

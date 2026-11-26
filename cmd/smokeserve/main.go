@@ -1,5 +1,5 @@
 // Command smokeserve runs the real service with the outside world faked
-// (TMDB, AIOStreams, the debrid file server, TorBox, Jellyfin), for the Playwright
+// (TMDB, AIOStreams, the debrid file server, TorBox, Jellyfin, subfit), for the Playwright
 // smoke test and the idle-memory measurement. It is a development tool and
 // is never part of an image.
 //
@@ -28,6 +28,7 @@ import (
 	"github.com/davepintodev/marquee/internal/debridfake"
 	"github.com/davepintodev/marquee/internal/jellyfinfake"
 	"github.com/davepintodev/marquee/internal/pipeline"
+	"github.com/davepintodev/marquee/internal/subfitfake"
 	"github.com/davepintodev/marquee/internal/tmdbfake"
 	"github.com/davepintodev/marquee/internal/torboxfake"
 	"github.com/davepintodev/marquee/web"
@@ -124,6 +125,8 @@ func serveService(ctx context.Context, root, listen string, stdout, stderr io.Wr
 	aio.Answer("movie", heatIMDb, uncachedRelease(heatHash, duneBytes, "Heat.1995.1080p.WEB-DL.mkv"))
 	jf := jellyfinfake.New()
 	defer jf.Close()
+	sf := subfitfake.New()
+	defer sf.Close()
 
 	cfgPath, err := writeConfig(root)
 	if err != nil {
@@ -134,6 +137,7 @@ func serveService(ctx context.Context, root, listen string, stdout, stderr io.Wr
 	env["MARQUEE_TMDB_KEY"] = tmdbfake.Key
 	env["MARQUEE_TORBOX_API_KEY"] = torboxfake.Key
 	env["MARQUEE_JELLYFIN_URL"], env["MARQUEE_JELLYFIN_KEY"] = jf.URL, jellyfinfake.Key
+	env["MARQUEE_SUBFIT_URL"] = sf.URL
 	env["MARQUEE_LISTEN"] = listen
 
 	go cacheOnTorBox(ctx, tb)

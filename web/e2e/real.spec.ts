@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 // The service behind this page is the real one, serving the same UI; only
-// TMDB, AIOStreams, the debrid file server, TorBox and Jellyfin are fakes.
+// TMDB, AIOStreams, the debrid file server, TorBox, Jellyfin and subfit are fakes.
 test("a title added from its page downloads, imports and reads Downloaded in the grid without a reload", async ({ page }) => {
   await page.goto("/#/grid");
   await page.getByRole("button", { name: /^Trending/ }).click();

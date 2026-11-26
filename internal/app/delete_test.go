@@ -26,6 +26,12 @@ func present(path string) bool {
 // Jellyfin around it.
 func startFiles(t *testing.T, dryRun bool) (*realSvc, *jellyfinfake.Server) {
 	t.Helper()
+	return startFilesWith(t, dryRun, nil)
+}
+
+// startFilesWith is startFiles with prep run on the environment and opts on the service options.
+func startFilesWith(t *testing.T, dryRun bool, prep func(env map[string]string), opts ...svcOpt) (*realSvc, *jellyfinfake.Server) {
+	t.Helper()
 	jf := jellyfinfake.New()
 	t.Cleanup(jf.Close)
 	lib := library(t,
@@ -38,7 +44,10 @@ func startFiles(t *testing.T, dryRun bool) (*realSvc, *jellyfinfake.Server) {
 		if dryRun {
 			env["MARQUEE_DRY_RUN"] = "true"
 		}
-	})
+		if prep != nil {
+			prep(env)
+		}
+	}, opts...)
 	if err != nil {
 		t.Fatal(err)
 	}

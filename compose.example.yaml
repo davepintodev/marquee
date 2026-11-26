@@ -28,6 +28,8 @@ services:
       # Optional:
       # MARQUEE_JELLYFIN_URL: "<jellyfin-url>"
       # MARQUEE_JELLYFIN_KEY: "<jellyfin-api-key>"
+      # Tell subfit when files are imported, replaced or deleted.
+      # MARQUEE_SUBFIT_URL: "<subfit-url>"
       # MARQUEE_OMDB_KEY: "<omdb-api-key>"
       # MARQUEE_API_TOKEN: "<a-long-random-token>"
       # MARQUEE_CONFIG: /config/marquee.json
