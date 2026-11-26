@@ -1022,6 +1022,8 @@ export interface components {
             monitored: number;
             /** @description How many have a file in the library, monitored or not. */
             onDisk: number;
+            /** @description How many are in the library: monitored, on disk, or both. */
+            total: number;
         };
         Health: {
             status: components["schemas"]["CheckStatus"];

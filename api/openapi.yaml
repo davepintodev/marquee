@@ -1462,10 +1462,11 @@ components:
         episodes: { $ref: "#/components/schemas/LibraryCount" }
     LibraryCount:
       type: object
-      required: [monitored, onDisk]
+      required: [monitored, onDisk, total]
       properties:
         monitored: { type: integer, minimum: 0, description: "How many are monitored: wanted." }
         onDisk: { type: integer, minimum: 0, description: "How many have a file in the library, monitored or not." }
+        total: { type: integer, minimum: 0, description: "How many are in the library: monitored, on disk, or both." }
     Health:
       type: object
       required: [status, dryRun, checks, libraryProblems, libraryTotals]

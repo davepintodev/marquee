@@ -121,6 +121,7 @@ const isTitle = (d: Title) => typeof d.id === "string";
 const isDownload = (d: Download) => typeof d.id === "string";
 const isChanged = (d: { downloads: Download[] }) => Array.isArray(d.downloads);
 const isQueue = (d: DownloadQueue) => Array.isArray(d.downloads) && typeof d.paused === "boolean";
+const isCount = (c: { monitored?: unknown; onDisk?: unknown; total?: unknown } | undefined) => typeof c?.monitored === "number" && typeof c.onDisk === "number" && typeof c.total === "number";
 
 export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUnauthorized, onAuthorized }: ApiOptions): Api {
   const base = baseUrl.replace(/\/+$/, "");
@@ -309,7 +310,7 @@ export function createApi({ baseUrl = "", fetch: f, eventSource, getToken, onUna
       };
     },
     health(signal) {
-      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems) && typeof d.libraryTotals?.movies?.monitored === "number" && typeof d.libraryTotals?.movies?.onDisk === "number" && typeof d.libraryTotals?.episodes?.monitored === "number" && typeof d.libraryTotals?.episodes?.onDisk === "number");
+      return call(() => client.GET("/api/health", { signal }), (d) => Array.isArray(d.checks) && Array.isArray(d.libraryProblems) && isCount(d.libraryTotals?.movies) && isCount(d.libraryTotals?.episodes));
     },
     imageUrl: (path) => base + path,
   };

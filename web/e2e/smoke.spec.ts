@@ -674,7 +674,7 @@ test("the title page and Activity read well in the light theme", async ({ browse
   await ctx.close();
 });
 
-const allWell = { status: "ok", dryRun: false, checks: [{ id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." }], libraryTotals: { movies: { monitored: 0, onDisk: 0 }, episodes: { monitored: 0, onDisk: 0 } }, libraryProblems: [] };
+const allWell = { status: "ok", dryRun: false, checks: [{ id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." }], libraryTotals: { movies: { monitored: 0, onDisk: 0, total: 0 }, episodes: { monitored: 0, onDisk: 0, total: 0 } }, libraryProblems: [] };
 
 for (const s of screens.slice(0, 2)) {
   test(`the Health link has no dot when all is well, a red dot when a check fails, and opens Health on ${s.name}`, async ({ page }) => {

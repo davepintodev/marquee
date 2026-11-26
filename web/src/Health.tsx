@@ -65,11 +65,7 @@ function Path({ value }: { value: string }) {
 }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-// Files on disk can outnumber the monitored items (an unmonitored episode with a file), so the library is at least what is on disk.
-const held = (c: { monitored: number; onDisk: number }, one: string, many: string) => {
-  const of = Math.max(c.monitored, c.onDisk);
-  return `${c.onDisk} of ${of} ${of === 1 ? one : many}`;
-};
+const held = (c: { onDisk: number; total: number }, one: string, many: string) => `${c.onDisk} of ${c.total} ${c.total === 1 ? one : many}`;
 
 // A plain-text control that folds and unfolds one region.
 function Fold({ open, onToggle, controls, children }: { open: boolean; onToggle: () => void; controls?: string; children: string }) {

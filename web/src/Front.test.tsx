@@ -290,7 +290,7 @@ test("Esc closes the top layer first: the title's page, then the search, then th
 });
 
 test("Esc closes a page first and lands back in the app; a second Esc goes to the wall", async () => {
-  await wallUp(serve(wall, (url) => (url.pathname === "/api/health" ? json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: { monitored: 0, onDisk: 0 }, episodes: { monitored: 0, onDisk: 0 } }, libraryProblems: [] }) : json({ error: "nope" }, 404))));
+  await wallUp(serve(wall, (url) => (url.pathname === "/api/health" ? json({ status: "ok", dryRun: false, checks: [], libraryTotals: { movies: { monitored: 0, onDisk: 0, total: 0 }, episodes: { monitored: 0, onDisk: 0, total: 0 } }, libraryProblems: [] }) : json({ error: "nope" }, 404))));
   fireEvent.click(words());
   fireEvent.click(await screen.findByRole("link", { name: "Health" }));
   await screen.findByRole("heading", { name: "Health" });

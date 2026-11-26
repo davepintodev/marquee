@@ -233,7 +233,7 @@ func TestHealthSaysWhenDryRunIsOn(t *testing.T) {
 	}
 }
 
-type tally struct{ monitored, onDisk float64 }
+type tally struct{ monitored, onDisk, total float64 }
 
 func libraryTotals(t *testing.T, s *realSvc) (movies, episodes tally) {
 	t.Helper()
@@ -244,9 +244,9 @@ func libraryTotals(t *testing.T, s *realSvc) (movies, episodes tally) {
 	read := func(kind string) tally {
 		m, ok := totals[kind].(map[string]any)
 		if !ok {
-			t.Fatalf("libraryTotals.%s = %v, want {monitored, onDisk}", kind, totals[kind])
+			t.Fatalf("libraryTotals.%s = %v, want {monitored, onDisk, total}", kind, totals[kind])
 		}
-		return tally{m["monitored"].(float64), m["onDisk"].(float64)}
+		return tally{m["monitored"].(float64), m["onDisk"].(float64), m["total"].(float64)}
 	}
 	return read("movies"), read("episodes")
 }
@@ -272,48 +272,25 @@ func TestHealthCountsOnlyMonitoredAndOnDiskLibraryItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// House lists 9 dated episodes and a special; only season 2, the one season on disk, is monitored.
 	m, e := libraryTotals(t, s)
-	if m != (tally{1, 1}) {
+	if m != (tally{1, 1, 1}) {
 		t.Errorf("movies = %+v, want 1 monitored and 1 on disk", m)
 	}
-	if e != (tally{3, 2}) {
+	if e != (tally{3, 2, 3}) {
 		t.Errorf("episodes = %+v, want 3 monitored and 2 on disk: unmonitored seasons 1 and 3 and the special are not library", e)
 	}
 
 	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":329865}`, 201)
-	if m, _ := libraryTotals(t, s); m != (tally{2, 1}) {
+	if m, _ := libraryTotals(t, s); m != (tally{2, 1, 2}) {
 		t.Errorf("a wanted movie with no file counts as monitored only: %+v", m)
 	}
 	s.mustCall("PATCH", "/api/titles/movie-329865", `{"monitored":false}`, 200)
-	if m, _ := libraryTotals(t, s); m != (tally{1, 1}) {
+	if m, _ := libraryTotals(t, s); m != (tally{1, 1, 1}) {
 		t.Errorf("an unmonitored movie with no file is not library: %+v", m)
 	}
 }
 
 // tallyTotal is a tally that also reads the contract's total: items monitored or on disk.
-type tallyTotal struct{ monitored, onDisk, total float64 }
-
-func libraryMovieTotals(t *testing.T, s *realSvc) tallyTotal {
-	t.Helper()
-	totals, ok := s.mustCall("GET", "/api/health", "", 200)["libraryTotals"].(map[string]any)
-	if !ok {
-		t.Fatal("health carries no libraryTotals")
-	}
-	m, ok := totals["movies"].(map[string]any)
-	if !ok {
-		t.Fatalf("libraryTotals.movies = %v, want {monitored, onDisk, total}", totals["movies"])
-	}
-	get := func(k string) float64 {
-		v, ok := m[k].(float64)
-		if !ok {
-			t.Fatalf("libraryTotals.movies has no %q: %v", k, m)
-		}
-		return v
-	}
-	return tallyTotal{get("monitored"), get("onDisk"), get("total")}
-}
-
 func TestHealthTotalCountsAnUnmonitoredMovieThatKeepsItsFile(t *testing.T) {
 	tm := tmdbfake.New()
 	t.Cleanup(tm.Close)
@@ -326,7 +303,7 @@ func TestHealthTotalCountsAnUnmonitoredMovieThatKeepsItsFile(t *testing.T) {
 	s.mustCall("POST", "/api/titles", `{"kind":"movie","tmdbId":329865}`, 201)
 	s.mustCall("PATCH", "/api/titles/movie-438631", `{"monitored":false}`, 200)
 
-	if got := libraryMovieTotals(t, s); got != (tallyTotal{1, 1, 2}) {
+	if got, _ := libraryTotals(t, s); got != (tally{1, 1, 2}) {
 		t.Errorf("movies = %+v, want monitored 1, onDisk 1, total 2: unmonitoring Dune keeps its file, so it is still library", got)
 	}
 }
@@ -349,13 +326,13 @@ func TestHealthCountsTheLibraryMoviesAndEpisodesAcrossSeries(t *testing.T) {
 	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":1408}`, 201)
 	s.mustCall("POST", "/api/titles", `{"kind":"series","tmdbId":2000}`, 201)
 
-	if m, e := libraryTotals(t, s); m != (tally{2, 0}) || e != (tally{6, 0}) {
+	if m, e := libraryTotals(t, s); m != (tally{2, 0, 2}) || e != (tally{6, 0, 6}) {
 		t.Errorf("library counts %+v movies and %+v episodes, want 2 and 6 monitored, none on disk (3 dated episodes in each series)", m, e)
 	}
 
 	s.mustCall("DELETE", "/api/titles/movie-7", "", 204)
 	s.mustCall("DELETE", "/api/titles/series-1408", "", 204)
-	if m, e := libraryTotals(t, s); m != (tally{1, 0}) || e != (tally{3, 0}) {
+	if m, e := libraryTotals(t, s); m != (tally{1, 0, 1}) || e != (tally{3, 0, 3}) {
 		t.Errorf("after removals the library counts %+v movies and %+v episodes, want 1 and 3 monitored", m, e)
 	}
 }

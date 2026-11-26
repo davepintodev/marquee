@@ -16,7 +16,7 @@ const sick: HealthData = {
     { id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." },
     { id: "temp_path", name: "Temp path", status: "error", message: "The temp folder is on a different filesystem than the movies folder." },
   ],
-  libraryTotals: { movies: { monitored: 7, onDisk: 6 }, episodes: { monitored: 15, onDisk: 12 } },
+  libraryTotals: { movies: { monitored: 7, onDisk: 6, total: 7 }, episodes: { monitored: 15, onDisk: 12, total: 15 } },
   libraryProblems: [
     { path: "Movies/Heat", reason: "ambiguous", message: "Matched more than one TMDB title (1995 and 1986); add the title to pick one." },
     { path: "Series/Unknown Show", reason: "unmatched", message: "No TMDB title matches this folder name." },
@@ -31,7 +31,7 @@ const fine = (over: Partial<HealthData> = {}): HealthData => ({
     { id: "aiostreams", name: "AIOStreams", status: "ok", message: "Reachable." },
     { id: "tmdb", name: "TMDB", status: "ok", message: "Key accepted." },
   ],
-  libraryTotals: { movies: { monitored: 1, onDisk: 1 }, episodes: { monitored: 1, onDisk: 1 } },
+  libraryTotals: { movies: { monitored: 1, onDisk: 1, total: 1 }, episodes: { monitored: 1, onDisk: 1, total: 1 } },
   libraryProblems: [],
   ...over,
 });
@@ -212,20 +212,20 @@ test("the library is folded with its totals and problem count, and Show problems
 });
 
 test("a library with one problem and one title of each kind reads in the singular", async () => {
-  setup([() => json(fine({ libraryTotals: { movies: { monitored: 1, onDisk: 1 }, episodes: { monitored: 1, onDisk: 1 } }, libraryProblems: [sick.libraryProblems[0]] }))]);
+  setup([() => json(fine({ libraryTotals: { movies: { monitored: 1, onDisk: 1, total: 1 }, episodes: { monitored: 1, onDisk: 1, total: 1 } }, libraryProblems: [sick.libraryProblems[0]] }))]);
   const lib = await screen.findByRole("region", { name: /library/i });
   expect(within(lib).getByText("1 of 1 movie · 1 of 1 episode on disk")).toBeTruthy();
   expect(within(lib).getByText("1 problem")).toBeTruthy();
 });
 
-test("the library counts what is on disk out of what is monitored, and never more on disk than the library holds", async () => {
-  setup([() => json(fine({ libraryTotals: { movies: { monitored: 4, onDisk: 4 }, episodes: { monitored: 73, onDisk: 75 } } }))]);
+test("the library counts what is on disk out of everything monitored or on disk", async () => {
+  setup([() => json(fine({ libraryTotals: { movies: { monitored: 4, onDisk: 4, total: 4 }, episodes: { monitored: 10, onDisk: 8, total: 13 } } }))]);
   const lib = await screen.findByRole("region", { name: /library/i });
-  expect(within(lib).getByText("4 of 4 movies · 75 of 75 episodes on disk")).toBeTruthy();
+  expect(within(lib).getByText("4 of 4 movies · 8 of 13 episodes on disk")).toBeTruthy();
 });
 
 test("a library with no problems says so and has nothing to unfold; an empty one counts zero", async () => {
-  setup([() => json(fine({ libraryTotals: { movies: { monitored: 0, onDisk: 0 }, episodes: { monitored: 0, onDisk: 0 } } }))]);
+  setup([() => json(fine({ libraryTotals: { movies: { monitored: 0, onDisk: 0, total: 0 }, episodes: { monitored: 0, onDisk: 0, total: 0 } } }))]);
 
   const lib = await screen.findByRole("region", { name: /library/i });
   expect(within(lib).getByText("No problems")).toBeTruthy();
